@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from textual.app import App
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
@@ -101,3 +102,24 @@ async def test_command_bar_message_round_trips_through_real_orchestrator(tmp_pat
         assert "user" in roles and "assistant" in roles
         assert "hello world" in texts
         assert "acknowledged" in texts
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_chat_uses_rich_transcript(tmp_path):
+    """OrchestratorChat composes a RichTranscript for the 'orchestrator' agent."""
+    from mod_tui.widgets.orchestrator_chat import OrchestratorChat
+    from mod_tui.widgets.rich_transcript import RichTranscript
+    from mod_tui.events import EventBus
+
+    class _Host(App):
+        event_bus = EventBus()
+        def compose(self):
+            yield OrchestratorChat()
+
+    app = _Host()
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        chat = app.query_one(OrchestratorChat)
+        rt = chat.query_one(RichTranscript)
+        assert rt.agent_id == "orchestrator"

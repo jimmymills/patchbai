@@ -158,3 +158,11 @@ class Terminal(Container):
                 event.stop()
         except Exception:
             pass
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        from pathlib import Path as _P
+        command = props.get("command")
+        if command and isinstance(command, list) and len(command) > 0:
+            return f"Terminal: {_P(command[0]).name}"
+        return "Terminal"

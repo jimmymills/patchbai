@@ -7,6 +7,8 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
     UserMessage,
 )
 
@@ -127,3 +129,45 @@ async def test_session_records_usage_from_result(tmp_path: Path):
     assert info.tokens_out == 11
     assert info.cost == pytest.approx(0.0042)
     assert info.state == AgentState.DONE
+
+
+@pytest.mark.asyncio
+async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
+    """ToolUseBlock.id and ToolResultBlock.tool_use_id reach the bus event."""
+    bus = EventBus()
+    received: list[AgentMessageAppended] = []
+    bus.subscribe(AgentMessageAppended, received.append)
+
+    script = [
+        AssistantMessage(
+            content=[ToolUseBlock(id="toolu_xyz", name="bash",
+                                  input={"command": "ls"})],
+            model="fake-model",
+        ),
+        UserMessage(content=[ToolResultBlock(
+            tool_use_id="toolu_xyz", content="output", is_error=False,
+        )]),
+        ResultMessage(
+            subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+            num_turns=1, session_id="fake", total_cost_usd=0.0,
+            usage={"input_tokens": 1, "output_tokens": 1}, result="ok",
+        ),
+    ]
+
+    session = AgentSession(
+        info=AgentInfo(id="a1", name="a1", cwd=str(tmp_path), started_at=0),
+        adapter=FakeSDKAdapter(scripts=[script]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+    await session.start(options=ClaudeAgentOptions(cwd=str(tmp_path)))
+    await session.send("go")
+    await session.wait_idle()
+    await session.stop()
+
+    tool_uses = [e for e in received if e.role == "tool_use"]
+    tool_results = [e for e in received if e.role == "tool_result"]
+    assert tool_uses and tool_uses[0].tool_id == "toolu_xyz"
+    assert tool_uses[0].tool_name == "bash"
+    assert tool_results and tool_results[0].tool_id == "toolu_xyz"
+    assert tool_results[0].tool_name is None

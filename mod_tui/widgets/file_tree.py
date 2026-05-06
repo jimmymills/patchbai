@@ -10,6 +10,13 @@ class FileTree(DirectoryTree):
     `FileSelected` event on the EventBus when the user selects a file —
     other widgets (e.g. `FileViewer(follow_selection=True)`) can react."""
 
+    DEFAULT_CSS = """
+    FileTree {
+        border: round $surface-lighten-2;
+        padding: 0 1;
+    }
+    """
+
     def __init__(self, *, path: str) -> None:
         super().__init__(Path(path))
 
@@ -17,3 +24,10 @@ class FileTree(DirectoryTree):
         bus = getattr(self.app, "event_bus", None)
         if bus is not None:
             bus.publish(FileSelected(path=str(event.path)))
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        path = props.get("path")
+        if path:
+            return f"Files: {path}"
+        return "Files"

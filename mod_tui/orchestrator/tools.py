@@ -266,6 +266,23 @@ def _list_widgets_handler(registry: WidgetRegistry):
     return list_widgets_tool
 
 
+def _get_layout_handler(current_layout, widget_registry: WidgetRegistry):
+    from mod_tui.layout.titles import populate_effective_titles
+
+    async def get_layout_tool(_args: dict) -> dict:
+        spec = current_layout() if current_layout is not None else None
+        if spec is None:
+            return {"content": [{"type": "text", "text": "No layout applied yet."}]}
+        dumped = spec.model_dump(mode="json")
+        try:
+            populate_effective_titles(dumped["layout"], widget_registry)
+        except Exception:
+            pass  # Titles are advisory; never block the dump.
+        return {"content": [{"type": "text", "text": json.dumps(dumped, indent=2)}]}
+
+    return get_layout_tool
+
+
 _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
@@ -349,6 +366,7 @@ def build_orchestrator_tools(
     actions: ActionRegistry | None = None,
     rebind_keys=None,
     widget_registry: WidgetRegistry | None = None,
+    current_layout=None,
 ):
     """Return a dict {tool_name: async_handler} for unit testing.
 
@@ -377,6 +395,8 @@ def build_orchestrator_tools(
         handlers["list_bindings"] = _list_bindings_handler(config_store)
     if widget_registry is not None:
         handlers["list_widgets"] = _list_widgets_handler(widget_registry)
+    if widget_registry is not None and current_layout is not None:
+        handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry)
     return handlers
 
 
@@ -389,6 +409,7 @@ def build_orchestrator_mcp_server(
     actions: ActionRegistry | None = None,
     rebind_keys=None,
     widget_registry: WidgetRegistry | None = None,
+    current_layout=None,
 ):
     sdk_tools = []
     for spec in _SPECS:
@@ -400,13 +421,17 @@ def build_orchestrator_mcp_server(
             (
                 "set_layout",
                 "Replace the current UI layout with the given LayoutSpec dict. "
+                "Each panel may set an optional `title` field that overrides the widget's "
+                "default border title; titles are how the user refers to panels in chat "
+                "(e.g., 'make the Activity Panel 2x its size'). Call `get_layout` first "
+                "to discover effective titles before mutating. "
                 "If `spec.custom_widgets` is present, each entry's `source` "
                 "string is **exec'd in-process with full Python privileges** "
                 "to register a new Widget class before the layout is applied. "
                 "Only ship `custom_widgets` source you have personally "
                 "authored — anything you exec here can read files, hit the "
                 "network, and execute arbitrary code with the user's "
-                "permissions. The build-in widgets (list_widgets) are safer.",
+                "permissions. The built-in widgets (list_widgets) are safer.",
                 {"spec": dict},
                 _set_layout_handler(apply_layout, widget_registry),
             ),
@@ -481,6 +506,20 @@ def build_orchestrator_mcp_server(
             "you can include in a set_layout call.",
             {},
         )(_list_widgets_handler(widget_registry)))
+    if widget_registry is not None and current_layout is not None:
+        sdk_tools.append(tool(
+            "get_layout",
+            "Returns the currently applied LayoutSpec as JSON. Each panel's "
+            "`title` field is populated to its effective on-screen value, so "
+            "you can match a user reference like 'the Activity Panel' against "
+            "`title` to find the panel `id` you want to edit. Pass the "
+            "modified spec back through `set_layout`. Note: the returned "
+            "`title` is the resolved value (defaults if no override was set). "
+            "If you only want to change a panel's size or props, set its "
+            "`title` field back to null in the spec you pass to `set_layout` "
+            "to avoid freezing the resolved title as an explicit override.",
+            {},
+        )(_get_layout_handler(current_layout, widget_registry)))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",

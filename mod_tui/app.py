@@ -21,7 +21,6 @@ from mod_tui.persistence.layout_store import save_layout as save_local_layout
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.paths import global_config_dir
 from mod_tui.persistence.agents_index import AgentsIndex
-from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.agent_transcript import AgentTranscript
 from mod_tui.widgets.chrome import CommandBar, StatusBar
@@ -146,10 +145,6 @@ class ModTuiApp(App):
         self.registry = registry or build_default_registry()
         self._current_spec: LayoutSpec | None = None
         self._current_layout_name: str | None = None
-        self.transcript = OrchestratorTranscript(cwd=self.cwd)
-        self.orchestrator_history: list[tuple[str, str]] = [
-            (e.role, e.text) for e in self.transcript.read_all()
-        ]
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
@@ -170,6 +165,7 @@ class ModTuiApp(App):
             actions=self.actions_registry,
             rebind_keys=self._rebind_keys,
             widget_registry=self.registry,
+            current_layout=lambda: self._current_spec,
         )
 
     # --- action registration -----------------------------------------------

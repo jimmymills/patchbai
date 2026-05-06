@@ -114,3 +114,26 @@ def test_custom_widgets_non_empty_parses():
     assert len(spec.custom_widgets) == 1
     assert spec.custom_widgets[0].name == "MyKanban"
     assert spec.custom_widgets[0].source == "class MyKanban: ..."
+
+
+def test_panel_accepts_optional_title():
+    panel = Panel.model_validate({"id": "feed", "widget": "ActivityFeed", "title": "Activity"})
+    assert panel.title == "Activity"
+
+
+def test_panel_title_defaults_to_none():
+    panel = Panel.model_validate({"id": "feed", "widget": "ActivityFeed"})
+    assert panel.title is None
+
+
+def test_panel_title_round_trips_through_dump():
+    panel = Panel.model_validate({"id": "feed", "widget": "ActivityFeed", "title": "Activity"})
+    dumped = panel.model_dump(mode="json")
+    assert dumped["title"] == "Activity"
+    reparsed = Panel.model_validate(dumped)
+    assert reparsed == panel
+
+
+def test_panel_extra_fields_still_rejected_with_title_present():
+    with pytest.raises(Exception):
+        Panel.model_validate({"id": "feed", "widget": "ActivityFeed", "title": "Activity", "junk": 1})

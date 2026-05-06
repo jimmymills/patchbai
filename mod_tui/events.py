@@ -58,8 +58,10 @@ class AgentStateChanged:
 class AgentMessageAppended:
     """A new message landed in an agent's transcript."""
     agent_id: str
-    role: str  # "user" | "assistant" | "tool_use" | "tool_result" | "system"
+    role: str  # "user" | "assistant" | "tool_use" | "tool_result" | "thinking" | "system"
     text: str
+    tool_id: str | None = None       # set for role in {"tool_use", "tool_result"}
+    tool_name: str | None = None     # set for role == "tool_use"
 
 
 # Forward-declared for plan 3; the handler arrives later.

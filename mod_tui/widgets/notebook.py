@@ -6,6 +6,12 @@ from textual.widgets import TextArea
 class Notebook(TextArea):
     """Persistent scratch buffer at <cwd>/.mod_tui/scratch/<name>.md."""
 
+    DEFAULT_CSS = """
+    Notebook {
+        border: round $surface-lighten-2;
+    }
+    """
+
     def __init__(self, *, name: str) -> None:
         super().__init__("", language="markdown")
         self._name = name
@@ -30,3 +36,10 @@ class Notebook(TextArea):
     def on_text_area_changed(self, _event) -> None:
         # Saves on every keystroke. Cheap for a scratchpad-sized file.
         self._save()
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        name = props.get("name")
+        if name:
+            return f"Note: {name}"
+        return "Note"

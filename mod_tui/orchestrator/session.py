@@ -39,6 +39,7 @@ class OrchestratorSession:
         actions=None,
         rebind_keys=None,
         widget_registry=None,
+        current_layout=None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
@@ -51,6 +52,7 @@ class OrchestratorSession:
         self._actions = actions
         self._rebind_keys = rebind_keys
         self._widget_registry = widget_registry
+        self._current_layout = current_layout
         self._info = AgentInfo(
             id=self.AGENT_ID,
             name="orchestrator",
@@ -78,6 +80,7 @@ class OrchestratorSession:
             actions=self._actions,
             rebind_keys=self._rebind_keys,
             widget_registry=self._widget_registry,
+            current_layout=self._current_layout,
         )
         options_kwargs: dict = {
             "cwd": str(self._cwd),
@@ -138,18 +141,11 @@ class OrchestratorSession:
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self.AGENT_ID:
             return
-        # Surface assistant text + tool activity in the chat so the user has
-        # progress feedback during long-running tool sequences. Without
-        # tool_use/tool_result, the orchestrator looks frozen whenever it's
-        # mid-tool-call (e.g. set_layout, spawn_agent).
+        # RichTranscript subscribes to AgentMessageAppended directly for tool
+        # use/result/thinking — only re-publish assistant text, which is the
+        # public "the orchestrator said something" signal other code asserts on.
         if event.role == "assistant":
             self._bus.publish(OrchestratorReply(event.text))
-        elif event.role == "tool_use":
-            self._bus.publish(OrchestratorReply(f"[tool use] {event.text}"))
-        elif event.role == "tool_result":
-            # Truncate tool results to keep the chat readable.
-            text = event.text if len(event.text) <= 240 else event.text[:237] + "…"
-            self._bus.publish(OrchestratorReply(f"[tool result] {text}"))
 
     def _on_child_notified(self, event: AgentNotifiedOrchestrator) -> None:
         synthetic = (

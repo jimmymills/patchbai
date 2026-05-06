@@ -1,5 +1,12 @@
 import pytest
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import (
+    AssistantMessage,
+    ResultMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
@@ -105,3 +112,48 @@ async def test_orchestrator_session_stop_unsubscribes(tmp_path):
     bus.publish(UserMessageToOrchestrator("after stop"))
 
     assert replies == []  # nothing fired after stop
+
+
+@pytest.mark.asyncio
+async def test_tool_use_does_not_publish_orchestrator_reply(tmp_path):
+    """Tool use/result no longer go through OrchestratorReply — RichTranscript
+    reads the richer AgentMessageAppended event directly."""
+    script = [
+        AssistantMessage(
+            content=[ToolUseBlock(id="t1", name="bash", input={"cmd": "ls"})],
+            model="fake-model",
+        ),
+        UserMessage(content=[ToolResultBlock(
+            tool_use_id="t1", content="ok", is_error=False,
+        )]),
+        AssistantMessage(content=[TextBlock(text="done")], model="fake-model"),
+        ResultMessage(
+            subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
+            num_turns=1, session_id="fake", total_cost_usd=0.0,
+            usage={"input_tokens": 1, "output_tokens": 1}, result="done",
+        ),
+    ]
+
+    bus = EventBus()
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    session = OrchestratorSession(
+        cwd=tmp_path, bus=bus, manager=manager,
+        adapter=FakeSDKAdapter(scripts=[script]),
+    )
+    await session.start()
+    bus.publish(UserMessageToOrchestrator("go"))
+    await session.wait_idle()
+    await session.stop()
+
+    reply_texts = [r.text for r in replies]
+    # Assistant text still comes through — preserves existing behavior.
+    assert "done" in reply_texts
+    # Tool use/result no longer leak through the reply channel.
+    assert not any(t.startswith("[tool use]") for t in reply_texts)
+    assert not any(t.startswith("[tool result]") for t in reply_texts)

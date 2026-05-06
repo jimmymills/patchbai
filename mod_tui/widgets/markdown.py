@@ -10,6 +10,13 @@ class Markdown(VerticalScroll):
     VerticalScroll so long documents are scrollable. The internal
     `_markdown` attribute holds the source string for tests."""
 
+    DEFAULT_CSS = """
+    Markdown {
+        border: round $surface-lighten-2;
+        padding: 0 1;
+    }
+    """
+
     def __init__(
         self,
         *,
@@ -30,3 +37,10 @@ class Markdown(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         yield _TxMarkdown(self._markdown)
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        file_path = props.get("file_path")
+        if file_path:
+            return f"Markdown: {Path(file_path).name}"
+        return "Markdown"

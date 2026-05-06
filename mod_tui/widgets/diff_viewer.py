@@ -24,6 +24,8 @@ class DiffViewer(VerticalScroll):
     highlighted `diff` content.
     """
 
+    DEFAULT_BORDER_TITLE = "Diff"
+
     DEFAULT_CSS = """
     DiffViewer {
         border: round $surface-lighten-2;
