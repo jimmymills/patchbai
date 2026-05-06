@@ -14,7 +14,10 @@ class RequestInbox:
 
     def register(self) -> str:
         request_id = uuid.uuid4().hex[:12]
-        loop = asyncio.get_event_loop()
+        # get_running_loop() instead of get_event_loop(): the latter is
+        # deprecated in Python 3.12+ when called outside a running loop.
+        # All callers run inside an event loop (tool handlers are async).
+        loop = asyncio.get_running_loop()
         self._futures[request_id] = loop.create_future()
         return request_id
 

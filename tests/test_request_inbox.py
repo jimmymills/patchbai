@@ -33,7 +33,8 @@ async def test_resolve_unknown_id_is_silently_ignored():
     inbox.resolve("nonexistent", "ignored")  # must not raise
 
 
-def test_register_returns_unique_ids():
+@pytest.mark.asyncio
+async def test_register_returns_unique_ids():
     inbox = RequestInbox()
     a = inbox.register()
     b = inbox.register()
