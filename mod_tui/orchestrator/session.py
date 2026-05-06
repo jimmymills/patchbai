@@ -86,12 +86,8 @@ class OrchestratorSession:
         )
 
     async def wait_idle(self) -> None:
-        # Drain any UserMessageToOrchestrator-triggered create_tasks that may
-        # have been scheduled but not yet started. Two yields is enough to
-        # cover the worst case (sync subscribe → create_task → coroutine
-        # body's first await).
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        # queue_send eagerly clears _idle_event synchronously, so we no longer
+        # need sleep yields to drain the create_task scheduling gap.
         # Wait for every outstanding send task to complete so that all queued
         # messages have been fully processed (including the second+ messages
         # that are serialised behind the AgentSession._send_lock).
@@ -112,8 +108,11 @@ class OrchestratorSession:
     # --- internals --------------------------------------------------------
 
     def _on_user_message(self, event: UserMessageToOrchestrator) -> None:
-        # The bus is sync — schedule the async send on the running loop.
-        task = asyncio.create_task(self._inner.send(event.text))
+        # Prune any tasks that have already completed before adding a new one.
+        self._send_tasks = [t for t in self._send_tasks if not t.done()]
+        # Use the inner session's queue_send: it eagerly clears _idle_event so
+        # wait_idle correctly blocks even before the create_task starts running.
+        task = self._inner.queue_send(event.text)
         self._send_tasks.append(task)
 
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
