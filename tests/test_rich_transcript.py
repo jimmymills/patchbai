@@ -279,7 +279,6 @@ async def test_thinking_group_starts_expanded(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_state_done_collapses_current_turn(tmp_path):
-    import dataclasses
     from mod_tui.agents.state import AgentInfo, AgentState
     from mod_tui.events import AgentStateChanged
     from mod_tui.widgets.rich_transcript import (

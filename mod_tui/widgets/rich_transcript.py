@@ -257,6 +257,12 @@ class RichTranscript(Vertical):
             store = TranscriptStore(cwd=cwd, agent_id=self._agent_id)
             for entry in store.read_all():
                 self._dispatch_entry(entry)
+            # Replay never sees a state-change event, so close whatever turn
+            # we ended on. New live events that arrive afterward will open a
+            # fresh turn via the user-entry path.
+            if self._current_turn is not None:
+                self._current_turn.mark_done()
+                self._current_turn = None
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_msg = bus.subscribe(AgentMessageAppended, self._on_appended)
@@ -312,6 +318,10 @@ class RichTranscript(Vertical):
 
     def _open_turn(self, user_text: str) -> None:
         scroll = self.query_one(VerticalScroll)
+        if self._current_turn is not None:
+            # Defensive — and required for history replay where no state event
+            # closes a previous turn.
+            self._current_turn.mark_done()
         turn = _TurnContainer(user_text=user_text)
         self._current_turn = turn
         scroll.mount(turn)
