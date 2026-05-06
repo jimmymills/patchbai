@@ -1,5 +1,8 @@
+from mod_tui.app import ModTuiApp
+
+
 def main() -> int:
-    print("mod_tui scaffolding ready (no app yet)")
+    ModTuiApp().run()
     return 0
 
 
