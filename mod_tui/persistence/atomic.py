@@ -22,6 +22,5 @@ def write_json_atomic(path: Path, data: Any) -> None:
             os.fsync(f.fileno())
         os.replace(tmp_path, path)
     except Exception:
-        if tmp_path.exists():
-            tmp_path.unlink(missing_ok=True)
+        tmp_path.unlink(missing_ok=True)
         raise

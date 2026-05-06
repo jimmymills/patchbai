@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from mod_tui.persistence.atomic import write_json_atomic
 
 
@@ -28,3 +30,10 @@ def test_no_temp_file_left_after_success(tmp_path: Path):
     write_json_atomic(target, {"a": 1})
     siblings = [p.name for p in tmp_path.iterdir()]
     assert siblings == ["x.json"]
+
+
+def test_no_temp_file_left_after_failure(tmp_path: Path):
+    target = tmp_path / "x.json"
+    with pytest.raises(TypeError):
+        write_json_atomic(target, object())  # not JSON-serializable
+    assert not any(tmp_path.iterdir())
