@@ -421,6 +421,10 @@ def build_orchestrator_mcp_server(
             (
                 "set_layout",
                 "Replace the current UI layout with the given LayoutSpec dict. "
+                "Each panel may set an optional `title` field that overrides the widget's "
+                "default border title; titles are how the user refers to panels in chat "
+                "(e.g., 'make the Activity Panel 2x its size'). Call `get_layout` first "
+                "to discover effective titles before mutating. "
                 "If `spec.custom_widgets` is present, each entry's `source` "
                 "string is **exec'd in-process with full Python privileges** "
                 "to register a new Widget class before the layout is applied. "
