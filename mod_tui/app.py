@@ -24,6 +24,7 @@ from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.chrome import CommandBar, StatusBar
+from mod_tui.widgets.file_tree import FileTree
 from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
@@ -47,6 +48,11 @@ def build_default_registry() -> WidgetRegistry:
         "FileViewer", FileViewer,
         description="Read-only syntax-highlighted file display.",
         props_schema={"file_path": str},
+    )
+    reg.register(
+        "FileTree", FileTree,
+        description="Directory tree starting at `path`.",
+        props_schema={"path": str},
     )
     return reg
 
