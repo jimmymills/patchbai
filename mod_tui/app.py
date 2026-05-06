@@ -49,12 +49,20 @@ def build_default_registry() -> WidgetRegistry:
     )
     reg.register(
         "FileViewer", FileViewer,
-        description="Read-only syntax-highlighted file display.",
-        props_schema={"file_path": str},
+        description=(
+            "Read-only syntax-highlighted file display. Pass `file_path` for "
+            "an initial file. Pass `follow_selection: true` to subscribe to "
+            "FileSelected events from a FileTree panel and reload on click."
+        ),
+        props_schema={"file_path": str, "follow_selection": bool},
     )
     reg.register(
         "FileTree", FileTree,
-        description="Directory tree starting at `path`.",
+        description=(
+            "Directory tree starting at `path`. Publishes a FileSelected "
+            "event on the bus when the user selects a file — pair with a "
+            "FileViewer(follow_selection=True) to see contents."
+        ),
         props_schema={"path": str},
     )
     reg.register(

@@ -100,6 +100,13 @@ class LayoutFailed:
     error: str
 
 
+@dataclass(frozen=True)
+class FileSelected:
+    """A FileTree (or similar) widget selected a file. Other widgets like
+    FileViewer can subscribe with `follow_selection=True` to react."""
+    path: str
+
+
 # --- The bus ---------------------------------------------------------------
 
 class EventBus:
