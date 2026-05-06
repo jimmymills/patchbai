@@ -5,13 +5,73 @@ from pathlib import Path
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Static
+from textual.markup import escape as _markup_escape
+from textual.widgets import Collapsible, Static
 
 from mod_tui.events import AgentMessageAppended, EventBus
 from mod_tui.persistence.transcript_store import (
     AgentTranscript as TranscriptStore,
     TranscriptEntry,
 )
+
+
+class _ToolCall(Collapsible):
+    """One tool invocation. Expanded while running, collapsed on result."""
+
+    DEFAULT_CSS = """
+    _ToolCall {
+        margin: 0;
+    }
+    """
+
+    def __init__(self, *, tool_id: str | None, tool_name: str | None, args_text: str) -> None:
+        self.tool_id = tool_id
+        self.tool_name = tool_name or "?"
+        self._args_text = args_text
+        self._args_static = Static(self._build_args_text())
+        self._result_static = Static(Text("(running…)", style="dim"))
+        super().__init__(
+            self._args_static,
+            self._result_static,
+            title=self._build_running_title(),
+            collapsed=False,
+        )
+
+    def _build_args_text(self) -> Text:
+        line = Text()
+        line.append("args: ", style="bold")
+        line.append(self._args_text)
+        return line
+
+    def _build_running_title(self) -> str:
+        # Truncated, plain-string title — Collapsible accepts str.
+        # Escape user-provided text so brackets don't get parsed as markup.
+        short = self._args_text if len(self._args_text) <= 60 else self._args_text[:57] + "…"
+        return f"… {_markup_escape(self.tool_name)}({_markup_escape(short)})"
+
+    def _build_done_title(self, result_text: str, *, error: bool) -> str:
+        marker = "✗" if error else "✓"
+        short = result_text.replace("\n", " ")
+        if len(short) > 80:
+            short = short[:77] + "…"
+        return f"{marker} {_markup_escape(self.tool_name)} → {_markup_escape(short)}"
+
+    def attach_result(self, content_text: str, *, error: bool = False) -> None:
+        body = Text()
+        body.append("result: ", style="bold")
+        body.append(content_text, style="red" if error else "")
+        self._result_static.update(body)
+        self.title = self._build_done_title(content_text, error=error)
+        self.collapsed = True
+
+    def mark_done(self) -> None:
+        # Called when the turn ends. If no result ever attached (shouldn't
+        # normally happen), still collapse the foldable.
+        # NOTE: use .content (not .renderable) for this Textual version.
+        if self._result_static.content and "(running…)" in str(self._result_static.content):
+            self._result_static.update(Text("(no result received)", style="dim red"))
+            self.title = f"? {self.tool_name} (no result)"
+        self.collapsed = True
 
 
 class _TurnContainer(Vertical):
@@ -39,6 +99,7 @@ class _TurnContainer(Vertical):
         super().__init__()
         self.add_class("turn-running")
         self._user_text = user_text
+        self._tool_widgets: dict = {}
 
     def compose(self) -> ComposeResult:
         line = Text()
@@ -55,17 +116,32 @@ class _TurnContainer(Vertical):
     def add_tool_call(
         self, *, tool_id: str | None, tool_name: str | None, args_text: str,
     ) -> None:
-        line = Text()
-        line.append(f"tool[{tool_name or '?'}]: ", style="bold yellow")
-        line.append(args_text)
-        widget = Static(line, classes="msg-tool-use")
+        widget = _ToolCall(
+            tool_id=tool_id, tool_name=tool_name, args_text=args_text,
+        )
+        self._tool_widgets[tool_id or id(widget)] = widget
         self.mount(widget)
 
     def attach_tool_result(self, *, tool_id: str | None, content_text: str) -> None:
-        line = Text()
-        line.append("result: ", style="bold")
-        line.append(content_text)
-        self.mount(Static(line, classes="msg-tool-result"))
+        widget = self._tool_widgets.get(tool_id) if tool_id else None
+        if widget is None:
+            # Old transcript fallback or out-of-order: attach to most-recent
+            # _ToolCall whose result hasn't been set yet.
+            for w in reversed(list(self.query(_ToolCall))):
+                # NOTE: use .content (not .renderable) for this Textual version.
+                if "(running…)" in str(w._result_static.content):
+                    widget = w
+                    break
+        if widget is None:
+            # Truly orphaned — mount a free-floating result line.
+            line = Text()
+            line.append("result (orphan): ", style="bold red")
+            line.append(content_text)
+            self.mount(Static(line))
+            return
+        # Naive error detection — refined in later tasks if needed.
+        is_err = content_text.lower().startswith("error")
+        widget.attach_result(content_text, error=is_err)
 
     def add_text(self, text: str) -> None:
         line = Text()
@@ -76,10 +152,14 @@ class _TurnContainer(Vertical):
     def mark_done(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-done")
+        for tool in self.query(_ToolCall):
+            tool.mark_done()
 
     def mark_error(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-error")
+        for tool in self.query(_ToolCall):
+            tool.mark_done()
 
     def rendered_text(self) -> str:
         parts: list[str] = []

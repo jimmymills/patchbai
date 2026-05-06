@@ -115,3 +115,102 @@ async def test_assistant_text_routes_to_current_turn(tmp_path):
         assert "bash" in body
         assert "<output>" in body
         assert "done" in body
+
+
+@pytest.mark.asyncio
+async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
+    from textual.widgets import Collapsible
+
+    from mod_tui.widgets.rich_transcript import _ToolCall
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{'cmd': 'ls /tmp'}",
+            tool_id="t1", tool_name="bash",
+        ))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        tool_widgets = list(widget.query(_ToolCall))
+        assert len(tool_widgets) == 1
+        tw = tool_widgets[0]
+        # Expanded while running, title shows running marker + tool name.
+        assert tw.collapsed is False
+        assert "bash" in tw.title
+        # Body contains the args text.
+        assert any("ls /tmp" in str(s.content) for s in tw.query(Static))
+
+
+@pytest.mark.asyncio
+async def test_tool_result_pairs_by_tool_id_and_collapses(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ToolCall
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{'cmd': 'ls'}",
+            tool_id="t1", tool_name="bash",
+        ))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{'p': 'README'}",
+            tool_id="t2", tool_name="read",
+        ))
+        # Result for second tool arrives first.
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="<readme contents>",
+            tool_id="t2",
+        ))
+        # Then result for first tool.
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="bin\nlib\n",
+            tool_id="t1",
+        ))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        tools = list(widget.query(_ToolCall))
+        assert len(tools) == 2
+        # Both collapsed after their result arrived.
+        assert all(t.collapsed for t in tools)
+        # Pairing is correct: tool t1 (bash) shows the bin/lib output, tool t2
+        # (read) shows the readme text.
+        bash = next(t for t in tools if t.tool_name == "bash")
+        read = next(t for t in tools if t.tool_name == "read")
+        assert any("bin" in str(s.content) for s in bash.query(Static))
+        assert any("readme" in str(s.content) for s in read.query(Static))
+        # Title carries success marker.
+        assert "✓" in bash.title
+        assert "✓" in read.title
+
+
+@pytest.mark.asyncio
+async def test_tool_args_with_brackets_render_literally(tmp_path):
+    """[type=int_parsing] in args must NOT trip Rich markup parsing."""
+    from mod_tui.widgets.rich_transcript import _ToolCall
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use",
+            text="{'err': '[type=int_parsing, input_value=...]'}",
+            tool_id="t1", tool_name="validate",
+        ))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        tw = widget.query_one(_ToolCall)
+        body_text = "\n".join(str(s.content) for s in tw.query(Static))
+        assert "[type=int_parsing" in body_text
