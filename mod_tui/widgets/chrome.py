@@ -10,11 +10,11 @@ class CommandBar(Horizontal):
 
     DEFAULT_CSS = """
     CommandBar {
-        height: 1;
-        background: $surface-darken-1;
+        height: 3;
     }
-    CommandBar Static {
+    CommandBar Static#cmd-prompt {
         width: 7;
+        content-align: left middle;
         color: $text-muted;
     }
     """
@@ -24,19 +24,12 @@ class CommandBar(Horizontal):
         self._bus = event_bus
 
     def compose(self) -> ComposeResult:
-        yield Static("mt :> ")
-        # `-textual-compact` is Textual's built-in single-line Input modifier:
-        # height 1, no border, no padding.
-        # `select_on_focus=False` is critical: Textual's default behavior is
-        # to select-all on focus, and the selection foreground in many themes
-        # collides with the local background — typed text appears invisible
-        # until you blur the input.
-        yield Input(
-            placeholder="message orchestrator",
-            id="cmd-input",
-            classes="-textual-compact",
-            select_on_focus=False,
-        )
+        yield Static("mt :> ", id="cmd-prompt")
+        # Plain Textual Input with no styling overrides — default 3-row
+        # height, default colors, default focus behavior. Earlier attempts
+        # to compress this to 1-row (custom CSS, -textual-compact) clashed
+        # with Textual's color/cursor internals and produced invisible text.
+        yield Input(placeholder="message orchestrator", id="cmd-input")
 
     def focus_input(self) -> None:
         self.query_one("#cmd-input", Input).focus()
