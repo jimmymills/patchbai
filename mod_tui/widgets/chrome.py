@@ -13,17 +13,6 @@ class CommandBar(Horizontal):
         height: 1;
         background: $surface-darken-1;
     }
-    CommandBar Input {
-        border: none;
-        padding: 0;
-        height: 1;
-        background: $surface-darken-1;
-        color: $text-muted;
-    }
-    CommandBar Input:focus {
-        background: $boost;
-        color: $text;
-    }
     CommandBar Static {
         width: 7;
         color: $text-muted;
@@ -36,7 +25,14 @@ class CommandBar(Horizontal):
 
     def compose(self) -> ComposeResult:
         yield Static("mt :> ")
-        yield Input(placeholder="message orchestrator", id="cmd-input")
+        # `-textual-compact` is Textual's built-in single-line Input modifier:
+        # height 1, no border, no padding — and crucially keeps the default
+        # color/background pair so typed text remains visible when focused.
+        yield Input(
+            placeholder="message orchestrator",
+            id="cmd-input",
+            classes="-textual-compact",
+        )
 
     def focus_input(self) -> None:
         self.query_one("#cmd-input", Input).focus()
