@@ -431,7 +431,7 @@ def build_orchestrator_mcp_server(
                 "Only ship `custom_widgets` source you have personally "
                 "authored — anything you exec here can read files, hit the "
                 "network, and execute arbitrary code with the user's "
-                "permissions. The build-in widgets (list_widgets) are safer.",
+                "permissions. The built-in widgets (list_widgets) are safer.",
                 {"spec": dict},
                 _set_layout_handler(apply_layout, widget_registry),
             ),
@@ -513,7 +513,11 @@ def build_orchestrator_mcp_server(
             "`title` field is populated to its effective on-screen value, so "
             "you can match a user reference like 'the Activity Panel' against "
             "`title` to find the panel `id` you want to edit. Pass the "
-            "modified spec back through `set_layout`.",
+            "modified spec back through `set_layout`. Note: the returned "
+            "`title` is the resolved value (defaults if no override was set). "
+            "If you only want to change a panel's size or props, set its "
+            "`title` field back to null in the spec you pass to `set_layout` "
+            "to avoid freezing the resolved title as an explicit override.",
             {},
         )(_get_layout_handler(current_layout, widget_registry)))
     return create_sdk_mcp_server(
