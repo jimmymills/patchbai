@@ -248,6 +248,11 @@ class RichTranscript(Vertical):
         self._unsub_state = lambda: None
         self._current_turn: _TurnContainer | None = None
 
+    @property
+    def agent_id(self) -> str:
+        """Public read-only accessor for the agent_id this transcript watches."""
+        return self._agent_id
+
     def compose(self) -> ComposeResult:
         yield VerticalScroll()
 

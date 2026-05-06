@@ -122,4 +122,4 @@ async def test_orchestrator_chat_uses_rich_transcript(tmp_path):
         await pilot.pause()
         chat = app.query_one(OrchestratorChat)
         rt = chat.query_one(RichTranscript)
-        assert rt._agent_id == "orchestrator"
+        assert rt.agent_id == "orchestrator"
