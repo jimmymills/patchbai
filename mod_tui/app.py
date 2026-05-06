@@ -24,6 +24,7 @@ from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.chrome import CommandBar, StatusBar
+from mod_tui.widgets.diff_viewer import DiffViewer
 from mod_tui.widgets.file_tree import FileTree
 from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
@@ -53,6 +54,14 @@ def build_default_registry() -> WidgetRegistry:
         "FileTree", FileTree,
         description="Directory tree starting at `path`.",
         props_schema={"path": str},
+    )
+    reg.register(
+        "DiffViewer", DiffViewer,
+        description=(
+            "Unified-diff viewer. Pass a precomputed `diff` string, OR pass "
+            "`before` + `after` strings for unified-diff computation."
+        ),
+        props_schema={"diff": str, "before": str, "after": str},
     )
     return reg
 
