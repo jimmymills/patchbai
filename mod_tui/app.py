@@ -201,18 +201,32 @@ class ModTuiApp(App):
             title="keybindings",
         )
 
-    async def action_open_history(self) -> None:
+    def action_open_history(self) -> None:
+        # push_screen with a callback avoids the worker requirement that
+        # push_screen_wait imposes. The callback fires when the modal dismisses.
         idx = AgentsIndex(cwd=self.cwd)
-        agent_id = await self.push_screen_wait(HistoryScreen(index=idx))
-        if agent_id:
-            await self.push_screen(TranscriptScreen(agent_id=agent_id, event_bus=self.event_bus))
 
-    async def action_open_layout_switcher(self) -> None:
-        name = await self.push_screen_wait(LayoutSwitcherScreen(store=self.layouts_store))
-        if name:
+        def _on_picked(agent_id: str | None) -> None:
+            if agent_id:
+                self.push_screen(
+                    TranscriptScreen(agent_id=agent_id, event_bus=self.event_bus)
+                )
+
+        self.push_screen(HistoryScreen(index=idx), _on_picked)
+
+    def action_open_layout_switcher(self) -> None:
+        import asyncio as _asyncio
+
+        def _on_picked(name: str | None) -> None:
+            if not name:
+                return
             spec = self.layouts_store.load(name)
-            if spec is not None:
-                await self._orchestrator_apply_layout(spec, layout_name=name)
+            if spec is None:
+                return
+            # Apply is async; schedule it on the running loop.
+            _asyncio.create_task(self._orchestrator_apply_layout(spec, layout_name=name))
+
+        self.push_screen(LayoutSwitcherScreen(store=self.layouts_store), _on_picked)
 
     # --- composition & lifecycle -------------------------------------------
 
