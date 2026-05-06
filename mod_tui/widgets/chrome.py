@@ -16,7 +16,13 @@ class CommandBar(Horizontal):
     CommandBar Input {
         border: none;
         padding: 0;
+        height: 1;
         background: $surface-darken-1;
+        color: $text-muted;
+    }
+    CommandBar Input:focus {
+        background: $boost;
+        color: $text;
     }
     CommandBar Static {
         width: 7;
