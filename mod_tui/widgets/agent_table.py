@@ -16,6 +16,8 @@ from mod_tui.events import (
 class AgentTable(Container):
     """Sortable table of agents — name, status, elapsed, last action, cost."""
 
+    DEFAULT_BORDER_TITLE = "Agents"
+
     DEFAULT_CSS = """
     AgentTable {
         border: round $surface-lighten-2;

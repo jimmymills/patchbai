@@ -5,6 +5,8 @@ from textual.widgets import Static
 class ActivityFeed(Container):
     """Placeholder. Becomes a real event stream in plan 3."""
 
+    DEFAULT_BORDER_TITLE = "Activity"
+
     DEFAULT_CSS = """
     ActivityFeed {
         border: round $surface-lighten-2;

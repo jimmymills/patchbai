@@ -10,6 +10,7 @@ class OrchestratorChat(Vertical):
     """Manager-Claude chat panel: RichTranscript + input box."""
 
     AGENT_ID = "orchestrator"
+    DEFAULT_BORDER_TITLE = "Orchestrator"
 
     DEFAULT_CSS = """
     OrchestratorChat {
