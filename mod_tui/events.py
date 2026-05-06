@@ -4,6 +4,8 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, TypeVar
 
+from mod_tui.agents.state import AgentInfo, AgentState
+
 log = logging.getLogger(__name__)
 
 E = TypeVar("E")
@@ -32,6 +34,38 @@ class StatsUpdated:
     tokens_out: int = 0
     cost: float = 0.0
     active_agents: int = 0
+
+
+# --- Agent event types -----------------------------------------------------
+
+@dataclass(frozen=True)
+class AgentSpawned:
+    """A new child agent has been created and registered with AgentManager."""
+    info: AgentInfo
+
+
+@dataclass(frozen=True)
+class AgentStateChanged:
+    """An agent transitioned between states (e.g., RUNNING → DONE)."""
+    info: AgentInfo
+    old_state: AgentState
+
+
+@dataclass(frozen=True)
+class AgentMessageAppended:
+    """A new message landed in an agent's transcript."""
+    agent_id: str
+    role: str  # "user" | "assistant" | "tool_use" | "tool_result" | "system"
+    text: str
+
+
+# Forward-declared for plan 3; the handler arrives later.
+@dataclass(frozen=True)
+class AgentRequestedUserInput:
+    """A child agent called ask_orchestrator and is blocked waiting on a reply."""
+    agent_id: str
+    question: str
+    request_id: str
 
 
 # --- The bus ---------------------------------------------------------------
