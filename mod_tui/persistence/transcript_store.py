@@ -1,6 +1,6 @@
 import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
 from mod_tui.persistence.paths import (
@@ -13,8 +13,10 @@ log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class TranscriptEntry:
-    role: str  # "user" | "assistant" | "tool_use" | "tool_result" | "system" | "orch"
+    role: str  # "user" | "assistant" | "tool_use" | "tool_result" | "thinking" | "system" | "orch"
     text: str
+    tool_id: str | None = None
+    tool_name: str | None = None
 
 
 class AgentTranscript:
@@ -39,11 +41,14 @@ class AgentTranscript:
         if not self._path.exists():
             return []
         out: list[TranscriptEntry] = []
+        valid_keys = {f.name for f in fields(TranscriptEntry)}
         for line in self._path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             try:
-                out.append(TranscriptEntry(**json.loads(line)))
+                raw = json.loads(line)
+                kwargs = {k: v for k, v in raw.items() if k in valid_keys}
+                out.append(TranscriptEntry(**kwargs))
             except Exception:
                 log.warning("Skipping corrupted transcript line: %r", line)
         return out
