@@ -212,3 +212,66 @@ async def test_tool_args_with_brackets_render_literally(tmp_path):
         tw = widget.query_one(_ToolCall)
         body_text = "\n".join(str(s.content) for s in tw.query(Static))
         assert "[type=int_parsing" in body_text
+
+
+@pytest.mark.asyncio
+async def test_consecutive_thinking_blocks_merge_into_one_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="step 1"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="step 2"))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        groups = list(widget.query(_ThinkingGroup))
+        assert len(groups) == 1
+        body = "\n".join(str(s.content) for s in groups[0].query(Static))
+        assert "step 1" in body
+        assert "step 2" in body
+
+
+@pytest.mark.asyncio
+async def test_thinking_after_tool_opens_new_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="first"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="second"))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        groups = list(widget.query(_ThinkingGroup))
+        assert len(groups) == 2
+
+
+@pytest.mark.asyncio
+async def test_thinking_group_starts_expanded(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="..."))
+        await pilot.pause()
+
+        group = app.query_one(_ThinkingGroup)
+        assert group.collapsed is False
+        assert "Thinking" in group.title

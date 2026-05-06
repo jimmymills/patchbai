@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from rich.text import Text
@@ -74,6 +75,42 @@ class _ToolCall(Collapsible):
         self.collapsed = True
 
 
+class _ThinkingGroup(Collapsible):
+    """A contiguous run of thinking blocks. Expanded while running."""
+
+    DEFAULT_CSS = """
+    _ThinkingGroup {
+        margin: 0;
+    }
+    """
+
+    def __init__(self) -> None:
+        self._body_static = Static(Text(""))
+        self._started = time.monotonic()
+        self._done = False
+        super().__init__(
+            self._body_static,
+            title="Thinking…",
+            collapsed=False,
+        )
+
+    def append(self, text: str) -> None:
+        existing = self._body_static.content
+        body = existing if isinstance(existing, Text) else Text(str(existing))
+        if len(body) > 0:
+            body.append("\n")
+        body.append(text, style="dim")
+        self._body_static.update(body)
+
+    def mark_done(self) -> None:
+        if self._done:
+            return
+        self._done = True
+        elapsed = time.monotonic() - self._started
+        self.title = f"Thought for {elapsed:.1f}s"
+        self.collapsed = True
+
+
 class _TurnContainer(Vertical):
     """One conversation turn: user prompt + steps + final response."""
 
@@ -100,6 +137,7 @@ class _TurnContainer(Vertical):
         self.add_class("turn-running")
         self._user_text = user_text
         self._tool_widgets: dict = {}
+        self._current_thinking: _ThinkingGroup | None = None
 
     def compose(self) -> ComposeResult:
         line = Text()
@@ -107,15 +145,20 @@ class _TurnContainer(Vertical):
         line.append(self._user_text)
         yield Static(line, classes="msg-user")
 
+    def _close_thinking_group(self) -> None:
+        self._current_thinking = None
+
     def add_thinking(self, text: str) -> None:
-        line = Text()
-        line.append("thinking: ", style="bold dim")
-        line.append(text, style="dim")
-        self.mount(Static(line, classes="msg-thinking"))
+        if self._current_thinking is None:
+            group = _ThinkingGroup()
+            self._current_thinking = group
+            self.mount(group)
+        self._current_thinking.append(text)
 
     def add_tool_call(
         self, *, tool_id: str | None, tool_name: str | None, args_text: str,
     ) -> None:
+        self._close_thinking_group()
         widget = _ToolCall(
             tool_id=tool_id, tool_name=tool_name, args_text=args_text,
         )
@@ -123,6 +166,7 @@ class _TurnContainer(Vertical):
         self.mount(widget)
 
     def attach_tool_result(self, *, tool_id: str | None, content_text: str) -> None:
+        self._close_thinking_group()
         widget = self._tool_widgets.get(tool_id) if tool_id else None
         if widget is None:
             # Old transcript fallback or out-of-order: attach to most-recent
@@ -144,6 +188,7 @@ class _TurnContainer(Vertical):
         widget.attach_result(content_text, error=is_err)
 
     def add_text(self, text: str) -> None:
+        self._close_thinking_group()
         line = Text()
         line.append("claude: ", style="bold")
         line.append(text)
@@ -154,12 +199,16 @@ class _TurnContainer(Vertical):
         self.add_class("turn-done")
         for tool in self.query(_ToolCall):
             tool.mark_done()
+        for group in self.query(_ThinkingGroup):
+            group.mark_done()
 
     def mark_error(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-error")
         for tool in self.query(_ToolCall):
             tool.mark_done()
+        for group in self.query(_ThinkingGroup):
+            group.mark_done()
 
     def rendered_text(self) -> str:
         parts: list[str] = []
