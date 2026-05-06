@@ -20,6 +20,7 @@ class LogTail(VerticalScroll):
         self._path = Path(file_path)
         self._tail_lines = tail_lines
         self._fp = None
+        self._inode = None
         self.text = ""
         self._timer = None
 
@@ -31,7 +32,6 @@ class LogTail(VerticalScroll):
             self.text = f"File not found: {self._path}"
             self._update_static()
             return
-        # Read last N lines of existing content.
         try:
             lines = self._path.read_text(encoding="utf-8", errors="replace").splitlines()
             self.text = "\n".join(lines[-self._tail_lines:])
@@ -40,13 +40,17 @@ class LogTail(VerticalScroll):
             self._update_static()
             return
         self._update_static()
-        # Open for incremental reads from the end.
+        self._open_at_end()
+        self._timer = self.set_interval(0.25, self._tick)
+
+    def _open_at_end(self) -> None:
         try:
             self._fp = self._path.open("r", encoding="utf-8", errors="replace")
-            self._fp.seek(0, 2)  # end
+            self._fp.seek(0, 2)
+            self._inode = self._path.stat().st_ino
         except Exception:
             self._fp = None
-        self._timer = self.set_interval(0.25, self._tick)
+            self._inode = None
 
     def on_unmount(self) -> None:
         if self._timer is not None:
@@ -60,6 +64,29 @@ class LogTail(VerticalScroll):
             self._fp = None
 
     def _tick(self) -> None:
+        # Detect rotation: if the file's inode changed (or it disappeared
+        # and a new one took its place), close the old fp and reopen.
+        try:
+            current_inode = self._path.stat().st_ino if self._path.exists() else None
+        except Exception:
+            current_inode = None
+        if current_inode != getattr(self, "_inode", None):
+            if self._fp is not None:
+                try:
+                    self._fp.close()
+                except Exception:
+                    pass
+                self._fp = None
+            if current_inode is not None:
+                self._open_at_end()
+                # After rotation, read from the start of the new file so
+                # the user doesn't miss the first lines.
+                if self._fp is not None:
+                    try:
+                        self._fp.seek(0, 0)
+                    except Exception:
+                        pass
+
         if self._fp is None:
             return
         new = self._fp.read()
