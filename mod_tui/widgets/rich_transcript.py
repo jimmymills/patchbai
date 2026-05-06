@@ -9,7 +9,8 @@ from textual.containers import Vertical, VerticalScroll
 from textual.markup import escape as _markup_escape
 from textual.widgets import Collapsible, Static
 
-from mod_tui.events import AgentMessageAppended, EventBus
+from mod_tui.agents.state import AgentState
+from mod_tui.events import AgentMessageAppended, AgentStateChanged, EventBus
 from mod_tui.persistence.transcript_store import (
     AgentTranscript as TranscriptStore,
     TranscriptEntry,
@@ -244,6 +245,7 @@ class RichTranscript(Vertical):
         self._agent_id = agent_id
         self._bus = event_bus
         self._unsub_msg = lambda: None
+        self._unsub_state = lambda: None
         self._current_turn: _TurnContainer | None = None
 
     def compose(self) -> ComposeResult:
@@ -258,9 +260,11 @@ class RichTranscript(Vertical):
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_msg = bus.subscribe(AgentMessageAppended, self._on_appended)
+            self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
 
     def on_unmount(self) -> None:
         self._unsub_msg()
+        self._unsub_state()
 
     def _on_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self._agent_id:
@@ -269,6 +273,18 @@ class RichTranscript(Vertical):
             role=event.role, text=event.text,
             tool_id=event.tool_id, tool_name=event.tool_name,
         ))
+
+    def _on_state_changed(self, event: AgentStateChanged) -> None:
+        if event.info.id != self._agent_id:
+            return
+        if self._current_turn is None:
+            return
+        if event.info.state == AgentState.DONE:
+            self._current_turn.mark_done()
+            self._current_turn = None
+        elif event.info.state == AgentState.ERROR:
+            self._current_turn.mark_error()
+            self._current_turn = None
 
     def _dispatch_entry(self, entry: TranscriptEntry) -> None:
         if entry.role == "user":

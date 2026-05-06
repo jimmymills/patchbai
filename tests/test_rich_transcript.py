@@ -275,3 +275,83 @@ async def test_thinking_group_starts_expanded(tmp_path):
         group = app.query_one(_ThinkingGroup)
         assert group.collapsed is False
         assert "Thinking" in group.title
+
+
+@pytest.mark.asyncio
+async def test_agent_state_done_collapses_current_turn(tmp_path):
+    import dataclasses
+    from mod_tui.agents.state import AgentInfo, AgentState
+    from mod_tui.events import AgentStateChanged
+    from mod_tui.widgets.rich_transcript import (
+        _ThinkingGroup, _TurnContainer,
+    )
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="..."))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="ok"))
+        await pilot.pause()
+
+        info = AgentInfo(id="a1", name="a1", cwd=str(tmp_path),
+                         started_at=0, state=AgentState.DONE)
+        bus.publish(AgentStateChanged(info=info, old_state=AgentState.RUNNING))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        turn = widget.query_one(_TurnContainer)
+        assert turn.has_class("turn-done")
+        assert not turn.has_class("turn-running")
+        group = widget.query_one(_ThinkingGroup)
+        assert group.collapsed is True
+        assert "Thought for" in group.title
+
+
+@pytest.mark.asyncio
+async def test_agent_state_error_marks_turn_error(tmp_path):
+    from mod_tui.agents.state import AgentInfo, AgentState
+    from mod_tui.events import AgentStateChanged
+    from mod_tui.widgets.rich_transcript import _TurnContainer
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        await pilot.pause()
+
+        info = AgentInfo(id="a1", name="a1", cwd=str(tmp_path),
+                         started_at=0, state=AgentState.ERROR)
+        bus.publish(AgentStateChanged(info=info, old_state=AgentState.RUNNING))
+        await pilot.pause()
+
+        turn = app.query_one(_TurnContainer)
+        assert turn.has_class("turn-error")
+
+
+@pytest.mark.asyncio
+async def test_state_change_for_other_agent_is_ignored(tmp_path):
+    from mod_tui.agents.state import AgentInfo, AgentState
+    from mod_tui.events import AgentStateChanged
+    from mod_tui.widgets.rich_transcript import _TurnContainer
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        await pilot.pause()
+
+        info = AgentInfo(id="other", name="other", cwd=str(tmp_path),
+                         started_at=0, state=AgentState.DONE)
+        bus.publish(AgentStateChanged(info=info, old_state=AgentState.RUNNING))
+        await pilot.pause()
+
+        turn = app.query_one(_TurnContainer)
+        assert turn.has_class("turn-running")
+        assert not turn.has_class("turn-done")
