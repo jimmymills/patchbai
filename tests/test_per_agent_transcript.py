@@ -53,6 +53,8 @@ def test_transcript_entry_round_trips_tool_fields(tmp_path):
                              tool_id="toolu_1"))
 
     entries = t.read_all()
+    assert entries[0].role == "tool_use"
+    assert entries[0].text == "ls /tmp"
     assert entries[0].tool_id == "toolu_1"
     assert entries[0].tool_name == "bash"
     assert entries[1].tool_id == "toolu_1"
