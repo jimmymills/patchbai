@@ -119,8 +119,6 @@ async def test_assistant_text_routes_to_current_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
-    from textual.widgets import Collapsible
-
     from mod_tui.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()

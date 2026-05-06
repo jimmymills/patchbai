@@ -70,7 +70,7 @@ class _ToolCall(Collapsible):
         # NOTE: use .content (not .renderable) for this Textual version.
         if self._result_static.content and "(running…)" in str(self._result_static.content):
             self._result_static.update(Text("(no result received)", style="dim red"))
-            self.title = f"? {self.tool_name} (no result)"
+            self.title = f"? {_markup_escape(self.tool_name)} (no result)"
         self.collapsed = True
 
 
