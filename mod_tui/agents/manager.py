@@ -5,6 +5,7 @@ from typing import Callable
 
 from claude_agent_sdk import ClaudeAgentOptions
 
+from mod_tui.agents.child_tools import build_child_mcp_server
 from mod_tui.agents.request_inbox import RequestInbox
 from mod_tui.agents.sdk_adapter import SDKAdapter
 from mod_tui.agents.session import AgentSession
@@ -74,9 +75,13 @@ class AgentManager:
         # allowed_tools / disallowed_tools args on the spawn_agent MCP tool.
         # A proper can_use_tool callback that pops a Textual approval modal
         # is plan-3 work.
+        child_mcp = build_child_mcp_server(
+            agent_id=agent_id, bus=self._bus, inbox=self._inboxes[agent_id]
+        )
         options_kwargs: dict = {
             "cwd": info.cwd,
             "permission_mode": "bypassPermissions",
+            "mcp_servers": {"mod_tui_child": child_mcp},
         }
         if allowed_tools is not None:
             options_kwargs["allowed_tools"] = allowed_tools
