@@ -1,0 +1,107 @@
+import pytest
+from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
+from mod_tui.agents.manager import AgentManager
+from mod_tui.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
+from mod_tui.orchestrator.session import OrchestratorSession
+from mod_tui.persistence.transcript_store import OrchestratorTranscript
+
+
+def _ok_script() -> list:
+    return [
+        AssistantMessage(content=[TextBlock(text="hello, world")], model="fake-model"),
+        ResultMessage(
+            subtype="success",
+            duration_ms=1,
+            duration_api_ms=1,
+            is_error=False,
+            num_turns=1,
+            session_id="fake",
+            total_cost_usd=0.0,
+            usage={"input_tokens": 1, "output_tokens": 1},
+            result="hello, world",
+        ),
+    ]
+
+
+def _make_manager(tmp_path) -> AgentManager:
+    return AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_session_publishes_reply_for_user_message(tmp_path):
+    bus = EventBus()
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    session = OrchestratorSession(
+        cwd=tmp_path,
+        bus=bus,
+        manager=manager,
+        adapter=FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    await session.start()
+
+    bus.publish(UserMessageToOrchestrator("ping"))
+    await session.wait_idle()
+
+    assert any(r.text == "hello, world" for r in replies)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_session_records_transcript(tmp_path):
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    session = OrchestratorSession(
+        cwd=tmp_path,
+        bus=bus,
+        manager=manager,
+        adapter=FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    await session.start()
+
+    bus.publish(UserMessageToOrchestrator("ping"))
+    await session.wait_idle()
+
+    entries = OrchestratorTranscript(cwd=tmp_path).read_all()
+    assert any(e.role == "user" and e.text == "ping" for e in entries)
+    assert any(e.role == "assistant" and e.text == "hello, world" for e in entries)
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_session_stop_unsubscribes(tmp_path):
+    bus = EventBus()
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    session = OrchestratorSession(
+        cwd=tmp_path,
+        bus=bus,
+        manager=manager,
+        adapter=FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    await session.start()
+    await session.stop()
+
+    bus.publish(UserMessageToOrchestrator("after stop"))
+
+    assert replies == []  # nothing fired after stop

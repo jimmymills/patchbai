@@ -4,15 +4,39 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
 
-from mod_tui.events import EventBus
+from mod_tui.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
 from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
 from mod_tui.persistence.layout_store import load_layout, save_layout
+from mod_tui.persistence.transcript_store import OrchestratorTranscript, TranscriptEntry
 from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed, AgentTable
+
+
+class _FakeOrchestratorSession:
+    """Temporary echo stand-in until app.py is wired to OrchestratorSession (Task 15)."""
+
+    def __init__(self, *, bus: EventBus, transcript: OrchestratorTranscript | None) -> None:
+        self._bus = bus
+        self._transcript = transcript
+        self._unsub = lambda: None
+
+    def start(self) -> None:
+        self._unsub = self._bus.subscribe(UserMessageToOrchestrator, self._handle)
+
+    def stop(self) -> None:
+        self._unsub()
+
+    def _handle(self, event: UserMessageToOrchestrator) -> None:
+        if self._transcript is not None:
+            self._transcript.append(TranscriptEntry(role="user", text=event.text))
+        reply = f"I heard: {event.text}"
+        self._bus.publish(OrchestratorReply(reply))
+        if self._transcript is not None:
+            self._transcript.append(TranscriptEntry(role="orch", text=reply))
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -49,10 +73,8 @@ class ModTuiApp(App):
         self.registry = registry or build_default_registry()
         self._current_spec: LayoutSpec | None = None
 
-        from mod_tui.orchestrator.fake_session import FakeOrchestratorSession
-        from mod_tui.persistence.transcript_store import OrchestratorTranscript
         self.transcript = OrchestratorTranscript(cwd=self.cwd)
-        self.session = FakeOrchestratorSession(
+        self.session = _FakeOrchestratorSession(
             bus=self.event_bus, transcript=self.transcript
         )
         # Make prior history available to the OrchestratorChat widget at mount.
