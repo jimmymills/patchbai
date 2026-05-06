@@ -43,18 +43,24 @@ class AgentSession:
         self._stream_task: asyncio.Task | None = None
         self._idle_event = asyncio.Event()
         self._idle_event.set()
+        self._send_lock = asyncio.Lock()
 
     async def start(self, *, options: ClaudeAgentOptions) -> None:
         await self._adapter.start(options=options)
 
     async def send(self, prompt: str) -> None:
-        # Record user message immediately.
-        self._record(role="user", text=prompt)
-        await self._adapter.query(prompt)
-        # Spawn a background task to consume the response stream.
-        self._set_state(AgentState.RUNNING)
-        self._idle_event.clear()
-        self._stream_task = asyncio.create_task(self._consume_stream())
+        async with self._send_lock:
+            # If the previous stream is still draining, wait for it before
+            # issuing the next query — the SDK doesn't support overlapping
+            # query() calls on a single session.
+            if self._stream_task is not None and not self._stream_task.done():
+                await self._stream_task
+
+            self._record(role="user", text=prompt)
+            await self._adapter.query(prompt)
+            self._set_state(AgentState.RUNNING)
+            self._idle_event.clear()
+            self._stream_task = asyncio.create_task(self._consume_stream())
 
     async def wait_idle(self) -> None:
         await self._idle_event.wait()
