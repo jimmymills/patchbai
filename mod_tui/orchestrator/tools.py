@@ -400,8 +400,13 @@ def build_orchestrator_mcp_server(
             (
                 "set_layout",
                 "Replace the current UI layout with the given LayoutSpec dict. "
-                "If `spec.custom_widgets` is present, each entry is exec'd to "
-                "register a new Widget class before the layout is applied.",
+                "If `spec.custom_widgets` is present, each entry's `source` "
+                "string is **exec'd in-process with full Python privileges** "
+                "to register a new Widget class before the layout is applied. "
+                "Only ship `custom_widgets` source you have personally "
+                "authored — anything you exec here can read files, hit the "
+                "network, and execute arbitrary code with the user's "
+                "permissions. The build-in widgets (list_widgets) are safer.",
                 {"spec": dict},
                 _set_layout_handler(apply_layout, widget_registry),
             ),

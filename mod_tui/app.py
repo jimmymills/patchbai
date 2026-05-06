@@ -23,6 +23,7 @@ from mod_tui.persistence.paths import global_config_dir
 from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
+from mod_tui.widgets.agent_transcript import AgentTranscript
 from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.diff_viewer import DiffViewer
 from mod_tui.widgets.file_tree import FileTree
@@ -42,6 +43,16 @@ def build_default_registry() -> WidgetRegistry:
     reg = WidgetRegistry()
     reg.register("OrchestratorChat", OrchestratorChat)
     reg.register("AgentTable", AgentTable)
+    reg.register(
+        "AgentTranscript", AgentTranscript,
+        description=(
+            "Live, scrolling transcript for one agent with a bottom input "
+            "that sends DirectMessageToAgent for that `agent_id`. Mount "
+            "this in a panel when the user wants to converse with a "
+            "specific child agent without going through the orchestrator."
+        ),
+        props_schema={"agent_id": str},
+    )
     reg.register("ActivityFeed", ActivityFeed)
     reg.register(
         "Markdown", Markdown,
