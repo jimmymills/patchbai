@@ -57,3 +57,18 @@ async def test_agent_transcript_ignores_other_agents(tmp_path):
         await pilot.pause()
         widget = app.query_one(AgentTranscript)
         assert "leak" not in widget.rendered_text()
+
+
+@pytest.mark.asyncio
+async def test_agent_transcript_uses_rich_transcript(tmp_path):
+    from mod_tui.widgets.agent_transcript import AgentTranscript as Widget
+    from mod_tui.widgets.rich_transcript import RichTranscript
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        widget = app.query_one(Widget)
+        rt = widget.query_one(RichTranscript)
+        assert rt.agent_id == "a1"
