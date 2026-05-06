@@ -10,6 +10,8 @@ from mod_tui.agents.session import AgentSession
 from mod_tui.agents.state import AgentInfo, AgentState
 from mod_tui.events import (
     AgentMessageAppended,
+    AgentNotifiedOrchestrator,
+    AgentRequestedUserInput,
     EventBus,
     OrchestratorReply,
     UserMessageToOrchestrator,
@@ -51,6 +53,8 @@ class OrchestratorSession:
         )
         self._unsub_user: callable = lambda: None
         self._unsub_msg: callable = lambda: None
+        self._unsub_notify: callable = lambda: None
+        self._unsub_ask: callable = lambda: None
         self._send_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
@@ -74,6 +78,12 @@ class OrchestratorSession:
         self._unsub_msg = self._bus.subscribe(
             AgentMessageAppended, self._on_message_appended
         )
+        self._unsub_notify = self._bus.subscribe(
+            AgentNotifiedOrchestrator, self._on_child_notified
+        )
+        self._unsub_ask = self._bus.subscribe(
+            AgentRequestedUserInput, self._on_child_asked
+        )
 
     async def wait_idle(self) -> None:
         # Drain any UserMessageToOrchestrator-triggered create_tasks that may
@@ -95,6 +105,8 @@ class OrchestratorSession:
     async def stop(self) -> None:
         self._unsub_user()
         self._unsub_msg()
+        self._unsub_notify()
+        self._unsub_ask()
         await self._inner.stop()
 
     # --- internals --------------------------------------------------------
@@ -110,3 +122,18 @@ class OrchestratorSession:
         if event.role != "assistant":
             return
         self._bus.publish(OrchestratorReply(event.text))
+
+    def _on_child_notified(self, event: AgentNotifiedOrchestrator) -> None:
+        synthetic = (
+            f"[from agent {event.agent_id}] {event.message}"
+        )
+        self._bus.publish(UserMessageToOrchestrator(synthetic))
+
+    def _on_child_asked(self, event: AgentRequestedUserInput) -> None:
+        synthetic = (
+            f"[agent {event.agent_id} is blocked waiting for your reply, "
+            f"request_id={event.request_id}] question: {event.question}\n"
+            f"Use respond_to_agent_request(agent_id={event.agent_id!r}, "
+            f"request_id={event.request_id!r}, response=...) to unblock."
+        )
+        self._bus.publish(UserMessageToOrchestrator(synthetic))
