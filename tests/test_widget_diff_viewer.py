@@ -40,4 +40,7 @@ async def test_diff_viewer_no_inputs_renders_empty_message():
     async with app.run_test() as pilot:
         await pilot.pause()
         viewer = app.query_one(DiffViewer)
-        assert viewer.diff_text == "" or "no diff" in viewer.diff_text.lower()
+        # diff_text is the source-of-truth attribute; it's empty when no
+        # inputs were provided. The placeholder ("No diff to display") is
+        # rendered as a Static child but not stored back into diff_text.
+        assert viewer.diff_text == ""
