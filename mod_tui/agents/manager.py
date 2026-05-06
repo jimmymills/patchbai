@@ -148,9 +148,4 @@ class AgentManager:
         session = self._sessions.get(event.agent_id)
         if session is None:
             return  # silently ignore stale messages for dead agents
-        import asyncio as _asyncio
-        # Clear the idle event eagerly so that a subsequent wait_idle() call
-        # actually waits until the send coroutine finishes, rather than
-        # returning immediately before the scheduled task has a chance to run.
-        session._idle_event.clear()
-        _asyncio.create_task(session.send(event.text))
+        session.queue_send(event.text)

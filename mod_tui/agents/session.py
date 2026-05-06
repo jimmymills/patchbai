@@ -62,6 +62,17 @@ class AgentSession:
             self._idle_event.clear()
             self._stream_task = asyncio.create_task(self._consume_stream())
 
+    def queue_send(self, prompt: str) -> "asyncio.Task":
+        """Schedule a send() on the running event loop and return the Task.
+
+        Eagerly clears `_idle_event` synchronously so a subsequent wait_idle()
+        in the same task will correctly block until the send completes —
+        without it, wait_idle could return before the send task acquires the
+        send lock.
+        """
+        self._idle_event.clear()
+        return asyncio.create_task(self.send(prompt))
+
     async def wait_idle(self) -> None:
         await self._idle_event.wait()
 
