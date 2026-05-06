@@ -88,3 +88,29 @@ def test_round_trip_json():
     dumped = src.model_dump_json()
     again = LayoutSpec.model_validate_json(dumped)
     assert again == src
+
+
+def test_panel_with_explicit_props_round_trips():
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "id": "orch",
+            "widget": "OrchestratorChat",
+            "props": {"placeholder": "say hi", "multiline": True},
+        },
+    })
+    assert isinstance(spec.layout, Panel)
+    assert spec.layout.props == {"placeholder": "say hi", "multiline": True}
+
+
+def test_custom_widgets_non_empty_parses():
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {"id": "orch", "widget": "OrchestratorChat"},
+        "custom_widgets": [
+            {"name": "MyKanban", "source": "class MyKanban: ..."},
+        ],
+    })
+    assert len(spec.custom_widgets) == 1
+    assert spec.custom_widgets[0].name == "MyKanban"
+    assert spec.custom_widgets[0].source == "class MyKanban: ..."

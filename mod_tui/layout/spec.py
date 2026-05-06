@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -24,6 +22,12 @@ class Container(BaseModel):
     children: list["Node"] = Field(min_length=1)
 
 
+# Node disambiguation is load-bearing on extra="forbid":
+# Container has required {type, children}; Panel has required {id, widget}.
+# Pydantic v2 smart-union tries Container first; a Panel dict fails Container
+# validation because extra="forbid" rejects {id, widget} as unknown keys, then
+# falls through to Panel. DO NOT relax extra="forbid" on either model without
+# replacing this with a discriminated union.
 Node = Union[Container, Panel]
 Container.model_rebuild()
 
@@ -38,6 +42,15 @@ class CustomWidget(BaseModel):
 
 
 class LayoutSpec(BaseModel):
+    """Root of the layout description.
+
+    Validation invariant: exactly one panel with widget='OrchestratorChat'
+    must exist anywhere in `layout`. Specs that violate this are rejected.
+
+    The `focus` field names a panel id to receive keyboard focus on apply,
+    but is NOT validated against the tree at parse time — LayoutEngine.apply
+    silently no-ops if the id does not exist when the layout is mounted.
+    """
     model_config = ConfigDict(extra="forbid")
 
     version: int = 1
