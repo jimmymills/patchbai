@@ -34,6 +34,7 @@ from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
+from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
 
 
@@ -87,6 +88,16 @@ def build_default_registry() -> WidgetRegistry:
             "Editable scratch buffer; persists to <cwd>/.mod_tui/scratch/<name>.md."
         ),
         props_schema={"name": str},
+    )
+    reg.register(
+        "Terminal", Terminal,
+        description=(
+            "Real PTY in a panel. Use this for an interactive `claude` CLI "
+            "session inside mod_tui — anything typed here is OPAQUE to the "
+            "orchestrator (intentional escape-hatch behavior). Optional "
+            "`command` (argv), `cwd`, and `env` props."
+        ),
+        props_schema={"command": list, "cwd": str, "env": dict},
     )
     return reg
 
