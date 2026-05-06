@@ -95,6 +95,7 @@ class ModTuiApp(App):
             config_store=self.config_store,
             actions=self.actions_registry,
             rebind_keys=self._rebind_keys,
+            widget_registry=self.registry,
         )
 
     # --- action registration -----------------------------------------------

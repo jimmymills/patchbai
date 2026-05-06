@@ -7,6 +7,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from mod_tui.actions import ActionRegistry
 from mod_tui.agents.manager import AgentManager
 from mod_tui.config import ConfigStore, KeyBinding
+from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 
@@ -236,6 +237,20 @@ def _list_bindings_handler(config_store: ConfigStore):
     return list_bindings_tool
 
 
+def _list_widgets_handler(registry: WidgetRegistry):
+    async def list_widgets_tool(_args: dict) -> dict:
+        out = []
+        for info in registry.describe_all():
+            out.append({
+                "name": info.name,
+                "description": info.description,
+                "props_schema": {k: getattr(v, "__name__", str(v))
+                                 for k, v in info.props_schema.items()},
+            })
+        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
+    return list_widgets_tool
+
+
 _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
@@ -318,6 +333,7 @@ def build_orchestrator_tools(
     config_store: ConfigStore | None = None,
     actions: ActionRegistry | None = None,
     rebind_keys=None,
+    widget_registry: WidgetRegistry | None = None,
 ):
     """Return a dict {tool_name: async_handler} for unit testing.
 
@@ -327,6 +343,7 @@ def build_orchestrator_tools(
     save/load/list tools are omitted.
     config_store + actions: if both provided, config/keybinding tools are added.
     rebind_keys: optional callable invoked after any keybinding change.
+    widget_registry: if provided, a list_widgets tool is added.
     """
     handlers: dict = {}
     for spec in _SPECS:
@@ -343,6 +360,8 @@ def build_orchestrator_tools(
         handlers["get_config"] = _get_config_handler(config_store)
         handlers["list_actions"] = _list_actions_handler(actions)
         handlers["list_bindings"] = _list_bindings_handler(config_store)
+    if widget_registry is not None:
+        handlers["list_widgets"] = _list_widgets_handler(widget_registry)
     return handlers
 
 
@@ -354,6 +373,7 @@ def build_orchestrator_mcp_server(
     config_store: ConfigStore | None = None,
     actions: ActionRegistry | None = None,
     rebind_keys=None,
+    widget_registry: WidgetRegistry | None = None,
 ):
     sdk_tools = []
     for spec in _SPECS:
@@ -431,6 +451,14 @@ def build_orchestrator_mcp_server(
         ]
         for name, desc, schema, handler in config_specs:
             sdk_tools.append(tool(name, desc, schema)(handler))
+    if widget_registry is not None:
+        sdk_tools.append(tool(
+            "list_widgets",
+            "List all widgets registered in the layout registry, with their "
+            "descriptions and prop schemas. Use this to discover what widgets "
+            "you can include in a set_layout call.",
+            {},
+        )(_list_widgets_handler(widget_registry)))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",
