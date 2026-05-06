@@ -27,6 +27,7 @@ from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.diff_viewer import DiffViewer
 from mod_tui.widgets.file_tree import FileTree
 from mod_tui.widgets.log_tail import LogTail
+from mod_tui.widgets.notebook import Notebook
 from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
@@ -71,6 +72,13 @@ def build_default_registry() -> WidgetRegistry:
             "`tail_lines` controls how much of the existing tail is shown."
         ),
         props_schema={"file_path": str, "tail_lines": int},
+    )
+    reg.register(
+        "Notebook", Notebook,
+        description=(
+            "Editable scratch buffer; persists to <cwd>/.mod_tui/scratch/<name>.md."
+        ),
+        props_schema={"name": str},
     )
     return reg
 
