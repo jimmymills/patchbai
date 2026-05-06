@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.uv/
+dist/
+*.egg-info/
+.pytest_cache/
+.mod_tui/
+.superpowers/
+.DS_Store
