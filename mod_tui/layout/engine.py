@@ -77,6 +77,7 @@ def _build(node, registry) -> "TxContainer":
         cls = registry.get(node.widget)
         widget = cls(**node.props) if node.props else cls()
         widget.id = f"panel-{node.id}"
+        widget.can_focus = True  # panels must be focusable so focus survives rebuilds
         if node.size:
             widget.styles.width = node.size if "%" in node.size or node.size.endswith("fr") else None
             widget.styles.height = None
@@ -91,28 +92,31 @@ def _build(node, registry) -> "TxContainer":
 async def apply(container: TxContainer, spec: LayoutSpec, registry) -> None:
     """Replace `container`'s children with widgets built from `spec.layout`.
 
-    Atomic: builds the new tree fully (including registry lookups for every
-    panel widget class) before touching the container. If any lookup raises
-    UnknownWidgetError or instantiation throws, nothing is mounted.
+    Preserves focus across rebuilds: if no explicit `spec.focus` is set, the
+    currently-focused panel id (if any) is restored after the rebuild —
+    provided the panel still exists in the new spec.
 
-    `focus` is honored after mount.
-
-    Note for plan 1: `apply` rebuilds from scratch on every call. The `diff`
-    function above is fully implemented and tested because its semantics are
-    the stable contract — but `apply` only ever runs once per app lifetime in
-    this plan (mounting the default dashboard at boot), so a diff-driven
-    incremental application would be premature. Plan 4 (when `set_layout`
-    becomes a runtime tool the orchestrator can call repeatedly) will switch
-    `apply` to consume `diff()` operations and reuse mounted widgets where ids
-    and widget types match.
+    Atomic: builds the new tree fully (registry lookups + instantiation)
+    before touching the container. If anything raises, nothing is mounted.
     """
     new_children = [_build(spec.layout, registry)]
+
+    # Snapshot the currently-focused panel id (e.g., "orch" from "panel-orch").
+    snapshot_focus_id: str | None = None
+    try:
+        app = container.app
+        focused = app.focused
+        if focused is not None and focused.id and focused.id.startswith("panel-"):
+            snapshot_focus_id = focused.id[len("panel-"):]
+    except Exception:
+        pass
 
     await container.remove_children()
     await container.mount_all(new_children)
 
-    if spec.focus:
+    target = spec.focus or snapshot_focus_id
+    if target:
         try:
-            container.query_one(f"#panel-{spec.focus}").focus()
+            container.query_one(f"#panel-{target}").focus()
         except Exception:
             pass
