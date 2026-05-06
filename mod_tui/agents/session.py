@@ -109,6 +109,8 @@ class AgentSession:
                     self._record(
                         role="tool_use",
                         text=f"[{block.name}] {_short_repr(block.input)}",
+                        tool_id=block.id,
+                        tool_name=block.name,
                     )
                 elif isinstance(block, ThinkingBlock):
                     self._record(role="thinking", text=block.thinking)
@@ -118,6 +120,7 @@ class AgentSession:
                     self._record(
                         role="tool_result",
                         text=_short_repr(block.content),
+                        tool_id=block.tool_use_id,
                     )
         elif isinstance(msg, SystemMessage):
             # Skip — verbose protocol noise.
@@ -130,11 +133,23 @@ class AgentSession:
                 self.info.cost += float(msg.total_cost_usd)
         self.info.last_activity = time.time()
 
-    def _record(self, *, role: str, text: str) -> None:
-        entry = TranscriptEntry(role=role, text=text)
+    def _record(
+        self,
+        *,
+        role: str,
+        text: str,
+        tool_id: str | None = None,
+        tool_name: str | None = None,
+    ) -> None:
+        entry = TranscriptEntry(
+            role=role, text=text, tool_id=tool_id, tool_name=tool_name,
+        )
         self._transcript.append(entry)
         self._bus.publish(
-            AgentMessageAppended(agent_id=self.info.id, role=role, text=text)
+            AgentMessageAppended(
+                agent_id=self.info.id, role=role, text=text,
+                tool_id=tool_id, tool_name=tool_name,
+            )
         )
         self.info.last_activity = time.time()
 
