@@ -47,6 +47,61 @@ def _read_handler(manager: AgentManager):
     return read_agent_transcript
 
 
+def _send_handler(manager: AgentManager):
+    async def send_to_agent(args: dict) -> dict:
+        agent_id = args["agent_id"]
+        message = args["message"]
+        try:
+            await manager.send(agent_id, message)
+            return {
+                "content": [
+                    {"type": "text", "text": f"Sent to {agent_id}: {message[:60]}"}
+                ]
+            }
+        except KeyError:
+            return {"content": [{"type": "text", "text": f"Unknown agent_id: {agent_id}"}]}
+    return send_to_agent
+
+
+def _interrupt_handler(manager: AgentManager):
+    async def interrupt_agent(args: dict) -> dict:
+        agent_id = args["agent_id"]
+        if manager.get_session(agent_id) is None:
+            return {"content": [{"type": "text", "text": f"Unknown agent_id: {agent_id}"}]}
+        await manager.interrupt(agent_id)
+        return {"content": [{"type": "text", "text": f"Sent interrupt to {agent_id}."}]}
+    return interrupt_agent
+
+
+def _kill_handler(manager: AgentManager):
+    async def kill_agent(args: dict) -> dict:
+        agent_id = args["agent_id"]
+        if manager.get_session(agent_id) is None:
+            return {"content": [{"type": "text", "text": f"Unknown agent_id: {agent_id}"}]}
+        await manager.kill(agent_id)
+        return {"content": [{"type": "text", "text": f"Killed agent {agent_id}."}]}
+    return kill_agent
+
+
+def _respond_handler(manager: AgentManager):
+    async def respond_to_agent_request(args: dict) -> dict:
+        agent_id = args["agent_id"]
+        request_id = args["request_id"]
+        response = args["response"]
+        inbox = manager.get_inbox(agent_id)
+        if inbox is None:
+            return {
+                "content": [{"type": "text", "text": f"Unknown agent_id (no inbox): {agent_id}"}]
+            }
+        inbox.resolve(request_id, response)
+        return {
+            "content": [
+                {"type": "text", "text": f"Resolved request {request_id} for {agent_id}."}
+            ]
+        }
+    return respond_to_agent_request
+
+
 _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
@@ -68,6 +123,36 @@ _SPECS: list[_ToolSpec] = [
         description="Read the full transcript of an agent by id.",
         input_schema={"agent_id": str},
         build=_read_handler,
+    ),
+    _ToolSpec(
+        name="send_to_agent",
+        description=(
+            "Send a follow-up message to an existing agent. The agent will "
+            "process it as a new turn."
+        ),
+        input_schema={"agent_id": str, "message": str},
+        build=_send_handler,
+    ),
+    _ToolSpec(
+        name="interrupt_agent",
+        description="Interrupt the agent's current generation, if any.",
+        input_schema={"agent_id": str},
+        build=_interrupt_handler,
+    ),
+    _ToolSpec(
+        name="kill_agent",
+        description="Stop and remove an agent session.",
+        input_schema={"agent_id": str},
+        build=_kill_handler,
+    ),
+    _ToolSpec(
+        name="respond_to_agent_request",
+        description=(
+            "Respond to an agent's pending ask_orchestrator request, "
+            "identified by request_id."
+        ),
+        input_schema={"agent_id": str, "request_id": str, "response": str},
+        build=_respond_handler,
     ),
 ]
 
