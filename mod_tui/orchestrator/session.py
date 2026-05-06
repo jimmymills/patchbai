@@ -51,6 +51,7 @@ class OrchestratorSession:
         )
         self._unsub_user: callable = lambda: None
         self._unsub_msg: callable = lambda: None
+        self._send_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
         mcp_server = build_orchestrator_mcp_server(self._manager)
@@ -75,10 +76,20 @@ class OrchestratorSession:
         )
 
     async def wait_idle(self) -> None:
-        # Yield once so any UserMessageToOrchestrator-triggered send() task
-        # scheduled via create_task gets a chance to clear the idle event
-        # before we observe it.
+        # Drain any UserMessageToOrchestrator-triggered create_tasks that may
+        # have been scheduled but not yet started. Two yields is enough to
+        # cover the worst case (sync subscribe → create_task → coroutine
+        # body's first await).
         await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        # Wait for every outstanding send task to complete so that all queued
+        # messages have been fully processed (including the second+ messages
+        # that are serialised behind the AgentSession._send_lock).
+        if self._send_tasks:
+            pending = [t for t in self._send_tasks if not t.done()]
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+            self._send_tasks.clear()
         await self._inner.wait_idle()
 
     async def stop(self) -> None:
@@ -90,7 +101,8 @@ class OrchestratorSession:
 
     def _on_user_message(self, event: UserMessageToOrchestrator) -> None:
         # The bus is sync — schedule the async send on the running loop.
-        asyncio.create_task(self._inner.send(event.text))
+        task = asyncio.create_task(self._inner.send(event.text))
+        self._send_tasks.append(task)
 
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self.AGENT_ID:
