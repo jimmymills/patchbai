@@ -36,23 +36,25 @@ class Config:
     ui: UISection = field(default_factory=UISection)
 
     def get_path(self, path: str) -> Any:
-        parts = path.split(".")
-        if len(parts) != 2:
-            raise KeyError(f"only dotted two-segment paths supported, got {path!r}")
-        section, attr = parts
-        if section == "ui" and hasattr(self.ui, attr):
-            return getattr(self.ui, attr)
-        raise KeyError(path)
+        section, attr = self._split_path(path)
+        section_obj = getattr(self, section, None)
+        if section_obj is None or not hasattr(section_obj, attr):
+            raise KeyError(path)
+        return getattr(section_obj, attr)
 
     def set_path(self, path: str, value: Any) -> None:
+        section, attr = self._split_path(path)
+        section_obj = getattr(self, section, None)
+        if section_obj is None or not hasattr(section_obj, attr):
+            raise KeyError(path)
+        setattr(section_obj, attr, value)
+
+    @staticmethod
+    def _split_path(path: str) -> tuple[str, str]:
         parts = path.split(".")
         if len(parts) != 2:
             raise KeyError(f"only dotted two-segment paths supported, got {path!r}")
-        section, attr = parts
-        if section == "ui" and hasattr(self.ui, attr):
-            setattr(self.ui, attr, value)
-            return
-        raise KeyError(path)
+        return parts[0], parts[1]
 
 
 class ConfigStore:
