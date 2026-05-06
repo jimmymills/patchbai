@@ -3,6 +3,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingsMap
 from textual.containers import Container
+from textual.keys import _character_to_key
 from textual.widgets import DataTable
 
 from mod_tui.actions import ActionRegistry
@@ -161,6 +162,11 @@ class ModTuiApp(App):
         # Layer config bindings on top.
         cfg = self.config_store.load()
         for key, b in cfg.bindings.items():
+            # Normalize single non-alphanumeric characters to their Textual key
+            # name (e.g. "~" → "tilde") so that pilot.press / live key events
+            # match the binding key stored in key_to_bindings.
+            if len(key) == 1 and not key.isalnum():
+                key = _character_to_key(key)
             self._bindings._add_binding(
                 Binding(key, f"dispatch('{b.action}')", b.action, priority=True)
             )
