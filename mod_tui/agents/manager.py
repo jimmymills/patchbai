@@ -65,7 +65,16 @@ class AgentManager:
         self._index.upsert(info)
         self._bus.publish(AgentSpawned(info=info))
 
-        options_kwargs: dict = {"cwd": info.cwd}
+        # Bypass permissions for now: there's no Textual modal to render
+        # the SDK's permission prompts in plan 2, so the child would hang.
+        # The orchestrator can still narrow what a child may do via the
+        # allowed_tools / disallowed_tools args on the spawn_agent MCP tool.
+        # A proper can_use_tool callback that pops a Textual approval modal
+        # is plan-3 work.
+        options_kwargs: dict = {
+            "cwd": info.cwd,
+            "permission_mode": "bypassPermissions",
+        }
         if allowed_tools is not None:
             options_kwargs["allowed_tools"] = allowed_tools
         if disallowed_tools is not None:

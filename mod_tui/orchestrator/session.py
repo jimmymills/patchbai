@@ -57,6 +57,11 @@ class OrchestratorSession:
         options_kwargs: dict = {
             "cwd": str(self._cwd),
             "mcp_servers": {"mod_tui_orchestrator": mcp_server},
+            # The orchestrator is the user's trusted manager session — there's
+            # no UI in the TUI yet to render a permission prompt, so the SDK
+            # would hang waiting for one. Bypass for now; a Textual modal-
+            # based can_use_tool callback is plan-3 work.
+            "permission_mode": "bypassPermissions",
         }
         if self._model is not None:
             options_kwargs["model"] = self._model
