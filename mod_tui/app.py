@@ -24,6 +24,7 @@ from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.chrome import CommandBar, StatusBar
+from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
@@ -36,6 +37,11 @@ def build_default_registry() -> WidgetRegistry:
     reg.register("OrchestratorChat", OrchestratorChat)
     reg.register("AgentTable", AgentTable)
     reg.register("ActivityFeed", ActivityFeed)
+    reg.register(
+        "Markdown", Markdown,
+        description="Renders markdown from `source` (string) or `file_path`.",
+        props_schema={"source": str, "file_path": str},
+    )
     return reg
 
 
