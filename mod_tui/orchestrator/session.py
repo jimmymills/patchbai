@@ -39,6 +39,7 @@ class OrchestratorSession:
         actions=None,
         rebind_keys=None,
         widget_registry=None,
+        current_layout=None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
@@ -51,6 +52,7 @@ class OrchestratorSession:
         self._actions = actions
         self._rebind_keys = rebind_keys
         self._widget_registry = widget_registry
+        self._current_layout = current_layout
         self._info = AgentInfo(
             id=self.AGENT_ID,
             name="orchestrator",
@@ -78,6 +80,7 @@ class OrchestratorSession:
             actions=self._actions,
             rebind_keys=self._rebind_keys,
             widget_registry=self._widget_registry,
+            current_layout=self._current_layout,
         )
         options_kwargs: dict = {
             "cwd": str(self._cwd),
