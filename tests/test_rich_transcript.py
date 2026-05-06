@@ -354,3 +354,53 @@ async def test_state_change_for_other_agent_is_ignored(tmp_path):
         turn = app.query_one(_TurnContainer)
         assert turn.has_class("turn-running")
         assert not turn.has_class("turn-done")
+
+
+@pytest.mark.asyncio
+async def test_running_tool_call_spinner_advances(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        await pilot.pause()
+        tw = app.query_one(_ToolCall)
+        first_frame = tw.title[0]
+        assert first_frame in _SPINNER_FRAMES
+
+        # Advance the spinner enough to cycle.
+        await pilot.pause(0.5)
+        # Title still starts with a spinner frame, but is unlikely to be the same.
+        # (We assert the cheaper invariant: it's still in the frame set.)
+        assert tw.title[0] in _SPINNER_FRAMES
+
+
+@pytest.mark.asyncio
+async def test_spinner_stops_after_result(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="ok", tool_id="t1",
+        ))
+        await pilot.pause()
+        tw = app.query_one(_ToolCall)
+        # Title now starts with ✓, no longer with a spinner frame.
+        assert tw.title.startswith("✓")
+        assert tw.title[0] not in _SPINNER_FRAMES

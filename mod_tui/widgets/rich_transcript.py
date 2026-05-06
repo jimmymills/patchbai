@@ -16,6 +16,9 @@ from mod_tui.persistence.transcript_store import (
     TranscriptEntry,
 )
 
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_SPINNER_INTERVAL_S = 0.08
+
 
 class _ToolCall(Collapsible):
     """One tool invocation. Expanded while running, collapsed on result."""
@@ -30,6 +33,8 @@ class _ToolCall(Collapsible):
         self.tool_id = tool_id
         self.tool_name = tool_name or "?"
         self._args_text = args_text
+        self._spinner_idx = 0
+        self._spinner_timer = None
         self._args_static = Static(self._build_args_text())
         self._result_static = Static(Text("(running…)", style="dim"))
         super().__init__(
@@ -38,6 +43,13 @@ class _ToolCall(Collapsible):
             title=self._build_running_title(),
             collapsed=False,
         )
+
+    def on_mount(self) -> None:
+        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
+
+    def _tick_spinner(self) -> None:
+        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
+        self.title = self._build_running_title()
 
     def _build_args_text(self) -> Text:
         line = Text()
@@ -49,7 +61,7 @@ class _ToolCall(Collapsible):
         # Truncated, plain-string title — Collapsible accepts str.
         # Escape user-provided text so brackets don't get parsed as markup.
         short = self._args_text if len(self._args_text) <= 60 else self._args_text[:57] + "…"
-        return f"… {_markup_escape(self.tool_name)}({_markup_escape(short)})"
+        return f"{_SPINNER_FRAMES[self._spinner_idx]} {_markup_escape(self.tool_name)}({_markup_escape(short)})"
 
     def _build_done_title(self, result_text: str, *, error: bool) -> str:
         marker = "✗" if error else "✓"
@@ -59,6 +71,9 @@ class _ToolCall(Collapsible):
         return f"{marker} {_markup_escape(self.tool_name)} → {_markup_escape(short)}"
 
     def attach_result(self, content_text: str, *, error: bool = False) -> None:
+        if self._spinner_timer is not None:
+            self._spinner_timer.stop()
+            self._spinner_timer = None
         body = Text()
         body.append("result: ", style="bold")
         body.append(content_text, style="red" if error else "")
@@ -67,6 +82,9 @@ class _ToolCall(Collapsible):
         self.collapsed = True
 
     def mark_done(self) -> None:
+        if self._spinner_timer is not None:
+            self._spinner_timer.stop()
+            self._spinner_timer = None
         # Called when the turn ends. If no result ever attached (shouldn't
         # normally happen), still collapse the foldable.
         # NOTE: use .content (not .renderable) for this Textual version.
@@ -89,11 +107,23 @@ class _ThinkingGroup(Collapsible):
         self._body_static = Static(Text(""))
         self._started = time.monotonic()
         self._done = False
+        self._spinner_idx = 0
+        self._spinner_timer = None
         super().__init__(
             self._body_static,
-            title="Thinking…",
+            title=self._build_running_title(),
             collapsed=False,
         )
+
+    def _build_running_title(self) -> str:
+        return f"{_SPINNER_FRAMES[self._spinner_idx]} Thinking…"
+
+    def on_mount(self) -> None:
+        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
+
+    def _tick_spinner(self) -> None:
+        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
+        self.title = self._build_running_title()
 
     def append(self, text: str) -> None:
         existing = self._body_static.content
@@ -107,6 +137,9 @@ class _ThinkingGroup(Collapsible):
         if self._done:
             return
         self._done = True
+        if self._spinner_timer is not None:
+            self._spinner_timer.stop()
+            self._spinner_timer = None
         elapsed = time.monotonic() - self._started
         self.title = f"Thought for {elapsed:.1f}s"
         self.collapsed = True
