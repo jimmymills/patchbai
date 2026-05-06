@@ -107,12 +107,27 @@ def _respond_handler(manager: AgentManager):
     return respond_to_agent_request
 
 
-def _set_layout_handler(apply_layout):
+def _set_layout_handler(apply_layout, widget_registry=None):
+    from mod_tui.layout.custom_widgets import register_custom_widget, CustomWidgetError
+
     async def set_layout_tool(args: dict) -> dict:
         try:
             spec = LayoutSpec.model_validate(args["spec"])
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Invalid LayoutSpec: {e}"}]}
+        # Register custom widgets BEFORE applying. If any source fails to
+        # exec or doesn't yield a Widget subclass, abort the apply atomically.
+        if spec.custom_widgets and widget_registry is not None:
+            for cw in spec.custom_widgets:
+                try:
+                    register_custom_widget(widget_registry, cw.name, cw.source)
+                except CustomWidgetError as e:
+                    return {
+                        "content": [{
+                            "type": "text",
+                            "text": f"Custom widget {cw.name!r} error: {e}",
+                        }]
+                    }
         try:
             await apply_layout(spec)
         except Exception as e:
@@ -349,7 +364,7 @@ def build_orchestrator_tools(
     for spec in _SPECS:
         handlers[spec.name] = spec.build(manager)
     if apply_layout is not None and layouts_store is not None:
-        handlers["set_layout"] = _set_layout_handler(apply_layout)
+        handlers["set_layout"] = _set_layout_handler(apply_layout, widget_registry)
         handlers["save_layout"] = _save_layout_handler(layouts_store)
         handlers["load_layout"] = _load_layout_handler(apply_layout, layouts_store)
         handlers["list_layouts"] = _list_layouts_handler(layouts_store)
@@ -384,9 +399,11 @@ def build_orchestrator_mcp_server(
         layout_specs = [
             (
                 "set_layout",
-                "Replace the current UI layout with the given LayoutSpec dict.",
+                "Replace the current UI layout with the given LayoutSpec dict. "
+                "If `spec.custom_widgets` is present, each entry is exec'd to "
+                "register a new Widget class before the layout is applied.",
                 {"spec": dict},
-                _set_layout_handler(apply_layout),
+                _set_layout_handler(apply_layout, widget_registry),
             ),
             (
                 "save_layout",
