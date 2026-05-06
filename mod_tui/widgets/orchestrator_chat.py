@@ -45,7 +45,21 @@ class OrchestratorChat(Vertical):
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
             return
-        history = self._history or list(getattr(self.app, "orchestrator_history", []))
+        # Prefer fresh on-disk transcript over the app's startup snapshot —
+        # the snapshot doesn't include messages from this session, so a
+        # set_layout-driven remount would otherwise lose all live history.
+        if self._history:
+            history = list(self._history)
+        else:
+            cwd = getattr(self.app, "cwd", None)
+            if cwd is not None:
+                from mod_tui.persistence.transcript_store import (
+                    OrchestratorTranscript,
+                )
+                entries = OrchestratorTranscript(cwd=cwd).read_all()
+                history = [(e.role, e.text) for e in entries]
+            else:
+                history = list(getattr(self.app, "orchestrator_history", []))
         for role, text in history:
             self._append_line(role, text)
         self._unsub = bus.subscribe(
