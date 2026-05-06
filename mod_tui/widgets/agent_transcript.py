@@ -78,14 +78,14 @@ class AgentTranscript(Vertical):
         self._append_line(event.role, event.text)
 
     def _append_line(self, role: str, text: str) -> None:
-        from rich.markup import escape
+        # Build the line via Rich Text so dict reprs / [type=...] markup-like
+        # text in tool args never go through the markup parser.
+        from rich.text import Text
         scroll = self.query_one("#transcript-scroll", VerticalScroll)
-        # Escape body so dict reprs / brackets in tool args don't trip the
-        # Rich markup parser.
-        widget = Static(
-            f"[role-{role}]{role}:[/role-{role}] {escape(text)}",
-            classes=f"role-{role}",
-        )
+        line = Text()
+        line.append(f"{role}: ", style="bold")
+        line.append(text)
+        widget = Static(line, classes=f"role-{role}")
         self._lines.append(f"[{role}] {text}")
         scroll.mount(widget)
         scroll.scroll_end(animate=False)

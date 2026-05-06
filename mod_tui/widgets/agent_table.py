@@ -84,8 +84,18 @@ class AgentTable(Container):
             table.update_cell(agent_id, col, value)
 
     def _render_cells(self, info: AgentInfo) -> tuple:
+        # Wrap each cell in Rich Text so values that may contain markup-like
+        # text (especially the "last action" cell which echoes tool args)
+        # render verbatim rather than tripping the markup parser.
+        from rich.text import Text
         elapsed = info.elapsed_seconds()
         elapsed_str = f"{elapsed:5.1f}s"
         last = self._last_actions.get(info.id, "")
         cost_str = f"${info.cost:.4f}"
-        return (info.name, info.state.value, elapsed_str, last, cost_str)
+        return (
+            Text(info.name),
+            Text(info.state.value),
+            Text(elapsed_str),
+            Text(last),
+            Text(cost_str),
+        )

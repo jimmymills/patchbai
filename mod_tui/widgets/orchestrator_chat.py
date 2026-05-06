@@ -80,11 +80,16 @@ class OrchestratorChat(Vertical):
             bus.publish(UserMessageToOrchestrator(text))
 
     def _append_line(self, role: str, text: str) -> None:
-        from rich.markup import escape
+        # Build a Rich Text object directly so the body never goes through the
+        # markup parser. This is the bulletproof way to render arbitrary text
+        # (tool args, dict reprs, Pydantic error messages with [type=...]
+        # syntax, etc.) without any escape gymnastics.
+        from rich.text import Text
         msgs = self.query_one("#orch-messages", VerticalScroll)
         prefix = "you" if role == "user" else "claude"
-        cls = "msg-user" if role == "user" else "msg-orch"
-        # Escape the body so dict reprs / brackets in tool args don't trip
-        # Rich's markup parser ('{', '[name]', etc).
-        msgs.mount(Static(f"[{cls}]{prefix}:[/{cls}] {escape(text)}"))
+        style = "$accent" if role == "user" else "$text"
+        line = Text()
+        line.append(f"{prefix}: ", style="bold cyan" if role == "user" else "bold")
+        line.append(text)
+        msgs.mount(Static(line))
         msgs.scroll_end(animate=False)

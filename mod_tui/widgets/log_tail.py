@@ -70,7 +70,10 @@ class LogTail(VerticalScroll):
         self.scroll_end(animate=False)
 
     def _update_static(self) -> None:
+        # Wrap in Rich Text so arbitrary file content (which may contain
+        # bracket sequences that look like markup) renders verbatim.
+        from rich.text import Text
         try:
-            self.query_one("#log-tail-content", Static).update(self.text)
+            self.query_one("#log-tail-content", Static).update(Text(self.text))
         except Exception:
             pass
