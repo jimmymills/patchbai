@@ -13,6 +13,7 @@ from mod_tui.agents.state import AgentInfo
 from mod_tui.events import (
     AgentSpawned,
     AgentStateChanged,
+    DirectMessageToAgent,
     EventBus,
 )
 from mod_tui.persistence.agents_index import AgentsIndex
@@ -36,6 +37,7 @@ class AgentManager:
         self._inboxes: dict[str, RequestInbox] = {}
         self._index = AgentsIndex(cwd=cwd)
         self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
+        self._unsub_direct = bus.subscribe(DirectMessageToAgent, self._on_direct_message)
 
     async def spawn(
         self,
@@ -134,9 +136,21 @@ class AgentManager:
         for agent_id in list(self._sessions.keys()):
             await self.kill(agent_id)
         self._unsub_state()
+        self._unsub_direct()
 
     # --- internals --------------------------------------------------------
 
     def _on_state_changed(self, event: AgentStateChanged) -> None:
         # Persist updated info on every state change so agents.json reflects reality.
         self._index.upsert(event.info)
+
+    def _on_direct_message(self, event: DirectMessageToAgent) -> None:
+        session = self._sessions.get(event.agent_id)
+        if session is None:
+            return  # silently ignore stale messages for dead agents
+        import asyncio as _asyncio
+        # Clear the idle event eagerly so that a subsequent wait_idle() call
+        # actually waits until the send coroutine finishes, rather than
+        # returning immediately before the scheduled task has a chance to run.
+        session._idle_event.clear()
+        _asyncio.create_task(session.send(event.text))
