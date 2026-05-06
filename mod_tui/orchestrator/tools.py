@@ -106,10 +106,29 @@ _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
         description=(
-            "Spawn a new Claude Code child agent with the given name and "
-            "initial prompt. Returns the agent id."
+            "Spawn a new Claude Code child agent. `name` is a short label "
+            "for the table; `prompt` is the initial task. Optional `cwd` "
+            "overrides the working directory; optional `allowed_tools` is a "
+            "list of tool names to whitelist for this child (defaults to "
+            "inheriting the user's settings.json)."
         ),
-        input_schema={"name": str, "prompt": str},
+        # Use a full JSON Schema dict so the SDK's pass-through path is
+        # triggered (it checks for "type" + "properties" keys).  This lets us
+        # mark cwd / allowed_tools as optional (absent from "required") while
+        # still advertising them to the orchestrator AI.
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "prompt": {"type": "string"},
+                "cwd": {"type": "string"},
+                "allowed_tools": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["name", "prompt"],
+        },
         build=_spawn_handler,
     ),
     _ToolSpec(
