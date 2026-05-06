@@ -103,3 +103,54 @@ async def test_kill_removes_session(tmp_path: Path):
     await manager.wait_idle(aid)
     await manager.kill(aid)
     assert manager.get_session(aid) is None
+
+
+@pytest.mark.asyncio
+async def test_send_routes_followup_to_existing_agent(tmp_path: Path):
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script(), _ok_script()]),
+    )
+    aid = await manager.spawn(name="research", prompt="first prompt")
+    await manager.wait_idle(aid)
+
+    await manager.send(aid, "follow up")
+    await manager.wait_idle(aid)
+
+    entries = manager.read_transcript(aid)
+    user_texts = [e.text for e in entries if e.role == "user"]
+    assert user_texts == ["first prompt", "follow up"]
+
+
+@pytest.mark.asyncio
+async def test_send_to_unknown_agent_raises_keyerror(tmp_path: Path):
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    with pytest.raises(KeyError):
+        await manager.send("does-not-exist", "hi")
+
+
+@pytest.mark.asyncio
+async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
+    from mod_tui.agents.request_inbox import RequestInbox
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await manager.spawn(name="research", prompt="hi")
+    await manager.wait_idle(aid)
+
+    inbox = manager.get_inbox(aid)
+    assert isinstance(inbox, RequestInbox)
+
+    # Same agent → same inbox instance (so registrations and resolutions match up).
+    assert manager.get_inbox(aid) is inbox
+
+    # Unknown agent → None (don't raise).
+    assert manager.get_inbox("nope") is None

@@ -5,6 +5,7 @@ from typing import Callable
 
 from claude_agent_sdk import ClaudeAgentOptions
 
+from mod_tui.agents.request_inbox import RequestInbox
 from mod_tui.agents.sdk_adapter import SDKAdapter
 from mod_tui.agents.session import AgentSession
 from mod_tui.agents.state import AgentInfo
@@ -31,6 +32,7 @@ class AgentManager:
         self._bus = bus
         self._adapter_factory = adapter_factory
         self._sessions: dict[str, AgentSession] = {}
+        self._inboxes: dict[str, RequestInbox] = {}
         self._index = AgentsIndex(cwd=cwd)
         self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
 
@@ -62,6 +64,7 @@ class AgentManager:
             bus=self._bus,
         )
         self._sessions[agent_id] = session
+        self._inboxes[agent_id] = RequestInbox()
         self._index.upsert(info)
         self._bus.publish(AgentSpawned(info=info))
 
@@ -104,6 +107,7 @@ class AgentManager:
 
     async def kill(self, agent_id: str) -> None:
         session = self._sessions.pop(agent_id, None)
+        self._inboxes.pop(agent_id, None)
         if session is not None:
             await session.stop()
 
@@ -111,6 +115,15 @@ class AgentManager:
         session = self._sessions.get(agent_id)
         if session is not None:
             await session.wait_idle()
+
+    async def send(self, agent_id: str, text: str) -> None:
+        session = self._sessions.get(agent_id)
+        if session is None:
+            raise KeyError(f"unknown agent_id: {agent_id}")
+        await session.send(text)
+
+    def get_inbox(self, agent_id: str) -> RequestInbox | None:
+        return self._inboxes.get(agent_id)
 
     async def shutdown(self) -> None:
         for agent_id in list(self._sessions.keys()):
