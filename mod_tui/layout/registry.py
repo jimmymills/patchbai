@@ -41,6 +41,10 @@ class WidgetRegistry:
             props_schema=dict(props_schema) if props_schema else {},
         )
 
+    def unregister(self, name: str) -> None:
+        """Remove a widget registration. No-op if `name` was never registered."""
+        self._infos.pop(name, None)
+
     def get(self, name: str) -> type[Widget]:
         if name not in self._infos:
             raise UnknownWidgetError(name)

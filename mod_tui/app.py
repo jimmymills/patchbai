@@ -23,6 +23,7 @@ from mod_tui.persistence.paths import global_config_dir
 from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.persistence.transcript_store import OrchestratorTranscript
 from mod_tui.widgets.agent_table import AgentTable
+from mod_tui.widgets.agent_transcript import AgentTranscript
 from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.diff_viewer import DiffViewer
 from mod_tui.widgets.file_tree import FileTree
@@ -34,6 +35,7 @@ from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
+from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
 
 
@@ -41,6 +43,16 @@ def build_default_registry() -> WidgetRegistry:
     reg = WidgetRegistry()
     reg.register("OrchestratorChat", OrchestratorChat)
     reg.register("AgentTable", AgentTable)
+    reg.register(
+        "AgentTranscript", AgentTranscript,
+        description=(
+            "Live, scrolling transcript for one agent with a bottom input "
+            "that sends DirectMessageToAgent for that `agent_id`. Mount "
+            "this in a panel when the user wants to converse with a "
+            "specific child agent without going through the orchestrator."
+        ),
+        props_schema={"agent_id": str},
+    )
     reg.register("ActivityFeed", ActivityFeed)
     reg.register(
         "Markdown", Markdown,
@@ -87,6 +99,16 @@ def build_default_registry() -> WidgetRegistry:
             "Editable scratch buffer; persists to <cwd>/.mod_tui/scratch/<name>.md."
         ),
         props_schema={"name": str},
+    )
+    reg.register(
+        "Terminal", Terminal,
+        description=(
+            "Real PTY in a panel. Use this for an interactive `claude` CLI "
+            "session inside mod_tui — anything typed here is OPAQUE to the "
+            "orchestrator (intentional escape-hatch behavior). Optional "
+            "`command` (argv), `cwd`, and `env` props."
+        ),
+        props_schema={"command": list, "cwd": str, "env": dict},
     )
     return reg
 

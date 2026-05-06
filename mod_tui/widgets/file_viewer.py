@@ -43,6 +43,10 @@ def _load_text(path: Path) -> tuple[str, str | None]:
 class FileViewer(TextArea):
     """Read-only file display with extension-based syntax highlighting.
 
+    Loads the entire file into memory at mount time — fine for typical
+    source files, but for log-sized content (>~1MB) prefer the LogTail
+    widget which streams from the end and polls for additions.
+
     If `follow_selection=True`, subscribes to `FileSelected` events on the
     EventBus and reloads to show the selected file. Pair with a `FileTree`
     panel to get a click-a-file → see-its-content workflow:
