@@ -79,9 +79,19 @@ def test_log_tail_default_uses_basename():
     assert resolve_title(p, LogTail) == "Log: app.log"
 
 
+def test_log_tail_without_file_path_falls_through():
+    p = Panel(id="l", widget="LogTail")
+    assert resolve_title(p, LogTail) == "Log"
+
+
 def test_notebook_default_uses_name():
     p = Panel(id="n", widget="Notebook", props={"name": "ideas"})
     assert resolve_title(p, Notebook) == "Note: ideas"
+
+
+def test_notebook_without_name_falls_through():
+    p = Panel(id="n", widget="Notebook")
+    assert resolve_title(p, Notebook) == "Note"
 
 
 def test_terminal_default_uses_command_basename():
@@ -99,6 +109,16 @@ def test_agent_transcript_default_includes_agent_id():
     assert resolve_title(p, AgentTranscript) == "Agent: abc-123"
 
 
+def test_agent_transcript_without_agent_id_falls_through():
+    p = Panel(id="a", widget="AgentTranscript")
+    assert resolve_title(p, AgentTranscript) == "Agent"
+
+
 def test_rich_transcript_default_includes_agent_id():
     p = Panel(id="r", widget="RichTranscript", props={"agent_id": "abc-123"})
     assert resolve_title(p, RichTranscript) == "Transcript: abc-123"
+
+
+def test_rich_transcript_without_agent_id_falls_through():
+    p = Panel(id="r", widget="RichTranscript")
+    assert resolve_title(p, RichTranscript) == "Transcript"
