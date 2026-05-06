@@ -237,6 +237,13 @@ class ModTuiApp(App):
 
     async def on_mount(self) -> None:
         self._rebind_keys()
+        # Seed the built-in dashboard as the named layout "default" if no
+        # such file exists yet, so the user can always get back to the
+        # canonical layout via ctrl-l or `load_layout("default")`. We only
+        # seed once — if the user re-saves "default" with their own arrangement,
+        # we leave it alone.
+        if self.layouts_store.load("default") is None:
+            self.layouts_store.save("default", dashboard_layout())
         await self.orchestrator.start()
         spec = load_local_layout(self.cwd) or dashboard_layout()
         await self._apply(spec)
