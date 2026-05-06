@@ -25,10 +25,7 @@ class OrchestratorChat(Vertical):
     }
     """
 
-    def __init__(self, *, event_bus: EventBus | None = None,
-                 history: list[tuple[str, str]] | None = None) -> None:
-        """history: kept for backwards-compat with callers; ignored.
-        RichTranscript reads history from disk on mount."""
+    def __init__(self, *, event_bus: EventBus | None = None) -> None:
         super().__init__()
         self._bus = event_bus
 
