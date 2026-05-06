@@ -33,12 +33,22 @@ class OrchestratorSession:
         manager: AgentManager,
         adapter: SDKAdapter | None = None,
         model: str | None = None,
+        apply_layout=None,
+        layouts_store=None,
+        config_store=None,
+        actions=None,
+        rebind_keys=None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
         self._manager = manager
         self._model = model
         self._adapter = adapter or RealSDKAdapter()
+        self._apply_layout = apply_layout
+        self._layouts_store = layouts_store
+        self._config_store = config_store
+        self._actions = actions
+        self._rebind_keys = rebind_keys
         self._info = AgentInfo(
             id=self.AGENT_ID,
             name="orchestrator",
@@ -58,7 +68,14 @@ class OrchestratorSession:
         self._send_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
-        mcp_server = build_orchestrator_mcp_server(self._manager)
+        mcp_server = build_orchestrator_mcp_server(
+            self._manager,
+            apply_layout=self._apply_layout,
+            layouts_store=self._layouts_store,
+            config_store=self._config_store,
+            actions=self._actions,
+            rebind_keys=self._rebind_keys,
+        )
         options_kwargs: dict = {
             "cwd": str(self._cwd),
             "mcp_servers": {"mod_tui_orchestrator": mcp_server},

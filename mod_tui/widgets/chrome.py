@@ -62,6 +62,7 @@ class StatusBar(Horizontal):
         self._bus = event_bus
         self._layout_name = layout_name
         self._unsub = lambda: None
+        self._unsub_layout = lambda: None
 
     def compose(self) -> ComposeResult:
         yield Static("tokens 0/0", id="sb-tokens")
@@ -71,14 +72,16 @@ class StatusBar(Horizontal):
         yield Static("", id="sb-error")
 
     def on_mount(self) -> None:
-        from mod_tui.events import StatsUpdated
+        from mod_tui.events import LayoutApplied, StatsUpdated
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
             return
         self._unsub = bus.subscribe(StatsUpdated, self._on_stats)
+        self._unsub_layout = bus.subscribe(LayoutApplied, self._on_layout_applied)
 
     def on_unmount(self) -> None:
         self._unsub()
+        self._unsub_layout()
 
     def _on_stats(self, event) -> None:
         self.query_one("#sb-tokens", Static).update(
@@ -86,6 +89,10 @@ class StatusBar(Horizontal):
         )
         self.query_one("#sb-cost", Static).update(f"${event.cost:.2f}")
         self.query_one("#sb-agents", Static).update(f"{event.active_agents} agents")
+
+    def _on_layout_applied(self, event) -> None:
+        name = event.layout_name or "default"
+        self.set_layout_name(name)
 
     def set_layout_name(self, name: str) -> None:
         self._layout_name = name
