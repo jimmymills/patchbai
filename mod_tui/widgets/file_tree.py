@@ -17,3 +17,10 @@ class FileTree(DirectoryTree):
         bus = getattr(self.app, "event_bus", None)
         if bus is not None:
             bus.publish(FileSelected(path=str(event.path)))
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        path = props.get("path")
+        if path:
+            return f"Files: {path}"
+        return "Files"

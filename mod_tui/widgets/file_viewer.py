@@ -95,3 +95,11 @@ class FileViewer(TextArea):
                 self.language = language
             except Exception:
                 pass
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        from pathlib import Path as _P
+        file_path = props.get("file_path")
+        if file_path:
+            return f"File: {_P(file_path).name}"
+        return "File"

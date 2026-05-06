@@ -49,3 +49,10 @@ class AgentTranscript(Vertical):
     def rendered_text(self) -> str:
         """Test helper — delegates to the inner RichTranscript."""
         return self.query_one(RichTranscript).rendered_text()
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        agent_id = props.get("agent_id")
+        if agent_id:
+            return f"Agent: {agent_id}"
+        return "Agent"

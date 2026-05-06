@@ -30,3 +30,10 @@ class Notebook(TextArea):
     def on_text_area_changed(self, _event) -> None:
         # Saves on every keystroke. Cheap for a scratchpad-sized file.
         self._save()
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        name = props.get("name")
+        if name:
+            return f"Note: {name}"
+        return "Note"

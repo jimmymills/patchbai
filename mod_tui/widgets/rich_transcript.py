@@ -384,3 +384,10 @@ class RichTranscript(Vertical):
             elif isinstance(child, Static):
                 parts.append(str(child.content))
         return "\n".join(parts)
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        agent_id = props.get("agent_id")
+        if agent_id:
+            return f"Transcript: {agent_id}"
+        return "Transcript"

@@ -104,3 +104,10 @@ class LogTail(VerticalScroll):
             self.query_one("#log-tail-content", Static).update(Text(self.text))
         except Exception:
             pass
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        file_path = props.get("file_path")
+        if file_path:
+            return f"Log: {Path(file_path).name}"
+        return "Log"
