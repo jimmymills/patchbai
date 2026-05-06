@@ -78,7 +78,12 @@ from textual.containers import Horizontal, Vertical
 def _has_border_in_default_css(cls) -> bool:
     """Heuristic: does this class (or an ancestor) declare a border in
     DEFAULT_CSS? Used by the safety net so we don't clobber a widget's own
-    border style. Walks the MRO so subclasses inherit the answer."""
+    border style. Walks the MRO so subclasses inherit the answer.
+
+    Naive substring match — will false-positive on `border:` appearing in
+    a CSS comment or in a selector name like `.border-panel`. The failure
+    mode (skipping the safety net when we shouldn't) is cosmetic, not
+    functional, and rare enough to accept here."""
     for base in cls.__mro__:
         css = getattr(base, "DEFAULT_CSS", "") or ""
         if isinstance(css, str) and ("border:" in css or "border-" in css):
