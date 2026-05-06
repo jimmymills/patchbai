@@ -79,7 +79,8 @@ async def test_orchestrator_can_spawn_agent_and_table_updates(tmp_path):
         # execute MCP tool calls (the real SDK does that subprocess-side),
         # we invoke spawn_agent directly here as the orchestrator would.
         from mod_tui.orchestrator.tools import build_orchestrator_tools
-        spawn, _list, _read, _send, _interrupt, _kill, _respond = build_orchestrator_tools(manager)
+        tools = build_orchestrator_tools(manager)
+        spawn = tools["spawn_agent"]
         await spawn({"name": "alpha", "prompt": "say hi"})
         await pilot.pause()
 

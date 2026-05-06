@@ -38,7 +38,8 @@ def _make_manager(tmp_path: Path) -> AgentManager:
 @pytest.mark.asyncio
 async def test_spawn_agent_tool_creates_agent_and_returns_id(tmp_path: Path):
     manager = _make_manager(tmp_path)
-    spawn, _list, _read, _send, _interrupt, _kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
 
     result = await spawn({"name": "research", "prompt": "do the thing"})
 
@@ -51,7 +52,9 @@ async def test_spawn_agent_tool_creates_agent_and_returns_id(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_list_agents_tool_returns_json(tmp_path: Path):
     manager = _make_manager(tmp_path)
-    spawn, list_tool, _read, _send, _interrupt, _kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    list_tool = tools["list_agents"]
     await spawn({"name": "alpha", "prompt": "hi"})
 
     out = await list_tool({})
@@ -65,7 +68,9 @@ async def test_list_agents_tool_returns_json(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_read_agent_transcript_tool_returns_messages(tmp_path: Path):
     manager = _make_manager(tmp_path)
-    spawn, _list, read, _send, _interrupt, _kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    read = tools["read_agent_transcript"]
     spawn_out = await spawn({"name": "alpha", "prompt": "say hi"})
     agent_id = manager.list_infos()[0].id
     await manager.wait_idle(agent_id)

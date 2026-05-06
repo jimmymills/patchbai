@@ -63,7 +63,8 @@ async def test_ask_orchestrator_round_trip(tmp_path):
 
     # The orchestrator (in production: the AI) calls respond_to_agent_request.
     # We invoke it directly here.
-    _spawn, _list, _read, _send, _interrupt, _kill, respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    respond = tools["respond_to_agent_request"]
 
     # Race the wait against the resolution.
     async def waiter():

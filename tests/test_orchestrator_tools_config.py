@@ -42,7 +42,7 @@ async def test_bind_key_persists_and_triggers_rebind(tmp_path, ok_script):
         actions=actions,
         rebind_keys=rebind,
     )
-    bind_key = tools[7]
+    bind_key = tools["bind_key"]
 
     out = await bind_key({"key": "~", "action": "focus_orchestrator"})
     text = out["content"][0]["text"].lower()
@@ -57,7 +57,7 @@ async def test_bind_key_persists_and_triggers_rebind(tmp_path, ok_script):
 async def test_bind_key_unknown_action_returns_error(tmp_path, ok_script):
     manager, store, actions, rebind, _ = _make(tmp_path, ok_script)
     tools = build_orchestrator_tools(manager, config_store=store, actions=actions, rebind_keys=rebind)
-    bind_key = tools[7]
+    bind_key = tools["bind_key"]
     out = await bind_key({"key": "~", "action": "no_such_action"})
     assert "unknown action" in out["content"][0]["text"].lower()
 
@@ -66,8 +66,8 @@ async def test_bind_key_unknown_action_returns_error(tmp_path, ok_script):
 async def test_unbind_key_removes_binding(tmp_path, ok_script):
     manager, store, actions, rebind, _ = _make(tmp_path, ok_script)
     tools = build_orchestrator_tools(manager, config_store=store, actions=actions, rebind_keys=rebind)
-    bind_key = tools[7]
-    unbind_key = tools[8]
+    bind_key = tools["bind_key"]
+    unbind_key = tools["unbind_key"]
 
     await bind_key({"key": "~", "action": "focus_orchestrator"})
     out = await unbind_key({"key": "~"})
@@ -80,8 +80,8 @@ async def test_unbind_key_removes_binding(tmp_path, ok_script):
 async def test_set_config_dotted_path(tmp_path, ok_script):
     manager, store, actions, rebind, _ = _make(tmp_path, ok_script)
     tools = build_orchestrator_tools(manager, config_store=store, actions=actions, rebind_keys=rebind)
-    set_config = tools[9]
-    get_config = tools[10]
+    set_config = tools["set_config"]
+    get_config = tools["get_config"]
 
     await set_config({"path": "ui.theme", "value": "light"})
     out = await get_config({"path": "ui.theme"})
@@ -92,7 +92,7 @@ async def test_set_config_dotted_path(tmp_path, ok_script):
 async def test_list_actions_returns_json(tmp_path, ok_script):
     manager, store, actions, rebind, _ = _make(tmp_path, ok_script)
     tools = build_orchestrator_tools(manager, config_store=store, actions=actions, rebind_keys=rebind)
-    list_actions = tools[11]
+    list_actions = tools["list_actions"]
 
     out = await list_actions({})
     parsed = json.loads(out["content"][0]["text"])
@@ -105,8 +105,8 @@ async def test_list_actions_returns_json(tmp_path, ok_script):
 async def test_list_bindings_returns_current_bindings(tmp_path, ok_script):
     manager, store, actions, rebind, _ = _make(tmp_path, ok_script)
     tools = build_orchestrator_tools(manager, config_store=store, actions=actions, rebind_keys=rebind)
-    bind_key = tools[7]
-    list_bindings = tools[12]
+    bind_key = tools["bind_key"]
+    list_bindings = tools["list_bindings"]
 
     await bind_key({"key": "~", "action": "focus_orchestrator"})
     out = await list_bindings({})

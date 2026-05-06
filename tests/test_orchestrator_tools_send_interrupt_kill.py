@@ -29,7 +29,9 @@ def _make_manager(tmp_path):
 @pytest.mark.asyncio
 async def test_send_to_agent_appends_followup_to_transcript(tmp_path):
     manager = _make_manager(tmp_path)
-    spawn, _list, _read, send, _interrupt, _kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    send = tools["send_to_agent"]
 
     await spawn({"name": "alpha", "prompt": "say first"})
     aid = manager.list_infos()[0].id
@@ -46,7 +48,9 @@ async def test_send_to_agent_appends_followup_to_transcript(tmp_path):
 @pytest.mark.asyncio
 async def test_kill_agent_removes_session(tmp_path):
     manager = _make_manager(tmp_path)
-    spawn, _list, _read, _send, _interrupt, kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    kill = tools["kill_agent"]
 
     await spawn({"name": "alpha", "prompt": "say first"})
     aid = manager.list_infos()[0].id
@@ -60,7 +64,9 @@ async def test_kill_agent_removes_session(tmp_path):
 @pytest.mark.asyncio
 async def test_interrupt_agent_calls_interrupt(tmp_path):
     manager = _make_manager(tmp_path)
-    spawn, _list, _read, _send, interrupt, _kill, _respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    interrupt = tools["interrupt_agent"]
 
     await spawn({"name": "alpha", "prompt": "say first"})
     aid = manager.list_infos()[0].id

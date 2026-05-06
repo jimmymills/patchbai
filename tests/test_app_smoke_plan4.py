@@ -57,14 +57,6 @@ async def test_bind_key_via_tool_then_press_triggers_action(tmp_path):
         await pilot.pause()
 
         # Use the orchestrator's bind_key tool to bind ~ to focus_orchestrator.
-        # Tool ordering when all optional params are provided:
-        #   _SPECS (7): spawn_agent[0], list_agents[1], read_agent_transcript[2],
-        #               send_to_agent[3], interrupt_agent[4], kill_agent[5],
-        #               respond_to_agent_request[6]
-        #   layout tools (4): set_layout[7], save_layout[8], load_layout[9],
-        #                     list_layouts[10]
-        #   config tools (6): bind_key[11], unbind_key[12], set_config[13],
-        #                     get_config[14], list_actions[15], list_bindings[16]
         tools = build_orchestrator_tools(
             app.manager,
             apply_layout=app._orchestrator_apply_layout,
@@ -73,7 +65,7 @@ async def test_bind_key_via_tool_then_press_triggers_action(tmp_path):
             actions=app.actions_registry,
             rebind_keys=app._rebind_keys,
         )
-        bind_key = tools[11]
+        bind_key = tools["bind_key"]
         await bind_key({"key": "~", "action": "focus_orchestrator"})
         await pilot.pause()
 

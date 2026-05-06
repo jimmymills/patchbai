@@ -32,8 +32,7 @@ async def test_set_layout_calls_the_apply_callable(tmp_path, ok_script):
     tools = build_orchestrator_tools(
         manager, apply_layout=apply_callable, layouts_store=store
     )
-    # Tuple now has 7 + 4 = 11 entries; set_layout is at the end.
-    set_layout = tools[7]
+    set_layout = tools["set_layout"]
 
     spec_dict = dashboard_layout().model_dump(mode="json")
     out = await set_layout({"spec": spec_dict})
@@ -52,9 +51,9 @@ async def test_save_layout_then_load_round_trips(tmp_path, ok_script):
     tools = build_orchestrator_tools(
         manager, apply_layout=apply_callable, layouts_store=store
     )
-    save_layout = tools[8]
-    load_layout = tools[9]
-    list_layouts = tools[10]
+    save_layout = tools["save_layout"]
+    load_layout = tools["load_layout"]
+    list_layouts = tools["list_layouts"]
 
     spec = dashboard_layout()
     out_save = await save_layout({"name": "triage", "spec": spec.model_dump(mode="json")})
@@ -77,7 +76,7 @@ async def test_set_layout_with_invalid_spec_returns_error_text(tmp_path, ok_scri
     tools = build_orchestrator_tools(
         manager, apply_layout=apply_callable, layouts_store=store
     )
-    set_layout = tools[7]
+    set_layout = tools["set_layout"]
 
     bad = {"version": 1, "layout": {"id": "x", "widget": "AgentTable"}}
     out = await set_layout({"spec": bad})
@@ -95,7 +94,7 @@ async def test_load_layout_missing_returns_error_text(tmp_path, ok_script):
     tools = build_orchestrator_tools(
         manager, apply_layout=apply_callable, layouts_store=store
     )
-    load_layout = tools[9]
+    load_layout = tools["load_layout"]
 
     out = await load_layout({"name": "nonexistent"})
     text = out["content"][0]["text"].lower()

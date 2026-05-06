@@ -27,7 +27,9 @@ async def test_respond_to_agent_request_resolves_pending_inbox_entry(tmp_path):
         bus=EventBus(),
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    spawn, _list, _read, _send, _interrupt, _kill, respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    spawn = tools["spawn_agent"]
+    respond = tools["respond_to_agent_request"]
 
     await spawn({"name": "alpha", "prompt": "hi"})
     aid = manager.list_infos()[0].id
@@ -53,7 +55,8 @@ async def test_respond_to_unknown_agent_returns_error_text(tmp_path):
         bus=EventBus(),
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    _spawn, _list, _read, _send, _interrupt, _kill, respond = build_orchestrator_tools(manager)
+    tools = build_orchestrator_tools(manager)
+    respond = tools["respond_to_agent_request"]
 
     out = await respond(
         {"agent_id": "nope", "request_id": "x", "response": "anything"}

@@ -319,7 +319,7 @@ def build_orchestrator_tools(
     actions: ActionRegistry | None = None,
     rebind_keys=None,
 ):
-    """Return bare async handlers (for unit testing).
+    """Return a dict {tool_name: async_handler} for unit testing.
 
     apply_layout: async callable (spec, *, layout_name=None) -> None applying a
     LayoutSpec to the live UI. If None, set_layout / load_layout are omitted.
@@ -328,20 +328,22 @@ def build_orchestrator_tools(
     config_store + actions: if both provided, config/keybinding tools are added.
     rebind_keys: optional callable invoked after any keybinding change.
     """
-    handlers = [spec.build(manager) for spec in _SPECS]
+    handlers: dict = {}
+    for spec in _SPECS:
+        handlers[spec.name] = spec.build(manager)
     if apply_layout is not None and layouts_store is not None:
-        handlers.append(_set_layout_handler(apply_layout))
-        handlers.append(_save_layout_handler(layouts_store))
-        handlers.append(_load_layout_handler(apply_layout, layouts_store))
-        handlers.append(_list_layouts_handler(layouts_store))
+        handlers["set_layout"] = _set_layout_handler(apply_layout)
+        handlers["save_layout"] = _save_layout_handler(layouts_store)
+        handlers["load_layout"] = _load_layout_handler(apply_layout, layouts_store)
+        handlers["list_layouts"] = _list_layouts_handler(layouts_store)
     if config_store is not None and actions is not None:
-        handlers.append(_bind_key_handler(config_store, actions, rebind_keys))
-        handlers.append(_unbind_key_handler(config_store, rebind_keys))
-        handlers.append(_set_config_handler(config_store))
-        handlers.append(_get_config_handler(config_store))
-        handlers.append(_list_actions_handler(actions))
-        handlers.append(_list_bindings_handler(config_store))
-    return tuple(handlers)
+        handlers["bind_key"] = _bind_key_handler(config_store, actions, rebind_keys)
+        handlers["unbind_key"] = _unbind_key_handler(config_store, rebind_keys)
+        handlers["set_config"] = _set_config_handler(config_store)
+        handlers["get_config"] = _get_config_handler(config_store)
+        handlers["list_actions"] = _list_actions_handler(actions)
+        handlers["list_bindings"] = _list_bindings_handler(config_store)
+    return handlers
 
 
 def build_orchestrator_mcp_server(
