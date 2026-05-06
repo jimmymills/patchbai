@@ -26,4 +26,4 @@ def global_config_dir() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:
         return Path(xdg) / "mod_tui"
-    return Path(os.environ["HOME"]) / ".config" / "mod_tui"
+    return Path.home() / ".config" / "mod_tui"
