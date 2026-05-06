@@ -11,6 +11,7 @@ class Panel(BaseModel):
     widget: str
     props: dict = Field(default_factory=dict)
     size: str | None = None
+    title: str | None = None
 
 
 class Container(BaseModel):
