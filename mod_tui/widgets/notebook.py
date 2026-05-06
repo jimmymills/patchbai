@@ -6,6 +6,12 @@ from textual.widgets import TextArea
 class Notebook(TextArea):
     """Persistent scratch buffer at <cwd>/.mod_tui/scratch/<name>.md."""
 
+    DEFAULT_CSS = """
+    Notebook {
+        border: round $surface-lighten-2;
+    }
+    """
+
     def __init__(self, *, name: str) -> None:
         super().__init__("", language="markdown")
         self._name = name

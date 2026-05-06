@@ -10,6 +10,13 @@ class Markdown(VerticalScroll):
     VerticalScroll so long documents are scrollable. The internal
     `_markdown` attribute holds the source string for tests."""
 
+    DEFAULT_CSS = """
+    Markdown {
+        border: round $surface-lighten-2;
+        padding: 0 1;
+    }
+    """
+
     def __init__(
         self,
         *,

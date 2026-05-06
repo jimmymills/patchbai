@@ -55,6 +55,12 @@ class FileViewer(TextArea):
         {"id": "viewer", "widget": "FileViewer", "props": {"follow_selection": true}}
     """
 
+    DEFAULT_CSS = """
+    FileViewer {
+        border: round $surface-lighten-2;
+    }
+    """
+
     def __init__(
         self,
         *,

@@ -268,6 +268,7 @@ class RichTranscript(Vertical):
 
     DEFAULT_CSS = """
     RichTranscript {
+        border: round $surface-lighten-2;
         height: 1fr;
     }
     RichTranscript > VerticalScroll {
