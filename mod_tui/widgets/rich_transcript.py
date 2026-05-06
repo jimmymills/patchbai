@@ -35,6 +35,7 @@ class _ToolCall(Collapsible):
         self._args_text = args_text
         self._spinner_idx = 0
         self._spinner_timer = None
+        self._done = False
         self._args_static = Static(self._build_args_text())
         self._result_static = Static(Text("(running…)", style="dim"))
         super().__init__(
@@ -45,6 +46,8 @@ class _ToolCall(Collapsible):
         )
 
     def on_mount(self) -> None:
+        if self._done:
+            return
         self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
@@ -71,6 +74,7 @@ class _ToolCall(Collapsible):
         return f"{marker} {_markup_escape(self.tool_name)} → {_markup_escape(short)}"
 
     def attach_result(self, content_text: str, *, error: bool = False) -> None:
+        self._done = True
         if self._spinner_timer is not None:
             self._spinner_timer.stop()
             self._spinner_timer = None
@@ -82,6 +86,7 @@ class _ToolCall(Collapsible):
         self.collapsed = True
 
     def mark_done(self) -> None:
+        self._done = True
         if self._spinner_timer is not None:
             self._spinner_timer.stop()
             self._spinner_timer = None
@@ -119,6 +124,8 @@ class _ThinkingGroup(Collapsible):
         return f"{_SPINNER_FRAMES[self._spinner_idx]} Thinking…"
 
     def on_mount(self) -> None:
+        if self._done:
+            return
         self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
