@@ -1,8 +1,10 @@
 from mod_tui.agents.state import AgentInfo, AgentState
 from mod_tui.events import (
     AgentMessageAppended,
+    AgentNotifiedOrchestrator,
     AgentSpawned,
     AgentStateChanged,
+    DirectMessageToAgent,
     EventBus,
 )
 
@@ -50,3 +52,23 @@ def test_agent_message_appended_carries_role_and_text():
     assert received[0].agent_id == "a1"
     assert received[0].role == "assistant"
     assert received[0].text == "hello world"
+
+
+def test_agent_notified_orchestrator_carries_text():
+    bus = EventBus()
+    received: list[AgentNotifiedOrchestrator] = []
+    bus.subscribe(AgentNotifiedOrchestrator, received.append)
+
+    bus.publish(AgentNotifiedOrchestrator(agent_id="a1", message="task complete"))
+    assert received[0].agent_id == "a1"
+    assert received[0].message == "task complete"
+
+
+def test_direct_message_to_agent_carries_text():
+    bus = EventBus()
+    received: list[DirectMessageToAgent] = []
+    bus.subscribe(DirectMessageToAgent, received.append)
+
+    bus.publish(DirectMessageToAgent(agent_id="a1", text="hi from user"))
+    assert received[0].agent_id == "a1"
+    assert received[0].text == "hi from user"

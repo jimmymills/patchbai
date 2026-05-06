@@ -68,6 +68,20 @@ class AgentRequestedUserInput:
     request_id: str
 
 
+@dataclass(frozen=True)
+class AgentNotifiedOrchestrator:
+    """A child agent called notify_orchestrator (fire-and-forget)."""
+    agent_id: str
+    message: str
+
+
+@dataclass(frozen=True)
+class DirectMessageToAgent:
+    """User typed directly to a focused AgentTranscript's input."""
+    agent_id: str
+    text: str
+
+
 # --- The bus ---------------------------------------------------------------
 
 class EventBus:
