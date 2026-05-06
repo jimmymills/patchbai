@@ -7,6 +7,8 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
     UserMessage,
 )
 
@@ -132,15 +134,6 @@ async def test_session_records_usage_from_result(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
     """ToolUseBlock.id and ToolResultBlock.tool_use_id reach the bus event."""
-    from claude_agent_sdk import (
-        AssistantMessage, ResultMessage, ToolResultBlock, ToolUseBlock, UserMessage,
-    )
-    from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-    from mod_tui.agents.session import AgentSession
-    from mod_tui.agents.state import AgentInfo
-    from mod_tui.events import AgentMessageAppended, EventBus
-    from mod_tui.persistence.transcript_store import AgentTranscript
-
     bus = EventBus()
     received: list[AgentMessageAppended] = []
     bus.subscribe(AgentMessageAppended, received.append)
@@ -167,7 +160,6 @@ async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
         transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
         bus=bus,
     )
-    from claude_agent_sdk import ClaudeAgentOptions
     await session.start(options=ClaudeAgentOptions(cwd=str(tmp_path)))
     await session.send("go")
     await session.wait_idle()
@@ -178,3 +170,4 @@ async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
     assert tool_uses and tool_uses[0].tool_id == "toolu_xyz"
     assert tool_uses[0].tool_name == "bash"
     assert tool_results and tool_results[0].tool_id == "toolu_xyz"
+    assert tool_results[0].tool_name is None

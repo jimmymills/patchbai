@@ -117,6 +117,7 @@ class AgentSession:
         elif isinstance(msg, UserMessage):
             for block in msg.content:
                 if isinstance(block, ToolResultBlock):
+                    # tool_name not available on result blocks; consumers match via tool_id
                     self._record(
                         role="tool_result",
                         text=_short_repr(block.content),
