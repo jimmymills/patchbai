@@ -1,3 +1,4 @@
+import weakref
 from dataclasses import dataclass
 
 from mod_tui.events import LayoutApplied, LayoutFailed
@@ -90,8 +91,12 @@ def _build(node, registry) -> "TxContainer":
     return box
 
 
-# Track the most recent applied spec per container (used for fast-path).
-_last_applied_spec: dict[int, LayoutSpec] = {}
+# Track the most recent applied spec per container, keyed by the container
+# instance itself. WeakKeyDictionary ensures stale entries gc out when the
+# container is no longer referenced — important since `apply` is called many
+# times per session in tests, and id-keyed caches are footguns once the
+# garbage collector reuses ids.
+_last_applied_spec: "weakref.WeakKeyDictionary[TxContainer, LayoutSpec]" = weakref.WeakKeyDictionary()
 
 
 async def apply(container: TxContainer, spec: LayoutSpec, registry,
@@ -114,7 +119,7 @@ async def apply(container: TxContainer, spec: LayoutSpec, registry,
     bus = getattr(container.app, "event_bus", None)
 
     # Fast-path: same spec → no rebuild.
-    if _last_applied_spec.get(id(container)) == spec:
+    if _last_applied_spec.get(container) == spec:
         if bus is not None:
             bus.publish(LayoutApplied(spec=spec, layout_name=layout_name))
         return
@@ -146,6 +151,6 @@ async def apply(container: TxContainer, spec: LayoutSpec, registry,
         except Exception:
             pass
 
-    _last_applied_spec[id(container)] = spec
+    _last_applied_spec[container] = spec
     if bus is not None:
         bus.publish(LayoutApplied(spec=spec, layout_name=layout_name))
