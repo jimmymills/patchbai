@@ -80,8 +80,11 @@ class OrchestratorChat(Vertical):
             bus.publish(UserMessageToOrchestrator(text))
 
     def _append_line(self, role: str, text: str) -> None:
+        from rich.markup import escape
         msgs = self.query_one("#orch-messages", VerticalScroll)
         prefix = "you" if role == "user" else "claude"
         cls = "msg-user" if role == "user" else "msg-orch"
-        msgs.mount(Static(f"[{cls}]{prefix}:[/{cls}] {text}"))
+        # Escape the body so dict reprs / brackets in tool args don't trip
+        # Rich's markup parser ('{', '[name]', etc).
+        msgs.mount(Static(f"[{cls}]{prefix}:[/{cls}] {escape(text)}"))
         msgs.scroll_end(animate=False)
