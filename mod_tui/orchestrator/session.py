@@ -138,9 +138,18 @@ class OrchestratorSession:
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self.AGENT_ID:
             return
-        if event.role != "assistant":
-            return
-        self._bus.publish(OrchestratorReply(event.text))
+        # Surface assistant text + tool activity in the chat so the user has
+        # progress feedback during long-running tool sequences. Without
+        # tool_use/tool_result, the orchestrator looks frozen whenever it's
+        # mid-tool-call (e.g. set_layout, spawn_agent).
+        if event.role == "assistant":
+            self._bus.publish(OrchestratorReply(event.text))
+        elif event.role == "tool_use":
+            self._bus.publish(OrchestratorReply(f"[tool use] {event.text}"))
+        elif event.role == "tool_result":
+            # Truncate tool results to keep the chat readable.
+            text = event.text if len(event.text) <= 240 else event.text[:237] + "…"
+            self._bus.publish(OrchestratorReply(f"[tool result] {text}"))
 
     def _on_child_notified(self, event: AgentNotifiedOrchestrator) -> None:
         synthetic = (
