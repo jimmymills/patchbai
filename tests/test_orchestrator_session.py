@@ -1,5 +1,12 @@
 import pytest
-from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+from claude_agent_sdk import (
+    AssistantMessage,
+    ResultMessage,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+    UserMessage,
+)
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
@@ -111,10 +118,6 @@ async def test_orchestrator_session_stop_unsubscribes(tmp_path):
 async def test_tool_use_does_not_publish_orchestrator_reply(tmp_path):
     """Tool use/result no longer go through OrchestratorReply — RichTranscript
     reads the richer AgentMessageAppended event directly."""
-    from claude_agent_sdk import (
-        AssistantMessage, ResultMessage, ToolResultBlock, ToolUseBlock, UserMessage,
-    )
-
     script = [
         AssistantMessage(
             content=[ToolUseBlock(id="t1", name="bash", input={"cmd": "ls"})],
