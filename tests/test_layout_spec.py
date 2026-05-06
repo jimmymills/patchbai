@@ -1,6 +1,6 @@
 import pytest
 
-from mod_tui.layout.spec import Container, LayoutSpec, Panel
+from mod_tui.layout.spec import Container, LayoutSpec, Panel, Tabs
 
 
 def _minimal() -> dict:
@@ -45,16 +45,19 @@ def test_nested_container_parses():
     assert spec.focus == "orch"
 
 
-def test_spec_without_orchestrator_chat_is_rejected():
-    with pytest.raises(ValueError, match="OrchestratorChat"):
-        LayoutSpec.model_validate({
-            "version": 1,
-            "layout": {"id": "x", "widget": "AgentTable"},
-        })
+def test_spec_without_orchestrator_chat_is_now_accepted():
+    # Per design: LayoutSpec allows zero OrchestratorChat. Workspace
+    # enforces "at least one across all tabs."
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {"id": "x", "widget": "AgentTable"},
+    })
+    assert isinstance(spec.layout, Panel)
+    assert spec.layout.widget == "AgentTable"
 
 
 def test_spec_with_two_orchestrator_chats_is_rejected():
-    with pytest.raises(ValueError, match="exactly one"):
+    with pytest.raises(ValueError, match="at most one"):
         LayoutSpec.model_validate({
             "version": 1,
             "layout": {
@@ -137,3 +140,180 @@ def test_panel_title_round_trips_through_dump():
 def test_panel_extra_fields_still_rejected_with_title_present():
     with pytest.raises(Exception):
         Panel.model_validate({"id": "feed", "widget": "ActivityFeed", "title": "Activity", "junk": 1})
+
+
+def test_tabs_node_parses_with_panel_children():
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat"},
+                {
+                    "type": "tabs",
+                    "children": [
+                        {"id": "feed", "widget": "ActivityFeed", "title": "Activity"},
+                        {"id": "logs", "widget": "LogTail", "title": "SQL logs"},
+                    ],
+                    "active": "logs",
+                },
+            ],
+        },
+    })
+    root = spec.layout
+    assert isinstance(root, Container)
+    tabs_node = root.children[1]
+    assert isinstance(tabs_node, Tabs)
+    assert [p.id for p in tabs_node.children] == ["feed", "logs"]
+    assert tabs_node.active == "logs"
+
+
+def test_tabs_node_rejects_empty_children():
+    with pytest.raises(ValueError):
+        LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {
+                "type": "horizontal",
+                "children": [
+                    {"id": "orch", "widget": "OrchestratorChat"},
+                    {"type": "tabs", "children": []},
+                ],
+            },
+        })
+
+
+def test_tabs_node_rejects_container_child():
+    # Tabs is leaf-only: each tab must be a Panel, never a Container.
+    with pytest.raises(ValueError):
+        LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {
+                "type": "horizontal",
+                "children": [
+                    {"id": "orch", "widget": "OrchestratorChat"},
+                    {
+                        "type": "tabs",
+                        "children": [
+                            {"type": "horizontal", "children": [
+                                {"id": "x", "widget": "AgentTable"},
+                            ]},
+                        ],
+                    },
+                ],
+            },
+        })
+
+
+def test_tabs_node_active_defaults_to_none():
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat"},
+                {
+                    "type": "tabs",
+                    "children": [{"id": "a", "widget": "AgentTable"}],
+                },
+            ],
+        },
+    })
+    root = spec.layout
+    assert isinstance(root, Container)
+    tabs_node = root.children[1]
+    assert isinstance(tabs_node, Tabs)
+    assert tabs_node.active is None
+
+
+def test_container_with_horizontal_type_still_parses():
+    # Sanity: discriminated-union refactor preserves existing behavior.
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [{"id": "orch", "widget": "OrchestratorChat"}],
+        },
+    })
+    assert isinstance(spec.layout, Container)
+    assert spec.layout.type == "horizontal"
+
+
+def test_two_orchestrator_chats_across_tabs_and_panel_is_rejected():
+    # Regression guard: _count_orchestrator must descend into Tabs.children
+    # AND walk Container siblings.
+    with pytest.raises(ValueError, match="at most one"):
+        LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {
+                "type": "horizontal",
+                "children": [
+                    {"id": "a", "widget": "OrchestratorChat"},
+                    {"type": "tabs", "children": [
+                        {"id": "b", "widget": "OrchestratorChat"},
+                    ]},
+                ],
+            },
+        })
+
+
+def test_tabs_round_trip_json():
+    src = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat"},
+                {"type": "tabs", "active": "logs", "children": [
+                    {"id": "feed", "widget": "ActivityFeed"},
+                    {"id": "logs", "widget": "LogTail"},
+                ]},
+            ],
+        },
+    })
+    again = LayoutSpec.model_validate_json(src.model_dump_json())
+    assert again == src
+
+
+def test_tabs_node_active_must_match_a_child_id():
+    with pytest.raises(ValueError, match="does not match any child panel id"):
+        LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {
+                "type": "horizontal",
+                "children": [
+                    {"id": "orch", "widget": "OrchestratorChat"},
+                    {
+                        "type": "tabs",
+                        "active": "ghost",
+                        "children": [
+                            {"id": "feed", "widget": "ActivityFeed"},
+                        ],
+                    },
+                ],
+            },
+        })
+
+
+def test_tabs_node_active_pointing_at_existing_child_is_accepted():
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat"},
+                {
+                    "type": "tabs",
+                    "active": "feed",
+                    "children": [
+                        {"id": "feed", "widget": "ActivityFeed"},
+                        {"id": "logs", "widget": "LogTail"},
+                    ],
+                },
+            ],
+        },
+    })
+    root = spec.layout
+    assert isinstance(root, Container)
+    tabs_node = root.children[1]
+    assert isinstance(tabs_node, Tabs)
+    assert tabs_node.active == "feed"

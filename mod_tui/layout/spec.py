@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -23,19 +23,43 @@ class Container(BaseModel):
     children: list["Node"] = Field(min_length=1)
 
 
-# Node disambiguation is load-bearing on extra="forbid":
-# Container has required {type, children}; Panel has required {id, widget}.
-# Pydantic v2 smart-union tries Container first; a Panel dict fails Container
-# validation because extra="forbid" rejects {id, widget} as unknown keys, then
-# falls through to Panel. DO NOT relax extra="forbid" on either model without
-# replacing this with a discriminated union.
-Node = Union[Container, Panel]
+class Tabs(BaseModel):
+    """A tabbed leaf-container — each child is one widget reachable via a
+    per-panel tab strip. Each tab holds exactly one Panel; splits inside
+    a single tab are not allowed.
+
+    `active` is the panel id of the initial tab; when None, the first
+    child is the initial tab."""
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["tabs"]
+    size: str | None = None
+    children: list[Panel] = Field(min_length=1)
+    active: str | None = None
+
+    @model_validator(mode="after")
+    def _active_must_match_a_child(self) -> "Tabs":
+        if self.active is not None:
+            ids = {p.id for p in self.children}
+            if self.active not in ids:
+                raise ValueError(
+                    f"Tabs.active={self.active!r} does not match any child panel id; "
+                    f"expected one of {sorted(ids)}"
+                )
+        return self
+
+
+# Discriminated union: Container and Tabs share the `children` shape but
+# differ on `type`. Pydantic v2 dispatches on the literal `type` value.
+# Panel has no `type` field and is matched by absence — placed last so
+# union resolution prefers the typed branches first.
+_TypedNode = Annotated[Union[Container, Tabs], Field(discriminator="type")]
+Node = Union[_TypedNode, Panel]
 Container.model_rebuild()
 
 
 class CustomWidget(BaseModel):
-    """A user/orchestrator-supplied Textual widget class. Mode C — wired in
-    a later plan; the field exists now so the spec format is stable."""
+    """A user/orchestrator-supplied Textual widget class."""
     model_config = ConfigDict(extra="forbid")
 
     name: str
@@ -45,8 +69,10 @@ class CustomWidget(BaseModel):
 class LayoutSpec(BaseModel):
     """Root of the layout description.
 
-    Validation invariant: exactly one panel with widget='OrchestratorChat'
-    must exist anywhere in `layout`. Specs that violate this are rejected.
+    Validation invariant: at most one panel with widget='OrchestratorChat'
+    in `layout`. The "at least one chat across all tabs" half is enforced
+    by the Workspace model — a single LayoutSpec may have zero chats
+    (e.g., a logs-only tab).
 
     The `focus` field names a panel id to receive keyboard focus on apply,
     but is NOT validated against the tree at parse time — LayoutEngine.apply
@@ -54,23 +80,17 @@ class LayoutSpec(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
-    # Schema version. Currently accepts any int — strict validation and
-    # schema-migration belong in plan 4 alongside the runtime set_layout tool.
     version: int = 1
     layout: Node
     focus: str | None = None
     custom_widgets: list[CustomWidget] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _exactly_one_orchestrator_chat(self) -> "LayoutSpec":
+    def _at_most_one_orchestrator_chat(self) -> "LayoutSpec":
         count = _count_orchestrator(self.layout)
-        if count == 0:
-            raise ValueError(
-                "LayoutSpec must contain a panel with widget='OrchestratorChat'"
-            )
         if count > 1:
             raise ValueError(
-                "LayoutSpec must contain exactly one OrchestratorChat panel"
+                "LayoutSpec must contain at most one OrchestratorChat panel"
             )
         return self
 
@@ -78,4 +98,7 @@ class LayoutSpec(BaseModel):
 def _count_orchestrator(node: Node) -> int:
     if isinstance(node, Panel):
         return 1 if node.widget == "OrchestratorChat" else 0
+    if isinstance(node, Tabs):
+        return sum(1 for c in node.children if c.widget == "OrchestratorChat")
+    # Container
     return sum(_count_orchestrator(c) for c in node.children)
