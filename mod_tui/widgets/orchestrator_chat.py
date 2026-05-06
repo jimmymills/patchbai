@@ -38,8 +38,14 @@ class OrchestratorChat(Vertical):
 
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="orch-messages")
-        yield Input(placeholder="Message orchestrator… (enter to send)",
-                    id="orch-input")
+        # select_on_focus=False so typed characters stay visible while focused
+        # (Textual's default selection styling can render text invisibly
+        # against the panel's background in some themes).
+        yield Input(
+            placeholder="Message orchestrator… (enter to send)",
+            id="orch-input",
+            select_on_focus=False,
+        )
 
     def on_mount(self) -> None:
         bus = self._bus or getattr(self.app, "event_bus", None)

@@ -26,12 +26,16 @@ class CommandBar(Horizontal):
     def compose(self) -> ComposeResult:
         yield Static("mt :> ")
         # `-textual-compact` is Textual's built-in single-line Input modifier:
-        # height 1, no border, no padding — and crucially keeps the default
-        # color/background pair so typed text remains visible when focused.
+        # height 1, no border, no padding.
+        # `select_on_focus=False` is critical: Textual's default behavior is
+        # to select-all on focus, and the selection foreground in many themes
+        # collides with the local background — typed text appears invisible
+        # until you blur the input.
         yield Input(
             placeholder="message orchestrator",
             id="cmd-input",
             classes="-textual-compact",
+            select_on_focus=False,
         )
 
     def focus_input(self) -> None:
