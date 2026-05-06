@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from mod_tui.events import LayoutApplied, LayoutFailed
 from mod_tui.layout.spec import Container, LayoutSpec, Panel
+from mod_tui.layout.titles import resolve_title
 
 
 # --- Operations -------------------------------------------------------------
@@ -74,6 +75,17 @@ from textual.containers import Container as TxContainer
 from textual.containers import Horizontal, Vertical
 
 
+def _has_border_in_default_css(cls) -> bool:
+    """Heuristic: does this class (or an ancestor) declare a border in
+    DEFAULT_CSS? Used by the safety net so we don't clobber a widget's own
+    border style. Walks the MRO so subclasses inherit the answer."""
+    for base in cls.__mro__:
+        css = getattr(base, "DEFAULT_CSS", "") or ""
+        if isinstance(css, str) and ("border:" in css or "border-" in css):
+            return True
+    return False
+
+
 def _build(node, registry) -> "TxContainer":
     if isinstance(node, Panel):
         cls = registry.get(node.widget)
@@ -83,6 +95,18 @@ def _build(node, registry) -> "TxContainer":
         if node.size:
             widget.styles.width = node.size if "%" in node.size or node.size.endswith("fr") else None
             widget.styles.height = None
+        # Border safety net: widgets with no DEFAULT_CSS border get a default
+        # one so border_title renders. Widgets with their own border keep it.
+        # CSS variables (e.g. $surface-lighten-2) are not valid as inline style
+        # color values before mount — use a concrete grey that approximates the
+        # default dark-mode surface colour.
+        if not _has_border_in_default_css(cls):
+            widget.styles.border = ("round", "#3a3a3a")
+        # Title resolution (never aborts the apply on a buggy widget).
+        try:
+            widget.border_title = resolve_title(node, cls)
+        except Exception:
+            widget.border_title = cls.__name__
         return widget
     box_cls = Horizontal if node.type == "horizontal" else Vertical
     box = box_cls(*[_build(c, registry) for c in node.children])
