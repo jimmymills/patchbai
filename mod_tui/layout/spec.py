@@ -53,6 +53,8 @@ class LayoutSpec(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
+    # Schema version. Currently accepts any int — strict validation and
+    # schema-migration belong in plan 4 alongside the runtime set_layout tool.
     version: int = 1
     layout: Node
     focus: str | None = None
