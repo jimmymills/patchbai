@@ -44,9 +44,9 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._subs: dict[type, list[Handler]] = {}
+        self._subs: dict[type, list[Callable]] = {}
 
-    def subscribe(self, event_type: type[E], handler: Handler) -> Unsubscribe:
+    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> Unsubscribe:
         self._subs.setdefault(event_type, []).append(handler)
 
         def unsubscribe() -> None:
@@ -57,6 +57,14 @@ class EventBus:
         return unsubscribe
 
     def publish(self, event: object) -> None:
+        """Dispatch `event` to all current subscribers of `type(event)`.
+
+        Handlers are called on a snapshot of the subscriber list, so handlers
+        that unsubscribe during dispatch do not interfere with the current
+        publish — their removal takes effect on subsequent publishes.
+
+        Subscribers of subclasses are NOT matched (exact-type dispatch only).
+        """
         for handler in list(self._subs.get(type(event), [])):
             try:
                 handler(event)

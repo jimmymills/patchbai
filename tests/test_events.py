@@ -78,3 +78,27 @@ def test_handler_exception_does_not_break_other_handlers():
     bus.publish(Ping("x"))  # must not raise
 
     assert good == [Ping("x")]
+
+
+def test_unsubscribe_during_publish_does_not_skip_other_handlers():
+    bus = EventBus()
+    received_a: list[Ping] = []
+    received_c: list[Ping] = []
+
+    unsub_b: list = [None]
+
+    def b(event):
+        # B unsubscribes itself during dispatch.
+        unsub_b[0]()
+
+    bus.subscribe(Ping, received_a.append)
+    unsub_b[0] = bus.subscribe(Ping, b)
+    bus.subscribe(Ping, received_c.append)
+
+    bus.publish(Ping("first"))
+    bus.publish(Ping("second"))
+
+    # A and C both receive both events; B's self-unsubscribe takes effect
+    # AFTER the current publish finishes (snapshot semantics).
+    assert received_a == [Ping("first"), Ping("second")]
+    assert received_c == [Ping("first"), Ping("second")]
