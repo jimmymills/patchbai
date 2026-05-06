@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 from mod_tui.agents.state import AgentInfo, AgentState
+
+if TYPE_CHECKING:
+    from mod_tui.layout.spec import LayoutSpec
 
 log = logging.getLogger(__name__)
 
@@ -80,6 +83,21 @@ class DirectMessageToAgent:
     """User typed directly to a focused AgentTranscript's input."""
     agent_id: str
     text: str
+
+
+# --- Layout event types ----------------------------------------------------
+
+@dataclass(frozen=True)
+class LayoutApplied:
+    """The LayoutEngine successfully applied a new spec."""
+    spec: "LayoutSpec"
+    layout_name: str | None = None  # if loaded by name; else None
+
+
+@dataclass(frozen=True)
+class LayoutFailed:
+    """The LayoutEngine rejected a spec at build time."""
+    error: str
 
 
 # --- The bus ---------------------------------------------------------------

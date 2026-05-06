@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from mod_tui.events import LayoutApplied, LayoutFailed
 from mod_tui.layout.spec import Container, LayoutSpec, Panel
 
 
@@ -89,23 +90,47 @@ def _build(node, registry) -> "TxContainer":
     return box
 
 
-async def apply(container: TxContainer, spec: LayoutSpec, registry) -> None:
+# Track the most recent applied spec per container (used for fast-path).
+_last_applied_spec: dict[int, LayoutSpec] = {}
+
+
+async def apply(container: TxContainer, spec: LayoutSpec, registry,
+                *, layout_name: str | None = None) -> None:
     """Replace `container`'s children with widgets built from `spec.layout`.
 
-    Preserves focus across rebuilds: if no explicit `spec.focus` is set, the
-    currently-focused panel id (if any) is restored after the rebuild —
-    provided the panel still exists in the new spec.
-
-    Atomic: builds the new tree fully (registry lookups + instantiation)
-    before touching the container. If anything raises, nothing is mounted.
+    Behavior:
+    - **Idempotent fast-path:** if `spec` equals the last-applied spec for this
+      container, skip the rebuild entirely. A `LayoutApplied` event is still
+      fired so subscribers can refresh anything spec-derived (e.g., the
+      StatusBar's layout name).
+    - **Atomic build:** the new widget tree is fully constructed before any
+      existing child is removed. If `_build` raises (e.g., UnknownWidgetError),
+      a `LayoutFailed(error=str(exc))` event is published and the previous
+      mounted layout stays untouched. The exception is re-raised.
+    - **Focus preservation:** if `spec.focus` is None and a panel is currently
+      focused, restore that panel's id after the rebuild (provided the panel
+      survives in the new spec).
     """
-    new_children = [_build(spec.layout, registry)]
+    bus = getattr(container.app, "event_bus", None)
 
-    # Snapshot the currently-focused panel id (e.g., "orch" from "panel-orch").
+    # Fast-path: same spec → no rebuild.
+    if _last_applied_spec.get(id(container)) == spec:
+        if bus is not None:
+            bus.publish(LayoutApplied(spec=spec, layout_name=layout_name))
+        return
+
+    # Atomic build (raises before any mount changes).
+    try:
+        new_children = [_build(spec.layout, registry)]
+    except Exception as e:
+        if bus is not None:
+            bus.publish(LayoutFailed(error=str(e)))
+        raise
+
+    # Snapshot focus.
     snapshot_focus_id: str | None = None
     try:
-        app = container.app
-        focused = app.focused
+        focused = container.app.focused
         if focused is not None and focused.id and focused.id.startswith("panel-"):
             snapshot_focus_id = focused.id[len("panel-"):]
     except Exception:
@@ -120,3 +145,7 @@ async def apply(container: TxContainer, spec: LayoutSpec, registry) -> None:
             container.query_one(f"#panel-{target}").focus()
         except Exception:
             pass
+
+    _last_applied_spec[id(container)] = spec
+    if bus is not None:
+        bus.publish(LayoutApplied(spec=spec, layout_name=layout_name))
