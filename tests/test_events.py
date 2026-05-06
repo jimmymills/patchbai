@@ -102,3 +102,20 @@ def test_unsubscribe_during_publish_does_not_skip_other_handlers():
     # AFTER the current publish finishes (snapshot semantics).
     assert received_a == [Ping("first"), Ping("second")]
     assert received_c == [Ping("first"), Ping("second")]
+
+
+def test_agent_message_appended_has_optional_tool_fields():
+    from mod_tui.events import AgentMessageAppended
+
+    # Backwards-compatible default — old call sites still work.
+    e1 = AgentMessageAppended(agent_id="a", role="assistant", text="hi")
+    assert e1.tool_id is None
+    assert e1.tool_name is None
+
+    # New call sites can carry SDK-provided ids.
+    e2 = AgentMessageAppended(
+        agent_id="a", role="tool_use", text="...",
+        tool_id="toolu_abc", tool_name="bash",
+    )
+    assert e2.tool_id == "toolu_abc"
+    assert e2.tool_name == "bash"
