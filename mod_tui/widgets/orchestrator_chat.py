@@ -45,7 +45,8 @@ class OrchestratorChat(Vertical):
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
             return
-        for role, text in self._history:
+        history = self._history or list(getattr(self.app, "orchestrator_history", []))
+        for role, text in history:
             self._append_line(role, text)
         self._unsub = bus.subscribe(
             OrchestratorReply, lambda e: self._append_line("orch", e.text)

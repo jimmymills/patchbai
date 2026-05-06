@@ -36,7 +36,7 @@ class ModTuiApp(App):
     # explicit binding needed. ctrl-h (history) and ctrl-l (layout switcher)
     # ship in plan 4 alongside the features they open.
     BINDINGS = [
-        Binding("/", "focus_command_bar", "command bar"),
+        Binding("/", "focus_command_bar", "command bar", priority=True),
         Binding("ctrl+q", "quit", "quit"),
         Binding("?", "show_help", "help"),
     ]
@@ -49,12 +49,24 @@ class ModTuiApp(App):
         self.registry = registry or build_default_registry()
         self._current_spec: LayoutSpec | None = None
 
+        from mod_tui.orchestrator.fake_session import FakeOrchestratorSession
+        from mod_tui.persistence.transcript_store import OrchestratorTranscript
+        self.transcript = OrchestratorTranscript(cwd=self.cwd)
+        self.session = FakeOrchestratorSession(
+            bus=self.event_bus, transcript=self.transcript
+        )
+        # Make prior history available to the OrchestratorChat widget at mount.
+        self.orchestrator_history: list[tuple[str, str]] = [
+            (e.role, e.text) for e in self.transcript.read_all()
+        ]
+
     def compose(self) -> ComposeResult:
         yield CommandBar(event_bus=self.event_bus)
         yield Container(id="panel-area")
         yield StatusBar(event_bus=self.event_bus)
 
     async def on_mount(self) -> None:
+        self.session.start()
         spec = load_layout(self.cwd) or dashboard_layout()
         await self._apply(spec)
 
@@ -63,6 +75,9 @@ class ModTuiApp(App):
         await apply_layout(area, spec, self.registry)
         self._current_spec = spec
         save_layout(self.cwd, spec)
+
+    def on_unmount(self) -> None:
+        self.session.stop()
 
     def action_focus_command_bar(self) -> None:
         self.query_one(CommandBar).focus_input()
