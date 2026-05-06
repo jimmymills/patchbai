@@ -1,10 +1,13 @@
 from pathlib import Path
 
+from textual.app import ComposeResult
+from textual.containers import VerticalScroll
 from textual.widgets import Markdown as _TxMarkdown
 
 
-class Markdown(_TxMarkdown):
-    """Renders markdown text from `source` or `file_path`. The internal
+class Markdown(VerticalScroll):
+    """Renders markdown text from `source` or `file_path`, wrapped in a
+    VerticalScroll so long documents are scrollable. The internal
     `_markdown` attribute holds the source string for tests."""
 
     def __init__(
@@ -13,6 +16,7 @@ class Markdown(_TxMarkdown):
         source: str | None = None,
         file_path: str | None = None,
     ) -> None:
+        super().__init__()
         if source is None and file_path is not None:
             try:
                 source = Path(file_path).read_text(encoding="utf-8")
@@ -22,5 +26,7 @@ class Markdown(_TxMarkdown):
                 source = f"*Error loading {file_path}: {e}*"
         if source is None:
             source = ""
-        super().__init__(source)
         self._markdown = source
+
+    def compose(self) -> ComposeResult:
+        yield _TxMarkdown(self._markdown)
