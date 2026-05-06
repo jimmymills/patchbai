@@ -3,7 +3,7 @@ from typing import Any
 from mod_tui.layout.spec import Panel
 
 
-def resolve_title(panel: "Panel | dict", widget_cls: type) -> str:
+def resolve_title(panel: "Panel | dict[str, Any]", widget_cls: type) -> str:
     """Resolve the effective border title for a panel.
 
     Resolution order:
@@ -14,7 +14,8 @@ def resolve_title(panel: "Panel | dict", widget_cls: type) -> str:
 
     Any exception raised inside ``default_border_title`` is swallowed and the
     resolution falls through to step 3 / step 4. A bad widget must never abort
-    layout apply.
+    layout apply. Non-string returns from ``default_border_title`` or
+    ``DEFAULT_BORDER_TITLE`` are also ignored — the resolver only emits ``str``.
 
     ``panel`` may be either a ``Panel`` model or a plain dict from
     ``model_dump`` (so ``get_layout`` can call this on a dumped tree without
@@ -22,12 +23,12 @@ def resolve_title(panel: "Panel | dict", widget_cls: type) -> str:
     """
     if isinstance(panel, Panel):
         explicit = panel.title
-        props = panel.props or {}
+        props: dict[str, Any] = panel.props or {}
     else:
         explicit = panel.get("title")
         props = panel.get("props") or {}
 
-    if explicit:
+    if isinstance(explicit, str) and explicit:
         return explicit
 
     fn = getattr(widget_cls, "default_border_title", None)
@@ -36,11 +37,11 @@ def resolve_title(panel: "Panel | dict", widget_cls: type) -> str:
             value = fn(props)
         except Exception:
             value = None
-        if value:
+        if isinstance(value, str) and value:
             return value
 
     static = getattr(widget_cls, "DEFAULT_BORDER_TITLE", None)
-    if static:
+    if isinstance(static, str) and static:
         return static
 
     return widget_cls.__name__
