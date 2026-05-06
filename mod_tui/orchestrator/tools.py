@@ -5,6 +5,8 @@ from typing import Any, Awaitable, Callable
 from claude_agent_sdk import create_sdk_mcp_server, tool
 
 from mod_tui.agents.manager import AgentManager
+from mod_tui.layout.spec import LayoutSpec
+from mod_tui.persistence.layouts_store import NamedLayoutsStore
 
 
 @dataclass(frozen=True)
@@ -102,6 +104,57 @@ def _respond_handler(manager: AgentManager):
     return respond_to_agent_request
 
 
+def _set_layout_handler(apply_layout):
+    async def set_layout_tool(args: dict) -> dict:
+        try:
+            spec = LayoutSpec.model_validate(args["spec"])
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Invalid LayoutSpec: {e}"}]}
+        try:
+            await apply_layout(spec)
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
+        return {"content": [{"type": "text", "text": "Layout applied."}]}
+    return set_layout_tool
+
+
+def _save_layout_handler(layouts_store: NamedLayoutsStore):
+    async def save_layout_tool(args: dict) -> dict:
+        name = args["name"]
+        try:
+            spec = LayoutSpec.model_validate(args["spec"])
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Invalid LayoutSpec: {e}"}]}
+        try:
+            layouts_store.save(name, spec)
+        except ValueError as e:
+            return {"content": [{"type": "text", "text": f"Invalid layout name: {e}"}]}
+        return {"content": [{"type": "text", "text": f"Saved layout {name!r}."}]}
+    return save_layout_tool
+
+
+def _load_layout_handler(apply_layout, layouts_store: NamedLayoutsStore):
+    async def load_layout_tool(args: dict) -> dict:
+        name = args["name"]
+        spec = layouts_store.load(name)
+        if spec is None:
+            return {"content": [{"type": "text", "text": f"Layout not found: {name}"}]}
+        try:
+            await apply_layout(spec, layout_name=name)
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
+        return {"content": [{"type": "text", "text": f"Loaded layout {name!r}."}]}
+    return load_layout_tool
+
+
+def _list_layouts_handler(layouts_store: NamedLayoutsStore):
+    async def list_layouts_tool(_args: dict) -> dict:
+        names = layouts_store.list()
+        text = json.dumps(names)
+        return {"content": [{"type": "text", "text": text}]}
+    return list_layouts_tool
+
+
 _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
@@ -176,17 +229,68 @@ _SPECS: list[_ToolSpec] = [
 ]
 
 
-def build_orchestrator_tools(manager: AgentManager):
-    """Return the bare async handlers (for unit testing)."""
-    return tuple(spec.build(manager) for spec in _SPECS)
+def build_orchestrator_tools(
+    manager: AgentManager,
+    *,
+    apply_layout=None,
+    layouts_store: NamedLayoutsStore | None = None,
+):
+    """Return bare async handlers (for unit testing).
+
+    apply_layout: async callable (spec, *, layout_name=None) -> None applying a
+    LayoutSpec to the live UI. If None, set_layout / load_layout are omitted.
+    layouts_store: NamedLayoutsStore for save/load/list. If None, the
+    save/load/list tools are omitted.
+    """
+    handlers = [spec.build(manager) for spec in _SPECS]
+    if apply_layout is not None and layouts_store is not None:
+        handlers.append(_set_layout_handler(apply_layout))
+        handlers.append(_save_layout_handler(layouts_store))
+        handlers.append(_load_layout_handler(apply_layout, layouts_store))
+        handlers.append(_list_layouts_handler(layouts_store))
+    return tuple(handlers)
 
 
-def build_orchestrator_mcp_server(manager: AgentManager):
+def build_orchestrator_mcp_server(
+    manager: AgentManager,
+    *,
+    apply_layout=None,
+    layouts_store: NamedLayoutsStore | None = None,
+):
     sdk_tools = []
     for spec in _SPECS:
         handler = spec.build(manager)
         decorated = tool(spec.name, spec.description, spec.input_schema)(handler)
         sdk_tools.append(decorated)
+    if apply_layout is not None and layouts_store is not None:
+        layout_specs = [
+            (
+                "set_layout",
+                "Replace the current UI layout with the given LayoutSpec dict.",
+                {"spec": dict},
+                _set_layout_handler(apply_layout),
+            ),
+            (
+                "save_layout",
+                "Save the given LayoutSpec under a name in ~/.config/mod_tui/layouts/.",
+                {"name": str, "spec": dict},
+                _save_layout_handler(layouts_store),
+            ),
+            (
+                "load_layout",
+                "Load and apply a previously-saved layout by name.",
+                {"name": str},
+                _load_layout_handler(apply_layout, layouts_store),
+            ),
+            (
+                "list_layouts",
+                "List the names of all saved layouts.",
+                {},
+                _list_layouts_handler(layouts_store),
+            ),
+        ]
+        for name, desc, schema, handler in layout_specs:
+            sdk_tools.append(tool(name, desc, schema)(handler))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",
