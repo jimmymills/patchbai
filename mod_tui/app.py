@@ -26,6 +26,7 @@ from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.diff_viewer import DiffViewer
 from mod_tui.widgets.file_tree import FileTree
+from mod_tui.widgets.log_tail import LogTail
 from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
@@ -62,6 +63,14 @@ def build_default_registry() -> WidgetRegistry:
             "`before` + `after` strings for unified-diff computation."
         ),
         props_schema={"diff": str, "before": str, "after": str},
+    )
+    reg.register(
+        "LogTail", LogTail,
+        description=(
+            "Tails an arbitrary file. Polls every 250ms. Optional "
+            "`tail_lines` controls how much of the existing tail is shown."
+        ),
+        props_schema={"file_path": str, "tail_lines": int},
     )
     return reg
 
