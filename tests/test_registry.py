@@ -16,8 +16,9 @@ def test_register_then_get():
 
 def test_get_unknown_raises():
     reg = WidgetRegistry()
-    with pytest.raises(UnknownWidgetError):
+    with pytest.raises(UnknownWidgetError, match="Nope") as exc_info:
         reg.get("Nope")
+    assert isinstance(exc_info.value, KeyError)
 
 
 def test_double_register_replaces():
