@@ -177,11 +177,18 @@ class ModTuiApp(App):
         except AttributeError:
             pass
 
-    def action_dispatch(self, name: str) -> None:
+    async def action_dispatch(self, name: str) -> None:
+        # Look up the action and call it. If it returns a coroutine (async
+        # actions like action_quit / action_open_history / action_open_layout_switcher),
+        # await it so the side-effect actually runs.
+        import asyncio as _asyncio
         try:
-            self.actions_registry.invoke(name, {})
+            spec = self.actions_registry.get(name)
         except KeyError:
-            pass
+            return
+        result = spec.callable()
+        if _asyncio.iscoroutine(result):
+            await result
 
     # --- action handlers ---------------------------------------------------
 
