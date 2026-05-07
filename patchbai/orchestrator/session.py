@@ -8,12 +8,18 @@ from typing import Callable
 
 from claude_agent_sdk import (
     AssistantMessage,
+    CanUseTool,
     ClaudeAgentOptions,
+    PermissionResultAllow,
+    PermissionResultDeny,
     TextBlock,
+    ToolPermissionContext,
     query as sdk_query,
 )
 
 from patchbai.agents.manager import AgentManager
+from patchbai.agents.permission_grants import PermissionGrants
+from patchbai.agents.permission_inbox import PermissionInbox
 from patchbai.agents.sdk_adapter import RealSDKAdapter, SDKAdapter
 from patchbai.agents.session import AgentSession
 from patchbai.agents.state import AgentInfo
@@ -26,6 +32,8 @@ from patchbai.events import (
     OpenResumePicker,
     OrchestratorReply,
     OrchestratorSessionSwitched,
+    PermissionRequested,
+    PermissionResolved,
     UserMessageToOrchestrator,
 )
 
@@ -86,6 +94,7 @@ class OrchestratorSession:
         widget_registry=None,
         current_layout=None,
         app=None,
+        permission_grants: PermissionGrants | None = None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
@@ -127,6 +136,15 @@ class OrchestratorSession:
         # CLI subprocesses.
         self._auto_title_enabled: bool = False
         self._title_task: asyncio.Task | None = None
+        self._grants = permission_grants
+        self._can_use_tool_callback: CanUseTool | None = None
+        if permission_grants is not None:
+            self._perm_inbox: PermissionInbox | None = PermissionInbox(
+                on_pending_changed=self._on_perm_changed,
+            )
+            self._can_use_tool_callback = self._make_can_use_tool()
+        else:
+            self._perm_inbox = None
 
     @property
     def active_transcript_path(self) -> "Path | None":
@@ -138,6 +156,82 @@ class OrchestratorSession:
         orchestrator's own SDK session. Shared by reference with the inner
         AgentSession, so reads always reflect the latest counters."""
         return self._info
+
+    @property
+    def permission_grants(self) -> PermissionGrants | None:
+        return self._grants
+
+    def get_permission_inbox(self) -> PermissionInbox | None:
+        return self._perm_inbox
+
+    def _on_perm_changed(self, count: int) -> None:
+        # Until _inner exists, no state to mark. After start(), forward to
+        # _inner — same shape as the manager's _on_perm_changed.
+        inner = getattr(self, "_inner", None)
+        if inner is None:
+            return
+        if count > 0:
+            inner._mark_awaiting_permission()
+        else:
+            inner._mark_done_permission()
+
+    def _make_can_use_tool(self) -> CanUseTool:
+        bus = self._bus
+        grants = self._grants
+        agent_name = self.AGENT_ID  # "orchestrator"
+        get_inbox = lambda: self._perm_inbox
+        TIMEOUT_S = 30 * 60
+
+        async def callback(
+            tool_name: str,
+            tool_input: dict,
+            ctx: ToolPermissionContext,
+        ):
+            assert grants is not None
+            decision = grants.lookup(agent_name=agent_name, tool_name=tool_name)
+            if decision == "allow":
+                return PermissionResultAllow()
+            if decision == "deny":
+                return PermissionResultDeny(message="denied by saved rule")
+            inbox = get_inbox()
+            if inbox is None:
+                return PermissionResultDeny(message="orchestrator gone", interrupt=True)
+            request_id = inbox.register(
+                tool_name=tool_name, tool_input=tool_input,
+                title=getattr(ctx, "title", None),
+                description=getattr(ctx, "description", None),
+            )
+            bus.publish(PermissionRequested(
+                agent_id="orchestrator", agent_name=agent_name,
+                request_id=request_id, tool_name=tool_name,
+                tool_input=tool_input,
+                title=getattr(ctx, "title", None),
+                description=getattr(ctx, "description", None),
+            ))
+            try:
+                result = await inbox.wait(request_id, timeout_s=TIMEOUT_S)
+            except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and task.cancelling() > 0:
+                    raise
+                bus.publish(PermissionResolved(
+                    agent_id="orchestrator", request_id=request_id,
+                    behavior="cancelled",
+                ))
+                return PermissionResultDeny(message="cancelled", interrupt=True)
+            except asyncio.TimeoutError:
+                bus.publish(PermissionResolved(
+                    agent_id="orchestrator", request_id=request_id,
+                    behavior="deny",
+                ))
+                return PermissionResultDeny(message="timed out")
+            bus.publish(PermissionResolved(
+                agent_id="orchestrator", request_id=request_id,
+                behavior="allow" if isinstance(result, PermissionResultAllow) else "deny",
+            ))
+            return result
+
+        return callback
 
     async def start(self) -> None:
         # One-time migration of any pre-existing orchestrator.jsonl.
@@ -206,12 +300,11 @@ class OrchestratorSession:
         options_kwargs: dict = {
             "cwd": str(self._cwd),
             "mcp_servers": {"patchbai_orchestrator": mcp_server},
-            # The orchestrator is the user's trusted manager session — there's
-            # no UI in the TUI yet to render a permission prompt, so the SDK
-            # would hang waiting for one. Bypass for now; a Textual modal-
-            # based can_use_tool callback is plan-3 work.
-            "permission_mode": "bypassPermissions",
         }
+        if self._grants is None:
+            options_kwargs["permission_mode"] = "bypassPermissions"
+        else:
+            options_kwargs["can_use_tool"] = self._can_use_tool_callback
         if resume is not None:
             options_kwargs["resume"] = resume
         if new_session_id is not None:
@@ -305,6 +398,8 @@ class OrchestratorSession:
             await self._inner.wait_idle()
 
     async def stop(self) -> None:
+        if self._perm_inbox is not None:
+            self._perm_inbox.cancel_all()
         self._unsub_user()
         self._unsub_msg()
         self._unsub_notify()
