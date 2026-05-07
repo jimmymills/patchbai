@@ -11,7 +11,9 @@ from mod_tui.actions import ActionRegistry
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter
 from mod_tui.config import ConfigStore
-from mod_tui.events import EventBus, TabAdded, TabClosed, TabSwitched
+from mod_tui.events import (
+    EventBus, OpenResumePicker, TabAdded, TabClosed, TabSwitched,
+)
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
 from mod_tui.layout.registry import WidgetRegistry
@@ -33,8 +35,10 @@ from mod_tui.widgets.log_tail import LogTail
 from mod_tui.widgets.notebook import Notebook
 from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
+from mod_tui.persistence.orchestrator_sessions import OrchestratorSessionsIndex
 from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
+from mod_tui.widgets.resume_screen import ResumeScreen
 from mod_tui.widgets.new_tab_screen import NewTabScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
@@ -395,7 +399,7 @@ class ModTuiApp(App):
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
-            "ctrl-w close tab · ? help",
+            "ctrl-w close tab · /reset new session · /resume past session · ? help",
             title="keybindings",
         )
 
@@ -452,6 +456,16 @@ class ModTuiApp(App):
         result = await self.close_tab(self._active_tab_id)
         if "error" in result:
             self.notify(f"can't close tab: {result['error']}", severity="warning")
+
+    def _on_open_resume_picker(self, event) -> None:
+        import asyncio as _asyncio
+        index = OrchestratorSessionsIndex(cwd=self.cwd)
+
+        def _on_picked(session_id: str | None) -> None:
+            if session_id:
+                _asyncio.create_task(self.orchestrator.resume(session_id))
+
+        self.push_screen(ResumeScreen(index=index), _on_picked)
 
     # --- helpers -----------------------------------------------------------
 
@@ -586,6 +600,7 @@ class ModTuiApp(App):
         if self.layouts_store.load("default") is None:
             self.layouts_store.save("default", dashboard_layout())
         await self.orchestrator.start()
+        self.event_bus.subscribe(OpenResumePicker, self._on_open_resume_picker)
         ws = self._load_or_seed_workspace()
         self._workspace = ws
         self._active_tab_id = ws.active
