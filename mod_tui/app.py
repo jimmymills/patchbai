@@ -401,7 +401,7 @@ class ModTuiApp(App):
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
-            "ctrl-w close tab · /reset new session · /resume past session · ? help",
+            "ctrl-w close tab · /reset new · /resume past · /rename title · ? help",
             title="keybindings",
         )
 

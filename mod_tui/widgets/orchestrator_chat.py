@@ -52,7 +52,7 @@ class OrchestratorChat(Vertical):
         yield Input(
             placeholder=(
                 "Message orchestrator… "
-                "(/reset, /resume, ctrl+c to interrupt)"
+                "(/reset, /resume, /rename, ctrl+c to interrupt)"
             ),
             id="orch-input",
         )
