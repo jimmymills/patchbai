@@ -56,13 +56,12 @@ class FileEditor(TextArea):
         self._current_path: Path | None = Path(file_path) if file_path else None
         self._loaded_text: str = text
         self._dirty: bool = False
-        if self._current_path is not None and self._current_path.exists():
+        if self._current_path is not None:
             stat = _stat_or_none(self._current_path)
-            self._loaded_mtime: float | None = stat[0] if stat else None
-            self._loaded_size: int | None = stat[1] if stat else None
         else:
-            self._loaded_mtime = None
-            self._loaded_size = None
+            stat = None
+        self._loaded_mtime: float | None = stat[0] if stat else None
+        self._loaded_size: int | None = stat[1] if stat else None
 
     def load_file(self, file_path: str) -> None:
         path = Path(file_path)
@@ -75,13 +74,9 @@ class FileEditor(TextArea):
                 pass
         self._current_path = path
         self._loaded_text = text
-        if path.exists():
-            stat = _stat_or_none(path)
-            self._loaded_mtime = stat[0] if stat else None
-            self._loaded_size = stat[1] if stat else None
-        else:
-            self._loaded_mtime = None
-            self._loaded_size = None
+        stat = _stat_or_none(path)
+        self._loaded_mtime = stat[0] if stat else None
+        self._loaded_size = stat[1] if stat else None
         self._dirty = False
         self._refresh_border_title()
 

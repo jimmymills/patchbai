@@ -364,3 +364,31 @@ async def test_file_editor_load_file_clears_dirty(tmp_path: Path):
         await pilot.pause()
         assert editor.is_dirty is False
         assert editor.text.startswith("b = 2")
+
+
+@pytest.mark.asyncio
+async def test_file_editor_load_file_missing_path(tmp_path: Path):
+    """load_file pointed at a non-existent path: shows the error placeholder,
+    stays clean, and a follow-up action_save returns False (the no-baseline +
+    no-edit short-circuit must still fire)."""
+    a = tmp_path / "a.py"
+    a.write_text("a = 1\n", encoding="utf-8")
+    missing = tmp_path / "missing.py"
+
+    app = _Host(str(a))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+
+        editor.load_file(str(missing))
+        await pilot.pause()
+
+        assert "not found" in editor.text.lower()
+        assert editor.is_dirty is False
+        assert editor.border_title == "Edit: missing.py"
+
+        # Without typing, save must NOT write the placeholder text.
+        result = await editor.action_save()
+        await pilot.pause()
+        assert result is False
+        assert not missing.exists()
