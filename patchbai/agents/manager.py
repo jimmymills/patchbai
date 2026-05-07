@@ -7,6 +7,7 @@ from typing import Callable
 from claude_agent_sdk import ClaudeAgentOptions
 
 from patchbai.agents.child_tools import build_child_mcp_server
+from patchbai.agents.permission_inbox import PermissionInbox
 from patchbai.agents.request_inbox import RequestInbox
 from patchbai.agents.sdk_adapter import SDKAdapter
 from patchbai.agents.session import AgentSession
@@ -37,6 +38,7 @@ class AgentManager:
         self._adapter_factory = adapter_factory
         self._sessions: dict[str, AgentSession] = {}
         self._inboxes: dict[str, RequestInbox] = {}
+        self._perm_inboxes: dict[str, PermissionInbox] = {}
         self._index = AgentsIndex(cwd=cwd)
         # Any agent persisted as still-running belongs to a previous (dead)
         # process. Flip those rows to ERROR so the AgentTable seed doesn't
@@ -106,6 +108,16 @@ class AgentManager:
 
         self._inboxes[info.id] = RequestInbox(
             on_pending_changed=_on_pending_changed,
+        )
+
+        def _on_perm_changed(count: int, _session=session) -> None:
+            if count > 0:
+                _session._mark_awaiting_permission()
+            else:
+                _session._mark_done_permission()
+
+        self._perm_inboxes[info.id] = PermissionInbox(
+            on_pending_changed=_on_perm_changed,
         )
         self._sessions[info.id] = session
         return session
@@ -196,6 +208,9 @@ class AgentManager:
     async def kill(self, agent_id: str) -> None:
         session = self._sessions.pop(agent_id, None)
         self._inboxes.pop(agent_id, None)
+        perm_inbox = self._perm_inboxes.pop(agent_id, None)
+        if perm_inbox is not None:
+            perm_inbox.cancel_all()
         if session is not None:
             await session.stop()
 
@@ -212,6 +227,9 @@ class AgentManager:
 
     def get_inbox(self, agent_id: str) -> RequestInbox | None:
         return self._inboxes.get(agent_id)
+
+    def get_permission_inbox(self, agent_id: str) -> PermissionInbox | None:
+        return self._perm_inboxes.get(agent_id)
 
     def set_archived(self, agent_id: str, *, archived: bool) -> None:
         """Toggle the archived flag for an agent. Persists to agents.json and
