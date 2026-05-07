@@ -67,9 +67,10 @@ class AgentManager:
             bus=self._bus,
         )
         self._sessions[agent_id] = session
-        # Capture the session in a closure so the inbox callback can flip
-        # state. We intentionally bind `session` (not `self._sessions[...]`)
-        # so a later kill() doesn't leave the closure resolving to None.
+        # Inbox lifecycle drives session state: count > 0 → WAITING,
+        # count == 0 → restore prior state. _mark_unwaiting is defensively
+        # a no-op outside WAITING, so a `kill()` mid-wait that drains the
+        # future after the session is gone is safe.
         def _on_pending_changed(count: int, _session=session) -> None:
             if count > 0:
                 _session._mark_waiting()
