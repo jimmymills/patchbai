@@ -112,6 +112,7 @@ class StatusBar(Horizontal):
         background: $surface-darken-1;
     }
     StatusBar Static {
+        width: auto;
         padding: 0 1;
     }
     """

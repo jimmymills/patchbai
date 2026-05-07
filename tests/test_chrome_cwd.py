@@ -65,6 +65,34 @@ async def test_status_bar_updates_on_cwd_changed_event(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_status_bar_widgets_laid_out_side_by_side(tmp_path, monkeypatch):
+    """Regression: each Static must size to its content and sit next to its
+    neighbour. Previously every Static defaulted to ``width: 1fr`` and
+    consumed the whole bar, pushing siblings off-screen so only the first
+    widget ('tokens N/N') was visible.
+    """
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    project = tmp_path / "proj"
+    project.mkdir()
+    app = ModTuiApp(cwd=project, global_dir=tmp_path / "cfg")
+    async with app.run_test(size=(140, 30)) as pilot:
+        await pilot.pause()
+        bar = app.query_one(StatusBar)
+        ids = ("sb-tokens", "sb-cost", "sb-agents", "sb-layout", "sb-cwd")
+        regions = [bar.query_one(f"#{i}", Static).region for i in ids]
+        bar_w = bar.size.width
+        for sid, r in zip(ids, regions):
+            assert r.width < bar_w, f"{sid} took the entire bar ({r.width} cols)"
+            assert r.x < bar_w, f"{sid} positioned off-screen at x={r.x}"
+        # Strict left-to-right packing: each region starts where the previous ended.
+        for prev, curr, sid in zip(regions, regions[1:], ids[1:]):
+            assert curr.x == prev.x + prev.width, (
+                f"{sid} not adjacent to its left neighbour: "
+                f"prev ends at {prev.x + prev.width}, {sid} starts at {curr.x}"
+            )
+
+
+@pytest.mark.asyncio
 async def test_status_bar_truncates_cwd_on_narrow_terminal(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     deep = tmp_path / "one" / "two" / "three" / "four" / "five" / "six" / "leaf"

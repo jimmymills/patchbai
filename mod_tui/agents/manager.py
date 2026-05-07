@@ -217,17 +217,25 @@ class AgentManager:
         """Toggle the archived flag for an agent. Persists to agents.json and
         publishes AgentArchiveChanged so listeners (e.g., AgentTable) can
         refresh. Raises KeyError if `agent_id` is unknown."""
+        # The archived flag is metadata, not runtime state — agents from a
+        # previous process show up in the table (seeded from agents.json) but
+        # have no live session here. Fall back to the persisted record so
+        # archive/unarchive works on those rows too.
         session = self._sessions.get(agent_id)
-        if session is None:
-            raise KeyError(f"unknown agent_id: {agent_id}")
-        if session.info.archived == archived:
+        if session is not None:
+            info = session.info
+        else:
+            info = next(
+                (i for i in self._index.load() if i.id == agent_id), None
+            )
+            if info is None:
+                raise KeyError(f"unknown agent_id: {agent_id}")
+        if info.archived == archived:
             return
-        session.info.archived = archived
-        self._index.upsert(session.info)
+        info.archived = archived
+        self._index.upsert(info)
         # Publish a frozen snapshot so subscribers see a stable view.
-        self._bus.publish(
-            AgentArchiveChanged(info=dataclasses.replace(session.info))
-        )
+        self._bus.publish(AgentArchiveChanged(info=dataclasses.replace(info)))
 
     async def shutdown(self) -> None:
         for agent_id in list(self._sessions.keys()):

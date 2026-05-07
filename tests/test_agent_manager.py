@@ -180,6 +180,45 @@ async def test_set_archived_unknown_id_raises_keyerror(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_set_archived_works_for_persisted_agent_without_live_session(
+    tmp_path: Path,
+):
+    # An agent persisted by a previous process appears in the AgentTable
+    # (seeded from agents.json on mount) but has no entry in
+    # AgentManager._sessions. Pressing `d` on such a row used to crash with
+    # KeyError; archive must operate on the persisted record instead.
+    from mod_tui.agents.state import AgentInfo, AgentState
+    from mod_tui.persistence.agents_index import AgentsIndex
+
+    AgentsIndex(cwd=tmp_path).save([
+        AgentInfo(id="ghost", name="lister", cwd=str(tmp_path),
+                  started_at=100.0, state=AgentState.DONE, ended_at=200.0),
+    ])
+
+    bus = EventBus()
+    events: list[AgentArchiveChanged] = []
+    bus.subscribe(AgentArchiveChanged, events.append)
+
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    assert manager.get_session("ghost") is None
+
+    manager.set_archived("ghost", archived=True)
+
+    persisted = next(i for i in AgentsIndex(cwd=tmp_path).load() if i.id == "ghost")
+    assert persisted.archived is True
+    assert events and events[-1].info.id == "ghost"
+    assert events[-1].info.archived is True
+
+    # Toggling back un-archives.
+    manager.set_archived("ghost", archived=False)
+    persisted2 = next(i for i in AgentsIndex(cwd=tmp_path).load() if i.id == "ghost")
+    assert persisted2.archived is False
+
+
+@pytest.mark.asyncio
 async def test_spawn_captures_session_id_and_spawn_options(tmp_path: Path):
     # Resume across restarts depends on (a) spawn_options being persisted
     # at spawn time and (b) the SDK session_id being captured from the first
