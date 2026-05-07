@@ -3,6 +3,7 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import DataTable
 
+from patchbai.agents.sort import sort_agents
 from patchbai.agents.state import AgentInfo
 from patchbai.events import (
     AgentArchiveChanged,
@@ -83,7 +84,9 @@ class AgentTable(Container):
             for info in AgentsIndex(cwd=cwd).load():
                 if info.id == "orchestrator":
                     continue
-                self._add_row(info)
+                # Just record into _infos; the rebuild below renders rows in order.
+                self._infos[info.id] = info
+            self._rebuild_sorted()
 
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
@@ -141,7 +144,7 @@ class AgentTable(Container):
 
     def action_toggle_show_archived(self) -> None:
         self._show_archived = not self._show_archived
-        self._rebuild_rows()
+        self._rebuild_sorted()
 
     # --- internals --------------------------------------------------------
 
@@ -199,15 +202,30 @@ class AgentTable(Container):
         for col, value in zip(self.COLUMNS, cells):
             table.update_cell(info.id, col, value)
 
-    def _rebuild_rows(self) -> None:
-        """Clear and re-add rows from `_infos` honoring the visibility flag.
-        Used when `_show_archived` toggles."""
+    def _rebuild_sorted(self) -> None:
+        """Clear and re-add rows from `_infos` in default sort order, honoring
+        the visibility filter. Preserves the cursor's focused agent across the
+        rebuild so a sort-induced reorder doesn't snap the user back to row 0."""
         table = self.query_one(DataTable)
+
+        # Capture cursor agent BEFORE clear(); coordinate_to_cell_key throws
+        # after the table is empty.
+        cursor_agent_id = self._cursor_agent_id()
+
         table.clear()
         self._rows.clear()
-        for info in self._infos.values():
-            if self._is_visible(info):
-                self._add_row(info)
+
+        visible = [info for info in self._infos.values() if self._is_visible(info)]
+        for info in sort_agents(visible):
+            table.add_row(*self._render_cells(info), key=info.id)
+            self._rows[info.id] = info.id
+
+        # Restore cursor onto the same agent if it's still visible.
+        if cursor_agent_id is not None and cursor_agent_id in self._rows:
+            for index, row_key in enumerate(table.rows.keys()):
+                if str(row_key.value) == cursor_agent_id:
+                    table.move_cursor(row=index)
+                    break
 
     def _render_cells(self, info: AgentInfo) -> tuple:
         # Wrap each cell in Rich Text so values that may contain markup-like

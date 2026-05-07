@@ -322,3 +322,22 @@ async def test_status_cell_uses_red_for_error():
         assert isinstance(status_cell, Text)
         assert status_cell.plain == "error"
         assert "red" in str(status_cell.style).lower()
+
+
+@pytest.mark.asyncio
+async def test_seeded_rows_are_in_default_sort_order(tmp_path: Path):
+    # Seed mixes states; expect WAITING > RUNNING > ERROR > DONE order.
+    idx = AgentsIndex(cwd=tmp_path)
+    idx.save([
+        _info("d1", state=AgentState.DONE),
+        _info("e1", state=AgentState.ERROR),
+        _info("r1", state=AgentState.RUNNING),
+        _info("w1", state=AgentState.WAITING),
+    ])
+    bus = EventBus()
+    app = _HostApp(bus, cwd=tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        table = app.query_one(AgentTable).query_one(DataTable)
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["w1", "r1", "e1", "d1"]
