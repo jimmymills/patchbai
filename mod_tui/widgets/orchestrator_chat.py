@@ -1,4 +1,5 @@
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Input
 
@@ -26,13 +27,20 @@ class OrchestratorChat(Vertical):
     }
     """
 
+    # priority=True so the binding fires even when the Input child has
+    # focus — without it, ctrl+c is consumed by Textual's default driver
+    # handling (which would quit the app).
+    BINDINGS = [
+        Binding("ctrl+c", "interrupt", "interrupt orchestrator", priority=True),
+    ]
+
     def __init__(self, *, event_bus: EventBus | None = None) -> None:
         super().__init__()
         self._bus = event_bus
 
     def compose(self) -> ComposeResult:
         yield RichTranscript(agent_id=self.AGENT_ID, event_bus=self._bus)
-        yield Input(placeholder="Message orchestrator… (enter to send)",
+        yield Input(placeholder="Message orchestrator… (enter to send, ctrl+c to interrupt)",
                     id="orch-input")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -43,3 +51,9 @@ class OrchestratorChat(Vertical):
         event.input.value = ""
         if bus is not None:
             bus.publish(UserMessageToOrchestrator(text))
+
+    async def action_interrupt(self) -> None:
+        orch = getattr(self.app, "orchestrator", None)
+        if orch is None:
+            return
+        await orch.interrupt()

@@ -111,6 +111,14 @@ class OrchestratorSession:
             AgentRequestedUserInput, self._on_child_asked
         )
 
+    async def interrupt(self) -> None:
+        """Cancel the SDK's currently-running query, if any.
+
+        Safe to call when the orchestrator is idle — the underlying
+        adapter's interrupt is a no-op in that case.
+        """
+        await self._inner.interrupt()
+
     async def wait_idle(self) -> None:
         # queue_send eagerly clears _idle_event synchronously, so we no longer
         # need sleep yields to drain the create_task scheduling gap.

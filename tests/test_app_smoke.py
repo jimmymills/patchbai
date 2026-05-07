@@ -93,6 +93,33 @@ async def test_slash_types_into_focused_input(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_ctrl_c_interrupts_orchestrator_from_input(tmp_path: Path):
+    """ctrl+c on the orchestrator input must call orchestrator.interrupt(),
+    not be eaten by Textual's default driver handling (which quits)."""
+    from textual.widgets import Input
+
+    app = _build_test_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        calls: list[str] = []
+
+        async def _spy() -> None:
+            calls.append("interrupt")
+
+        app.orchestrator.interrupt = _spy  # type: ignore[method-assign]
+
+        chat_input = app.query_one(OrchestratorChat).query_one(Input)
+        chat_input.focus()
+        await pilot.pause()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+
+        assert calls == ["interrupt"]
+        # Input still focused — binding didn't blur or quit the app.
+        assert chat_input.has_focus
+
+
+@pytest.mark.asyncio
 async def test_layout_persists_across_app_runs(tmp_path: Path):
     # First run.
     app1 = _build_test_app(tmp_path)
