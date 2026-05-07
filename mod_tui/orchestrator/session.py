@@ -114,7 +114,9 @@ class OrchestratorSession:
             )
             self._sdk_session_id = prior.session_id
         else:
-            new_id = uuid.uuid4().hex
+            # Canonical UUID form (8-4-4-4-12) is what Claude CLI expects on
+            # --session-id; bare hex (uuid.hex) is rejected at startup.
+            new_id = str(uuid.uuid4())
             session_id_for_options = new_id
             transcript_path = orchestrator_session_transcript_path(self._cwd, new_id)
             self._sdk_session_id = new_id
@@ -329,7 +331,7 @@ class OrchestratorSession:
             transcript_path = orchestrator_session_transcript_path(self._cwd, resume)
             self._sdk_session_id = resume
         else:
-            new_id = uuid.uuid4().hex
+            new_id = str(uuid.uuid4())
             new_session_id = new_id
             transcript_path = orchestrator_session_transcript_path(self._cwd, new_id)
             self._sdk_session_id = new_id
