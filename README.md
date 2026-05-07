@@ -4,19 +4,7 @@
 orchestrator-managed workspace — and lets the agent reshape the UI to fit
 the work.**
 
-```
-┌─ Orchestrator ──────────────────────┐ ┌─ Agents ─────────────────────────┐
-│ > spawn an agent to refactor auth.py│ │ name      status   elapsed  cost │
-│ ✓ spawned `auth-refactor` (id …)    │ │ auth-ref  running  0:42     $0.03│
-│ > switch to the file-tree layout    │ │ readme    waiting  0:11     $0.01│
-│ ✓ loaded layout "file-tree"         │ └──────────────────────────────────┘
-│ ▎                                   │ ┌─ ActivityFeed ───────────────────┐
-│ Message orchestrator… (/reset, /res…│ │ auth-ref  Edit  src/auth.py      │
-└─────────────────────────────────────┘ │ auth-ref  Read  src/jwt.py       │
-                                        └──────────────────────────────────┘
- / cmd · ctrl-q quit · ctrl-h history · ctrl-l layouts · ctrl-shift-l themes
- tokens 12,431↑ 3,210↓ · $0.04 · 2 active · layout: dashboard
-```
+![patchbai — orchestrator chat on the left, agent table and activity feed on the right](docs/images/screenshot.png)
 
 ## The pitch
 
