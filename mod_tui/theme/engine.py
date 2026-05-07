@@ -11,10 +11,31 @@ from textual.app import App
 from textual.css.tokenize import tokenize
 from textual.theme import Theme
 
-from mod_tui.theme.spec import ThemeSpec
+from mod_tui.theme.spec import ThemePalette, ThemeSpec
 
 _EXTRA_CSS_KEY = ("mod_tui_theme", "extra_css")
 _THEME_NAME_PREFIX = "mod_tui:"
+
+
+def palette_from_textual_theme(textual_theme) -> ThemePalette:
+    """Snapshot a live textual.theme.Theme into our ThemePalette."""
+    return ThemePalette(
+        primary=textual_theme.primary,
+        secondary=textual_theme.secondary,
+        warning=textual_theme.warning,
+        error=textual_theme.error,
+        success=textual_theme.success,
+        accent=textual_theme.accent,
+        foreground=textual_theme.foreground,
+        background=textual_theme.background,
+        surface=textual_theme.surface,
+        panel=textual_theme.panel,
+        boost=textual_theme.boost,
+        dark=textual_theme.dark,
+        luminosity_spread=textual_theme.luminosity_spread,
+        text_alpha=textual_theme.text_alpha,
+        variables=dict(textual_theme.variables),
+    )
 
 
 async def apply_theme(app: App, spec: ThemeSpec, *, theme_name: str) -> None:

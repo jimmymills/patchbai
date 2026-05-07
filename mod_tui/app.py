@@ -22,7 +22,7 @@ from mod_tui.orchestrator.session import OrchestratorSession
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.themes_store import NamedThemesStore
 from mod_tui.persistence.paths import global_config_dir
-from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme
+from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
 from mod_tui.theme.spec import ThemeSpec
 from mod_tui.persistence.workspace_store import (
     load_workspace as load_local_workspace,
@@ -688,8 +688,7 @@ class ModTuiApp(App):
         # Theme seed: snapshot the current Textual theme as "default" if not present.
         if self.themes_store.load("default") is None:
             try:
-                from mod_tui.orchestrator.tools import _palette_from_textual_theme
-                pal = _palette_from_textual_theme(self.current_theme)
+                pal = palette_from_textual_theme(self.current_theme)
                 self.themes_store.save(
                     "default", ThemeSpec(palette=pal, extra_css=""),
                 )

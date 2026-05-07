@@ -18,8 +18,8 @@ from mod_tui.orchestrator.tabs_tools import (
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.themes_store import NamedThemesStore
 from mod_tui.persistence.workspace_store import save_workspace
-from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme
-from mod_tui.theme.spec import ThemePalette, ThemeSpec
+from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
+from mod_tui.theme.spec import ThemeSpec
 
 
 @dataclass(frozen=True)
@@ -328,27 +328,6 @@ def _get_layout_handler(current_layout, widget_registry: WidgetRegistry, app=Non
     return get_layout_tool
 
 
-def _palette_from_textual_theme(textual_theme) -> ThemePalette:
-    """Snapshot a live textual.theme.Theme into our ThemePalette."""
-    return ThemePalette(
-        primary=textual_theme.primary,
-        secondary=textual_theme.secondary,
-        warning=textual_theme.warning,
-        error=textual_theme.error,
-        success=textual_theme.success,
-        accent=textual_theme.accent,
-        foreground=textual_theme.foreground,
-        background=textual_theme.background,
-        surface=textual_theme.surface,
-        panel=textual_theme.panel,
-        boost=textual_theme.boost,
-        dark=textual_theme.dark,
-        luminosity_spread=textual_theme.luminosity_spread,
-        text_alpha=textual_theme.text_alpha,
-        variables=dict(textual_theme.variables),
-    )
-
-
 def _set_theme_handler(app):
     async def set_theme_tool(args: dict) -> dict:
         try:
@@ -373,7 +352,7 @@ def _save_theme_handler(themes_store: NamedThemesStore, app):
                 return {"content": [{"type": "text", "text": f"Invalid ThemeSpec: {e}"}]}
         else:
             try:
-                palette = _palette_from_textual_theme(app.current_theme)
+                palette = palette_from_textual_theme(app.current_theme)
             except Exception as e:
                 return {"content": [{"type": "text",
                                      "text": f"Could not snapshot active theme: {e}"}]}
@@ -478,7 +457,7 @@ def _get_theme_handler(themes_store: NamedThemesStore, app):
             return {"content": [{"type": "text", "text": json.dumps(spec.model_dump(mode="json"))}]}
         # No name → snapshot the active theme.
         try:
-            palette = _palette_from_textual_theme(app.current_theme).model_dump(mode="json")
+            palette = palette_from_textual_theme(app.current_theme).model_dump(mode="json")
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Cannot read active theme: {e}"}]}
         active = getattr(app, "theme", "") or ""
