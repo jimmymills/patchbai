@@ -49,3 +49,11 @@ async def test_pending_returns_open_request_ids():
     inbox.resolve(a, "done")
     await inbox.wait(a, timeout_s=1.0)  # drain
     assert inbox.pending() == [b]
+
+
+@pytest.mark.asyncio
+async def test_on_pending_changed_fires_when_inbox_becomes_non_empty():
+    counts: list[int] = []
+    inbox = RequestInbox(on_pending_changed=counts.append)
+    inbox.register()
+    assert counts == [1]

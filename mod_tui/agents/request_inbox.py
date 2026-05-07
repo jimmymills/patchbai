@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from typing import Callable
 
 
 class RequestInbox:
@@ -7,10 +8,20 @@ class RequestInbox:
 
     Each registered request_id has an asyncio.Future. The agent's tool call
     awaits the future (with a timeout); the orchestrator's reply resolves it.
+
+    `on_pending_changed`, if provided, is invoked synchronously after every
+    transition that changes the pending count — i.e., after `register()` and
+    after `wait()` removes a future from the dict. It receives the new
+    pending count.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        on_pending_changed: Callable[[int], None] | None = None,
+    ) -> None:
         self._futures: dict[str, asyncio.Future] = {}
+        self._on_pending_changed = on_pending_changed
 
     def register(self) -> str:
         request_id = uuid.uuid4().hex[:12]
@@ -19,6 +30,7 @@ class RequestInbox:
         # All callers run inside an event loop (tool handlers are async).
         loop = asyncio.get_running_loop()
         self._futures[request_id] = loop.create_future()
+        self._notify()
         return request_id
 
     def resolve(self, request_id: str, response: str) -> None:
@@ -34,6 +46,20 @@ class RequestInbox:
             return await asyncio.wait_for(future, timeout=timeout_s)
         finally:
             self._futures.pop(request_id, None)
+            self._notify()
 
     def pending(self) -> list[str]:
         return [rid for rid, fut in self._futures.items() if not fut.done()]
+
+    def _notify(self) -> None:
+        if self._on_pending_changed is None:
+            return
+        try:
+            self._on_pending_changed(len(self._futures))
+        except Exception:
+            # The inbox must not poison its own callers if a subscriber
+            # explodes; mirror EventBus's swallow-and-log posture.
+            import logging
+            logging.getLogger(__name__).exception(
+                "RequestInbox.on_pending_changed handler raised"
+            )
