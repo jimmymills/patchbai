@@ -5,6 +5,7 @@ def test_agent_state_values():
     assert AgentState.IDLE.value == "idle"
     assert AgentState.RUNNING.value == "running"
     assert AgentState.WAITING.value == "waiting"
+    assert AgentState.AWAITING_PERMISSION.value == "awaiting_permission"
     assert AgentState.DONE.value == "done"
     assert AgentState.ERROR.value == "error"
 
@@ -15,6 +16,7 @@ def test_agent_state_terminal():
     assert not AgentState.IDLE.is_terminal
     assert not AgentState.RUNNING.is_terminal
     assert not AgentState.WAITING.is_terminal
+    assert not AgentState.AWAITING_PERMISSION.is_terminal
 
 
 def test_agent_info_defaults():
@@ -88,11 +90,9 @@ def test_agent_info_from_dict_tolerates_legacy_records():
 
 
 def test_awaiting_permission_is_a_distinct_state():
-    from patchbai.agents.state import AgentState
     assert AgentState.AWAITING_PERMISSION.value == "awaiting_permission"
     assert AgentState.AWAITING_PERMISSION != AgentState.WAITING
 
 
 def test_awaiting_permission_is_not_terminal():
-    from patchbai.agents.state import AgentState
     assert AgentState.AWAITING_PERMISSION.is_terminal is False
