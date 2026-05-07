@@ -12,7 +12,7 @@ from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
 from mod_tui.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
 from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.persistence.transcript_store import OrchestratorTranscript
+from mod_tui.persistence.transcript_store import AgentTranscript
 
 
 def _ok_script() -> list:
@@ -84,7 +84,8 @@ async def test_orchestrator_session_records_transcript(tmp_path):
     bus.publish(UserMessageToOrchestrator("ping"))
     await session.wait_idle()
 
-    entries = OrchestratorTranscript(cwd=tmp_path).read_all()
+    transcript_path = session._active_transcript_path
+    entries = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).read_all()
     assert any(e.role == "user" and e.text == "ping" for e in entries)
     assert any(e.role == "assistant" and e.text == "hello, world" for e in entries)
 

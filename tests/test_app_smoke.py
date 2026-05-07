@@ -147,8 +147,9 @@ async def test_command_bar_message_round_trips_through_real_orchestrator(tmp_pat
         await pilot.pause()
         await app.orchestrator.wait_idle()
 
-        from mod_tui.persistence.transcript_store import OrchestratorTranscript
-        entries = OrchestratorTranscript(cwd=tmp_path).read_all()
+        from mod_tui.persistence.transcript_store import AgentTranscript
+        transcript_path = app.orchestrator._active_transcript_path
+        entries = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).read_all()
         roles = [e.role for e in entries]
         texts = [e.text for e in entries]
         assert "user" in roles and "assistant" in roles

@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import time
+import uuid
 from pathlib import Path
 
 from claude_agent_sdk import ClaudeAgentOptions
@@ -17,7 +19,11 @@ from mod_tui.events import (
     UserMessageToOrchestrator,
 )
 from mod_tui.orchestrator.tools import build_orchestrator_mcp_server
+from mod_tui.persistence.orchestrator_sessions import OrchestratorSessionsIndex
+from mod_tui.persistence.paths import orchestrator_session_transcript_path
 from mod_tui.persistence.transcript_store import AgentTranscript
+
+log = logging.getLogger(__name__)
 
 
 class OrchestratorSession:
@@ -55,18 +61,17 @@ class OrchestratorSession:
         self._widget_registry = widget_registry
         self._current_layout = current_layout
         self._app = app
+        self._index = OrchestratorSessionsIndex(cwd=cwd)
+        self._sdk_session_id: str | None = None
+        self._active_transcript_path: Path | None = None
+        self._switching_lock = asyncio.Lock()
         self._info = AgentInfo(
             id=self.AGENT_ID,
             name="orchestrator",
             cwd=str(cwd),
             started_at=time.time(),
         )
-        self._inner = AgentSession(
-            info=self._info,
-            adapter=self._adapter,
-            transcript=AgentTranscript(cwd=cwd, agent_id=self.AGENT_ID),
-            bus=bus,
-        )
+        self._inner: AgentSession | None = None  # built in start()
         self._unsub_user: callable = lambda: None
         self._unsub_msg: callable = lambda: None
         self._unsub_notify: callable = lambda: None
@@ -74,6 +79,51 @@ class OrchestratorSession:
         self._send_tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
+        # One-time migration of any pre-existing orchestrator.jsonl.
+        self._index.migrate_legacy_if_needed()
+
+        # Decide: resume vs new
+        prior = self._index.most_recent()
+        resume_id: str | None = None
+        if prior is not None and not prior.legacy:
+            resume_id = prior.session_id
+            session_id_for_options = None
+            transcript_path = orchestrator_session_transcript_path(
+                self._cwd, prior.session_id
+            )
+            self._sdk_session_id = prior.session_id
+        else:
+            new_id = uuid.uuid4().hex
+            session_id_for_options = new_id
+            transcript_path = orchestrator_session_transcript_path(self._cwd, new_id)
+            self._sdk_session_id = new_id
+        self._active_transcript_path = transcript_path
+
+        await self._build_and_start_inner(
+            resume=resume_id, new_session_id=session_id_for_options,
+            transcript_path=transcript_path,
+        )
+
+        self._unsub_user = self._bus.subscribe(
+            UserMessageToOrchestrator, self._on_user_message
+        )
+        self._unsub_msg = self._bus.subscribe(
+            AgentMessageAppended, self._on_message_appended
+        )
+        self._unsub_notify = self._bus.subscribe(
+            AgentNotifiedOrchestrator, self._on_child_notified
+        )
+        self._unsub_ask = self._bus.subscribe(
+            AgentRequestedUserInput, self._on_child_asked
+        )
+
+    async def _build_and_start_inner(
+        self,
+        *,
+        resume: str | None,
+        new_session_id: str | None,
+        transcript_path: Path,
+    ) -> None:
         mcp_server = build_orchestrator_mcp_server(
             self._manager,
             apply_layout=self._apply_layout,
@@ -94,22 +144,28 @@ class OrchestratorSession:
             # based can_use_tool callback is plan-3 work.
             "permission_mode": "bypassPermissions",
         }
+        if resume is not None:
+            options_kwargs["resume"] = resume
+        if new_session_id is not None:
+            options_kwargs["session_id"] = new_session_id
         if self._model is not None:
             options_kwargs["model"] = self._model
+
+        transcript = AgentTranscript(
+            cwd=self._cwd, agent_id=self.AGENT_ID, path=transcript_path,
+        )
+        self._inner = AgentSession(
+            info=self._info,
+            adapter=self._adapter,
+            transcript=transcript,
+            bus=self._bus,
+            on_session_id=self._on_session_id_observed,
+        )
         await self._inner.start(options=ClaudeAgentOptions(**options_kwargs))
 
-        self._unsub_user = self._bus.subscribe(
-            UserMessageToOrchestrator, self._on_user_message
-        )
-        self._unsub_msg = self._bus.subscribe(
-            AgentMessageAppended, self._on_message_appended
-        )
-        self._unsub_notify = self._bus.subscribe(
-            AgentNotifiedOrchestrator, self._on_child_notified
-        )
-        self._unsub_ask = self._bus.subscribe(
-            AgentRequestedUserInput, self._on_child_asked
-        )
+    def _on_session_id_observed(self, session_id: str) -> None:
+        self._sdk_session_id = session_id
+        # Index upsert added in Task 8.
 
     async def interrupt(self) -> None:
         """Cancel the SDK's currently-running query, if any.
@@ -117,7 +173,8 @@ class OrchestratorSession:
         Safe to call when the orchestrator is idle — the underlying
         adapter's interrupt is a no-op in that case.
         """
-        await self._inner.interrupt()
+        if self._inner is not None:
+            await self._inner.interrupt()
 
     async def wait_idle(self) -> None:
         # queue_send eagerly clears _idle_event synchronously, so we no longer
@@ -130,18 +187,22 @@ class OrchestratorSession:
             if pending:
                 await asyncio.gather(*pending, return_exceptions=True)
             self._send_tasks.clear()
-        await self._inner.wait_idle()
+        if self._inner is not None:
+            await self._inner.wait_idle()
 
     async def stop(self) -> None:
         self._unsub_user()
         self._unsub_msg()
         self._unsub_notify()
         self._unsub_ask()
-        await self._inner.stop()
+        if self._inner is not None:
+            await self._inner.stop()
 
     # --- internals --------------------------------------------------------
 
     def _on_user_message(self, event: UserMessageToOrchestrator) -> None:
+        if self._inner is None:
+            return
         # Prune any tasks that have already completed before adding a new one.
         self._send_tasks = [t for t in self._send_tasks if not t.done()]
         # Use the inner session's queue_send: it eagerly clears _idle_event so
