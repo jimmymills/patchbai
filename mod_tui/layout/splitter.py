@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 from textual import events
+from textual.containers import Container as TxContainer
 from textual.widget import Widget
+
+from mod_tui.events import LayoutResized
 
 
 class Splitter(Widget):
     """Draggable 1-cell bar between sibling widgets in a Horizontal/Vertical box.
 
     On mouse drag, mutates the previous and next siblings' inline
-    `styles.width`/`styles.height` to fixed cell counts. Sizes are ephemeral —
-    LayoutEngine.apply replaces the whole widget tree on layout reapply, so
-    drags do not survive a layout reload.
+    `styles.width`/`styles.height` to fixed cell counts (visual feedback).
+    On mouse-up, emits a LayoutResized event with the final sizes converted
+    to percentages of the parent container's inner extent so the app can
+    persist them to the workspace.
     """
 
     DEFAULT_CSS = """
@@ -34,9 +38,19 @@ class Splitter(Widget):
 
     can_focus = False
 
-    def __init__(self, container_orientation: str) -> None:
+    def __init__(
+        self,
+        container_orientation: str,
+        *,
+        parent_path: tuple[int, ...] = (),
+        prev_index: int = 0,
+        next_index: int = 1,
+    ) -> None:
         super().__init__()
         self._container_orientation = container_orientation
+        self._parent_path = parent_path
+        self._prev_index = prev_index
+        self._next_index = next_index
         self.add_class("-vertical" if container_orientation == "horizontal" else "-horizontal")
         self._drag_start: tuple[int, int] | None = None
         self._initial_prev: int = 0
@@ -82,11 +96,51 @@ class Splitter(Widget):
         event.stop()
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
-        if self._drag_start is not None:
-            self._drag_start = None
-            self.remove_class("-dragging")
-            self.release_mouse()
-            event.stop()
+        if self._drag_start is None:
+            return
+        self._drag_start = None
+        self.remove_class("-dragging")
+        self.release_mouse()
+        event.stop()
+        self._publish_resize()
+
+    def _publish_resize(self) -> None:
+        """Convert the post-drag pixel sizes of the two affected siblings to
+        percentages of the parent's inner extent and emit LayoutResized."""
+        prev_sib, next_sib = self._neighbors()
+        if prev_sib is None or next_sib is None:
+            return
+        parent = self.parent
+        if not isinstance(parent, Widget):
+            return
+        if self._container_orientation == "horizontal":
+            parent_extent = parent.size.width
+            prev_cells = prev_sib.size.width
+            next_cells = next_sib.size.width
+        else:
+            parent_extent = parent.size.height
+            prev_cells = prev_sib.size.height
+            next_cells = next_sib.size.height
+        if parent_extent <= 0:
+            return
+
+        tab_id = self._owning_tab_id()
+        if tab_id is None:
+            return
+        bus = getattr(self.app, "event_bus", None)
+        if bus is None:
+            return
+
+        prev_pct = max(1, round(prev_cells / parent_extent * 100))
+        next_pct = max(1, round(next_cells / parent_extent * 100))
+        bus.publish(LayoutResized(
+            tab_id=tab_id,
+            parent_path=self._parent_path,
+            updates=(
+                (self._prev_index, f"{prev_pct}%"),
+                (self._next_index, f"{next_pct}%"),
+            ),
+        ))
 
     def _neighbors(self) -> tuple[Widget | None, Widget | None]:
         parent = self.parent
@@ -100,3 +154,15 @@ class Splitter(Widget):
         prev = siblings[idx - 1] if idx > 0 else None
         nxt = siblings[idx + 1] if idx + 1 < len(siblings) else None
         return (prev, nxt)
+
+    def _owning_tab_id(self) -> str | None:
+        """Walk up ancestors until we find the per-tab `panel-area-{tab_id}`
+        container. Returns None if mounted outside an app tab (e.g., tests
+        that mount Splitter under a generic Container)."""
+        node = self.parent
+        while node is not None:
+            wid = getattr(node, "id", None)
+            if isinstance(node, TxContainer) and wid and wid.startswith("panel-area-"):
+                return wid[len("panel-area-"):]
+            node = node.parent
+        return None

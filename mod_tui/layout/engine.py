@@ -98,7 +98,7 @@ def _has_border_in_default_css(cls) -> bool:
     return False
 
 
-def _build(node, registry) -> Widget:
+def _build(node, registry, path: tuple[int, ...] = ()) -> Widget:
     if isinstance(node, Panel):
         cls = registry.get(node.widget)
         widget = cls(**node.props) if node.props else cls()
@@ -119,11 +119,12 @@ def _build(node, registry) -> Widget:
             widget.border_title = resolve_title(node, cls)
         except Exception:
             widget.border_title = cls.__name__
+        widget._mod_tui_spec_path = path  # type: ignore[attr-defined]
         return widget
     if isinstance(node, Tabs):
         panes = []
-        for child in node.children:
-            inner = _build(child, registry)            # reuses Panel branch
+        for i, child in enumerate(node.children):
+            inner = _build(child, registry, path + (i,))   # reuses Panel branch
             label = child.title or _default_pane_label(child, registry)
             panes.append(TabPane(label, inner, id=f"tabpane-{child.id}"))
         initial_id = f"tabpane-{node.active or node.children[0].id}"
@@ -136,20 +137,25 @@ def _build(node, registry) -> Widget:
         tc._tab_content = list(panes)
         if node.size:
             tc.styles.width = node.size
+        tc._mod_tui_spec_path = path  # type: ignore[attr-defined]
         return tc
     # Container
     box_cls = Horizontal if node.type == "horizontal" else Vertical
-    built = [_build(c, registry) for c in node.children]
+    built = [_build(c, registry, path + (i,)) for i, c in enumerate(node.children)]
     # Interleave a draggable Splitter between each pair of siblings so the user
     # can resize panels with the mouse. Single-child containers get no splitter.
     interleaved: list[Widget] = []
     for i, child in enumerate(built):
         if i > 0:
-            interleaved.append(Splitter(node.type))
+            # Splitter sits between spec children (i-1) and i of this Container.
+            interleaved.append(Splitter(
+                node.type, parent_path=path, prev_index=i - 1, next_index=i,
+            ))
         interleaved.append(child)
     box = box_cls(*interleaved)
     if node.size:
         box.styles.width = node.size
+    box._mod_tui_spec_path = path  # type: ignore[attr-defined]
     return box
 
 

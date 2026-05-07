@@ -118,6 +118,17 @@ class LayoutFailed:
 
 
 @dataclass(frozen=True)
+class LayoutResized:
+    """User finished a mouse-drag resize on a Splitter between two siblings.
+    Carries the new size strings for the two affected children, expressed as
+    percentages of the parent container's inner extent in the dragged dimension.
+    """
+    tab_id: str
+    parent_path: tuple[int, ...]
+    updates: tuple[tuple[int, str], ...]  # (child_index, new_size_string)
+
+
+@dataclass(frozen=True)
 class TabAdded:
     tab_id: str
     title: str
