@@ -76,6 +76,10 @@ class ResumeScreen(ModalScreen[str | None]):
         self.dismiss(str(row_key.value))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        # Stop the event so the App's global on_data_table_row_selected
+        # handler doesn't also fire and open a TranscriptScreen with our
+        # session_id (which isn't a real agent_id).
+        event.stop()
         self.dismiss(str(event.row_key.value))
 
 
