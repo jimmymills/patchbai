@@ -301,6 +301,11 @@ class OrchestratorSession:
             "cwd": str(self._cwd),
             "mcp_servers": {"patchbai_orchestrator": mcp_server},
         }
+        # Permission posture mirrors AgentManager (see manager.py): when
+        # the user launches without --bypass-permissions, self._grants is
+        # set and we attach can_use_tool. The orchestrator routes through
+        # the same PermissionModal as child agents — the user reviews each
+        # tool call the orchestrator's Claude wants to make.
         if self._grants is None:
             options_kwargs["permission_mode"] = "bypassPermissions"
         else:

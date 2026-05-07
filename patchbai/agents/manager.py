@@ -138,11 +138,11 @@ class AgentManager:
         self, info: AgentInfo, *, resume_session_id: str | None = None,
     ) -> ClaudeAgentOptions:
         # Permission posture: presence of self._grants is the gate.
-        #   - None  → permission_mode="bypassPermissions" (today's behavior;
-        #     equivalent to launching with --bypass-permissions).
+        #   - None  → permission_mode="bypassPermissions" (preserves the
+        #     original behavior; equivalent to launching with
+        #     --bypass-permissions).
         #   - obj   → drop bypass, attach can_use_tool that consults the
         #     grants store first and falls back to the modal flow.
-        # This applies symmetrically to OrchestratorSession (see §1.1/§1.2).
         child_mcp = build_child_mcp_server(
             agent_id=info.id, bus=self._bus, inbox=self._inboxes[info.id],
         )
