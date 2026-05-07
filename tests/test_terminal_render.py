@@ -1,5 +1,4 @@
 import pyte
-import pytest
 from rich.style import Style
 from rich.text import Text
 
@@ -180,12 +179,28 @@ def test_color_to_rich_pyte_brightred_translates_to_bright_red():
     assert _color_to_rich("brightred") == "bright_red"
 
 
+def test_color_to_rich_pyte_brightbrown_translates_to_bright_yellow():
+    # pyte composes SGR 93 as "bright" + "brown"; without this mapping the
+    # styling silently disappears (no crash, but lost color).
+    assert _color_to_rich("brightbrown") == "bright_yellow"
+
+
+def test_render_screen_does_not_drop_sgr_93():
+    screen = _feed("\x1b[93mY\x1b[0m")
+    text = render_screen(screen, show_cursor=False)
+    bright_yellow_spans = [s for s in text.spans if _color_name(s) == "bright_yellow"]
+    assert bright_yellow_spans, (
+        f"SGR 93 styling was dropped; spans={[(s.start, s.end, _color_name(s)) for s in text.spans]}"
+    )
+
+
 def test_color_to_rich_all_pyte_bright_names_translate():
     for pyte_name, rich_name in [
         ("brightblack", "bright_black"),
         ("brightred", "bright_red"),
         ("brightgreen", "bright_green"),
         ("brightyellow", "bright_yellow"),
+        ("brightbrown", "bright_yellow"),
         ("brightblue", "bright_blue"),
         ("brightmagenta", "bright_magenta"),
         ("brightcyan", "bright_cyan"),

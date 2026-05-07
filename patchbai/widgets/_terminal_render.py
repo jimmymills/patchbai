@@ -27,6 +27,11 @@ _PYTE_TO_RICH_NAME = {
     "brightblack": "bright_black",
     "brightred": "bright_red",
     "brightgreen": "bright_green",
+    # pyte composes SGR 93 (bright yellow) as "bright" + "brown" rather than
+    # reusing "brightyellow", so we have to map "brightbrown" specifically.
+    # Keep "brightyellow" as defense-in-depth in case future pyte versions
+    # change the convention.
+    "brightbrown": "bright_yellow",
     "brightyellow": "bright_yellow",
     "brightblue": "bright_blue",
     "brightmagenta": "bright_magenta",
