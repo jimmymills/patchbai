@@ -8,6 +8,8 @@ from textual.widgets import Static
 import ptyprocess
 import pyte
 
+from patchbai.widgets._terminal_render import render_screen
+
 
 def _default_command() -> list[str]:
     return [os.environ.get("SHELL", "/bin/sh")]
@@ -61,8 +63,8 @@ class Terminal(Container):
             environ.update(env)
         self._env = environ
         self._pty = None
-        self._screen = pyte.Screen(self.DEFAULT_COLS, self.DEFAULT_ROWS)
-        self._stream = pyte.ByteStream(self._screen)
+        self._screen = pyte.HistoryScreen(self.DEFAULT_COLS, self.DEFAULT_ROWS, history=2000, ratio=0.5)
+        self._stream = pyte.Stream(self._screen)
         self._timer = None
 
     def compose(self) -> ComposeResult:
@@ -102,7 +104,6 @@ class Terminal(Container):
         if self._pty is None:
             return
         try:
-            # Nonblocking check: readable within 0 seconds?
             ready, _, _ = select.select([self._pty.fd], [], [], 0)
             if not ready:
                 return
@@ -113,16 +114,16 @@ class Terminal(Container):
         except Exception:
             return
         if chunk:
-            self._stream.feed(chunk.encode("utf-8", errors="replace"))
+            # PtyProcessUnicode already decoded; pyte.Stream consumes str.
+            self._stream.feed(chunk)
             self._refresh()
 
     def _refresh(self) -> None:
-        from rich.text import Text
         try:
             screen = self.query_one("#terminal-screen", Static)
         except Exception:
             return
-        text = Text("\n".join(self._screen.display))
+        text = render_screen(self._screen, show_cursor=True)
         screen.update(text)
 
     def _show_error(self, msg: str) -> None:
