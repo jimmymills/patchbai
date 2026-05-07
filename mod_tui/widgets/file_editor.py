@@ -7,6 +7,7 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static, TextArea
 
+from mod_tui.events import FileSelected
 from mod_tui.widgets._file_lang import load_text as _load_text
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ class FileEditor(TextArea):
             stat = None
         self._loaded_mtime: float | None = stat[0] if stat else None
         self._loaded_size: int | None = stat[1] if stat else None
+        self._unsub = lambda: None
 
     def load_file(self, file_path: str) -> None:
         path = Path(file_path)
@@ -80,12 +82,45 @@ class FileEditor(TextArea):
         self._dirty = False
         self._refresh_border_title()
 
+    def _on_file_selected(self, event: FileSelected) -> None:
+        new_path = Path(event.path)
+        if not self._dirty or new_path == self._current_path:
+            self.load_file(event.path)
+            return
+        self.run_worker(
+            self._handle_dirty_switch(event.path),
+            exclusive=True,
+        )
+
+    async def _handle_dirty_switch(self, new_path: str) -> None:
+        verb = await self.app.push_screen_wait(
+            ConfirmDirtySwitchScreen(
+                current_name=self._current_path.name if self._current_path else "",
+                new_name=Path(new_path).name,
+            )
+        )
+        if verb == "save":
+            saved = await self.action_save()
+            if saved:
+                self.load_file(new_path)
+        elif verb == "discard":
+            self.load_file(new_path)
+        # cancel: no-op
+
     @property
     def is_dirty(self) -> bool:
         return self._dirty
 
     def on_mount(self) -> None:
         self._refresh_border_title()
+        if not self._follow_selection:
+            return
+        bus = getattr(self.app, "event_bus", None)
+        if bus is not None:
+            self._unsub = bus.subscribe(FileSelected, self._on_file_selected)
+
+    def on_unmount(self) -> None:
+        self._unsub()
 
     def on_text_area_changed(self, _event) -> None:
         new_dirty = self.text != self._loaded_text
@@ -169,6 +204,45 @@ class ConfirmOverwriteScreen(ModalScreen[str]):
                 f"Overwrite anyway?"
             )
             yield Button("Overwrite", id="overwrite", variant="warning")
+            yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id or "cancel")
+
+    def action_cancel(self) -> None:
+        self.dismiss("cancel")
+
+
+class ConfirmDirtySwitchScreen(ModalScreen[str]):
+    """Modal shown when a FileSelected event would discard unsaved edits.
+
+    Dismisses with one of: 'save', 'discard', 'cancel'.
+    """
+
+    DEFAULT_CSS = """
+    ConfirmDirtySwitchScreen { align: center middle; }
+    ConfirmDirtySwitchScreen > Vertical {
+        width: 70; height: auto; padding: 1 2;
+        background: $surface; border: round $primary;
+    }
+    ConfirmDirtySwitchScreen Button { margin-right: 1; }
+    """
+
+    BINDINGS = [("escape", "cancel", "cancel")]
+
+    def __init__(self, *, current_name: str, new_name: str) -> None:
+        super().__init__()
+        self._current_name = current_name
+        self._new_name = new_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(
+                f"Unsaved changes in {self._current_name or '(unsaved buffer)'}. "
+                f"Save & switch to {self._new_name}, discard, or cancel?"
+            )
+            yield Button("Save & Switch", id="save", variant="primary")
+            yield Button("Discard & Switch", id="discard", variant="warning")
             yield Button("Cancel", id="cancel")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
