@@ -10,7 +10,7 @@ from mod_tui.actions import ActionRegistry
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter
 from mod_tui.config import ConfigStore
-from mod_tui.events import EventBus
+from mod_tui.events import EventBus, TabAdded, TabClosed, TabSwitched
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
 from mod_tui.layout.registry import WidgetRegistry
@@ -374,6 +374,48 @@ class ModTuiApp(App):
         await apply_layout(area, spec, self.registry, layout_name=layout_name)
         self._current_layout_name = layout_name
         save_local_workspace(self.cwd, self._workspace)
+
+    # --- tab activation handler --------------------------------------------
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated,
+    ) -> None:
+        """Triggered by TabbedContent when the user (or code) switches the active
+        pane. Updates workspace state, persists, fires our TabSwitched event, and
+        restores focus to the tab's last-focused panel id."""
+        if self._workspace is None:
+            return
+        # event.tab.id carries the internal ContentTab prefix ("--content-tab-tab-logs");
+        # event.pane.id is the TabPane id we set ("tab-logs"), which is what we want.
+        pane_id = event.pane.id if event.pane is not None else None
+        if not pane_id or not pane_id.startswith("tab-"):
+            return
+        new_active = pane_id[len("tab-"):]
+        if new_active == self._active_tab_id:
+            return
+        if self._active_tab_id is not None:
+            try:
+                focused = self.focused
+                if focused is not None and focused.id and focused.id.startswith("panel-"):
+                    self._tab_focus_snapshots[self._active_tab_id] = focused.id[len("panel-"):]
+            except Exception:
+                pass
+        self._active_tab_id = new_active
+        ws = self._workspace.model_copy(update={"active": new_active})
+        self._workspace = ws
+        save_local_workspace(self.cwd, ws)
+        title = next((t.title for t in ws.tabs if t.id == new_active), new_active)
+        self.event_bus.publish(TabSwitched(tab_id=new_active, title=title))
+        target_tab = next((t for t in ws.tabs if t.id == new_active), None)
+        target_panel_id = (
+            self._tab_focus_snapshots.get(new_active)
+            or (target_tab.layout.focus if target_tab else None)
+        )
+        if target_panel_id:
+            try:
+                self.query_one(f"#panel-{target_panel_id}").focus()
+            except Exception:
+                pass
 
     # --- composition & lifecycle -------------------------------------------
 

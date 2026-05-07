@@ -97,3 +97,107 @@ async def test_legacy_layout_json_is_migrated_to_workspace(tmp_path):
         assert ws_raw["active"] == "default"
         assert ws_raw["tabs"][0]["layout"]["focus"] == "orch"
         assert (tmp_path / ".mod_tui" / "layout.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_tab_activation_updates_workspace_active(tmp_path):
+    seed = {
+        "version": 1,
+        "tabs": [
+            {
+                "id": "main",
+                "title": "Main",
+                "layout": {
+                    "version": 1,
+                    "layout": {"id": "orch", "widget": "OrchestratorChat"},
+                },
+            },
+            {
+                "id": "logs",
+                "title": "Logs",
+                "layout": {
+                    "version": 1,
+                    "layout": {"id": "feed", "widget": "ActivityFeed"},
+                },
+            },
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tc = app.query_one("#app-tabs", TabbedContent)
+        tc.active = "tab-logs"
+        await pilot.pause()
+        assert app._active_tab_id == "logs"
+        ws_raw = json.loads((tmp_path / ".mod_tui" / "workspace.json").read_text())
+        assert ws_raw["active"] == "logs"
+
+
+@pytest.mark.asyncio
+async def test_tab_activation_publishes_tab_switched_event(tmp_path):
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {"id": "orch", "widget": "OrchestratorChat"}}},
+            {"id": "logs", "title": "Logs",
+             "layout": {"version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"}}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    seen: list = []
+    from mod_tui.events import TabSwitched
+    app.event_bus.subscribe(TabSwitched, lambda e: seen.append(e))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        tc = app.query_one("#app-tabs", TabbedContent)
+        tc.active = "tab-logs"
+        await pilot.pause()
+
+    assert any(e.tab_id == "logs" and e.title == "Logs" for e in seen)
+
+
+@pytest.mark.asyncio
+async def test_tab_widgets_persist_across_switches(tmp_path):
+    """Stateful widgets (e.g., a Notebook scratch buffer) survive switches."""
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {"id": "orch", "widget": "OrchestratorChat"}}},
+            {"id": "scratch", "title": "Scratch",
+             "layout": {
+                 "version": 1,
+                 "layout": {
+                     "id": "note", "widget": "Notebook",
+                     "props": {"name": "memo"},
+                 },
+             }},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        notebook = app.query_one("#panel-note")
+        assert notebook is not None
+        tc = app.query_one("#app-tabs", TabbedContent)
+        tc.active = "tab-scratch"
+        await pilot.pause()
+        same = app.query_one("#panel-note")
+        assert same is notebook
+        tc.active = "tab-main"
+        await pilot.pause()
+        assert app.query_one("#panel-note") is notebook
