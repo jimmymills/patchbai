@@ -287,3 +287,36 @@ async def test_ctrl_w_closes_active_tab(tmp_path):
         assert app._workspace is not None
         assert all(t.id != "logs" for t in app._workspace.tabs)
         assert app._active_tab_id == "main"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_can_add_a_filetree_filviewer_tab(tmp_path):
+    """End-to-end: agent calls add_tab with an inline 2-panel layout, then
+    set_layout on that tab, and the panels appear in the DOM."""
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from mod_tui.orchestrator.tabs_tools import add_tab_handler
+        add = add_tab_handler(app)
+        result = await add({
+            "title": "Code",
+            "layout": {
+                "version": 1,
+                "layout": {
+                    "type": "horizontal",
+                    "children": [
+                        {"id": "tree", "size": "30%",
+                         "widget": "FileTree", "props": {"path": "."}},
+                        {"id": "view", "size": "70%",
+                         "widget": "FileViewer",
+                         "props": {"follow_selection": True}},
+                    ],
+                },
+            },
+        })
+        await pilot.pause()
+        body = json.loads(result["content"][0]["text"])
+        new_id = body["tab_id"]
+        assert app.query_one("#panel-tree") is not None
+        assert app.query_one("#panel-view") is not None
+        assert app._active_tab_id == new_id
