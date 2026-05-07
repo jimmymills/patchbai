@@ -7,8 +7,18 @@ from rich.markdown import Markdown as _RichMarkdown
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
-from textual.markup import escape as _markup_escape
 from textual.widgets import Collapsible, Static
+
+
+def _markup_escape(s: str) -> str:
+    # textual.markup.escape only escapes "[" when followed by [a-z#/@] —
+    # i.e. only when it already looks like a tag open. Tool output regularly
+    # has "[" followed by other characters (e.g. "[\n" from cat -n output,
+    # "[ " or "[{" inside JSON), which slips through and then crashes
+    # Content.from_markup with MarkupError. Escape every "[" instead.
+    # Backslashes pass through unchanged because Textual's parser only
+    # treats "\\[" specially, not bare "\\".
+    return s.replace("[", "\\[")
 
 from mod_tui.agents.state import AgentState
 from mod_tui.events import AgentMessageAppended, AgentStateChanged, EventBus

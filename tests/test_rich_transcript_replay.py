@@ -96,6 +96,40 @@ async def test_replay_does_not_start_spinner_on_completed_tool(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_replay_tool_result_with_brackets_does_not_crash(tmp_path):
+    # Regression: tool results that contain "[" followed by chars other than
+    # [a-z#/@] (e.g. cat -n output "[\n", JSON "[{") used to crash on replay
+    # because textual.markup.escape passed them through unescaped, and the
+    # Collapsible title's markup parser then choked on the truncation "…".
+    from mod_tui.widgets.rich_transcript import _ToolCall
+
+    payload = (
+        '820\t            "tabs": [\n'
+        '821\t                {**t.model_dump(mode="json"), '
+        '"layout": spec.model_dump(mode="json")}\n'
+        '822\t                if t.id == tab_id else t.model_dump(mode="json")\n'
+    )
+
+    store = Store(cwd=tmp_path, agent_id="a1")
+    store.append(TranscriptEntry(role="user", text="go"))
+    store.append(TranscriptEntry(role="tool_use", text="{'file_path': 'x'}",
+                                 tool_id="t1", tool_name="Read"))
+    store.append(TranscriptEntry(role="tool_result", text=payload,
+                                 tool_id="t1"))
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        widget = app.query_one(RichTranscript)
+        tools = list(widget.query(_ToolCall))
+        assert len(tools) == 1
+        # If the bug is back, mounting throws MarkupError before we reach here.
+        assert tools[0].title.startswith("✓")
+
+
+@pytest.mark.asyncio
 async def test_replay_does_not_start_spinner_on_completed_thinking(tmp_path):
     """Same regression for thinking groups closed by rolling-turn-close."""
     from mod_tui.widgets.rich_transcript import _ThinkingGroup, _SPINNER_FRAMES

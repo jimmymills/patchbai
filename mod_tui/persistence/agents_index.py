@@ -1,8 +1,9 @@
 import json
 import logging
+import time
 from pathlib import Path
 
-from mod_tui.agents.state import AgentInfo
+from mod_tui.agents.state import AgentInfo, AgentState
 from mod_tui.persistence.atomic import write_json_atomic
 from mod_tui.persistence.paths import project_state_dir
 
@@ -43,3 +44,25 @@ class AgentsIndex:
                 return
         current.append(info)
         self.save(current)
+
+    def reconcile_orphans(self) -> list[AgentInfo]:
+        # On boot the manager has no live sessions yet, so any persisted
+        # agent in a non-terminal state is from a previous process that died
+        # without marking it done (e.g. crash). Flip it to ERROR so the table
+        # doesn't claim those rows are still running.
+        # The orchestrator is excluded — it owns its own boot lifecycle and
+        # will overwrite the entry on start().
+        infos = self.load()
+        now = time.time()
+        changed = False
+        for info in infos:
+            if info.id == "orchestrator":
+                continue
+            if not info.state.is_terminal:
+                info.state = AgentState.ERROR
+                if info.ended_at is None:
+                    info.ended_at = now
+                changed = True
+        if changed:
+            self.save(infos)
+        return infos
