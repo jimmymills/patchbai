@@ -19,6 +19,7 @@ _STATUS_STYLES: dict[_AgentState, str] = {
     _AgentState.IDLE: "dim",
     _AgentState.RUNNING: "green",
     _AgentState.WAITING: "yellow",
+    _AgentState.AWAITING_PERMISSION: "orange1",
     _AgentState.DONE: "bold",
     _AgentState.ERROR: "red",
 }

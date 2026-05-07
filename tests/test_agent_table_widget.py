@@ -322,3 +322,19 @@ async def test_status_cell_uses_red_for_error():
         assert isinstance(status_cell, Text)
         assert status_cell.plain == "error"
         assert "red" in str(status_cell.style).lower()
+
+
+@pytest.mark.asyncio
+async def test_status_cell_uses_orange_for_awaiting_permission():
+    from rich.text import Text
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        info = _info(state=AgentState.AWAITING_PERMISSION)
+        widget = app.query_one(AgentTable)
+        cells = widget._render_cells(info)
+        status_cell = cells[1]
+        assert isinstance(status_cell, Text)
+        assert status_cell.plain == "awaiting_permission"
+        assert "orange" in str(status_cell.style).lower()
