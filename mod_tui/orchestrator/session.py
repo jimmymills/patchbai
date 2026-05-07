@@ -4,6 +4,7 @@ import re
 import time
 import uuid
 from pathlib import Path
+from typing import Callable
 
 from claude_agent_sdk import ClaudeAgentOptions
 
@@ -88,7 +89,7 @@ class OrchestratorSession:
         self._unsub_ask: callable = lambda: None
         # Test-only seam: when set, used as the adapter factory for the next
         # swap (during /reset or /resume). Production wiring uses RealSDKAdapter.
-        self._next_adapter_factory = None
+        self._next_adapter_factory: "Callable[[], SDKAdapter] | None" = None
         self._send_tasks: list[asyncio.Task] = []
 
     @property
