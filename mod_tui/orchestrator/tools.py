@@ -13,6 +13,8 @@ from mod_tui.orchestrator.tabs_tools import (
     add_tab_handler,
     close_tab_handler,
     list_tabs_handler,
+    rename_tab_handler,
+    reorder_tabs_handler,
     switch_tab_handler,
 )
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
@@ -600,6 +602,8 @@ def build_orchestrator_tools(
         handlers["close_tab"] = close_tab_handler(app)
         handlers["switch_tab"] = switch_tab_handler(app)
         handlers["list_tabs"] = list_tabs_handler(app)
+        handlers["rename_tab"] = rename_tab_handler(app)
+        handlers["reorder_tabs"] = reorder_tabs_handler(app)
     return handlers
 
 
@@ -820,6 +824,22 @@ def build_orchestrator_mcp_server(
             "and the list of panel ids contained in each tab.",
             {},
         )(list_tabs_handler(app)))
+        sdk_tools.append(tool(
+            "rename_tab",
+            "Rename an existing tab. `tab_id` identifies the tab; `title` "
+            "is the new user-facing label shown in the tab strip. The "
+            "underlying widgets are not re-mounted, so panel state is "
+            "preserved.",
+            {"tab_id": str, "title": str},
+        )(rename_tab_handler(app)))
+        sdk_tools.append(tool(
+            "reorder_tabs",
+            "Rearrange the tab strip. `tab_ids` must be a permutation of "
+            "the existing tab ids — every current id must appear exactly "
+            "once. The active tab stays active (just at a new position). "
+            "Widget state is preserved across the reorder.",
+            {"tab_ids": list},
+        )(reorder_tabs_handler(app)))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",

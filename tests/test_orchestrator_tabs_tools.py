@@ -12,6 +12,8 @@ from mod_tui.orchestrator.tabs_tools import (
     add_tab_handler,
     close_tab_handler,
     list_tabs_handler,
+    rename_tab_handler,
+    reorder_tabs_handler,
     switch_tab_handler,
 )
 
@@ -326,3 +328,150 @@ async def test_list_tabs_panel_ids_include_panels_in_panel_tabs(tmp_path):
         body = json.loads(result["content"][0]["text"])
         mixed = next(t for t in body if t["title"] == "Mixed")
         assert set(mixed["panel_ids"]) == {"feed", "logs"}
+
+
+# --- rename_tab ------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_rename_tab_updates_title_and_strip_label(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._workspace is not None
+        original_id = app._workspace.tabs[0].id
+
+        rename = rename_tab_handler(app)
+        result = await rename({"tab_id": original_id, "title": "Renamed"})
+        await pilot.pause()
+        body = json.loads(result["content"][0]["text"])
+        assert body["renamed"] == original_id
+        assert body["title"] == "Renamed"
+
+        # Workspace model reflects the new title.
+        assert app._workspace.tabs[0].title == "Renamed"
+        # Strip label updated in place — no remount.
+        tc = app.query_one("#app-tabs", TabbedContent)
+        tab = tc.get_tab(f"tab-{original_id}")
+        assert str(tab.label) == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_rename_tab_unknown_id_returns_error(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        rename = rename_tab_handler(app)
+        result = await rename({"tab_id": "nope", "title": "Whatever"})
+        body = json.loads(result["content"][0]["text"])
+        assert body.get("error") == "unknown_tab_id"
+
+
+@pytest.mark.asyncio
+async def test_rename_tab_empty_title_returns_error(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        original_id = app._workspace.tabs[0].id  # type: ignore[union-attr]
+        rename = rename_tab_handler(app)
+        result = await rename({"tab_id": original_id, "title": "  "})
+        body = json.loads(result["content"][0]["text"])
+        assert "title" in body.get("error", "")
+
+
+@pytest.mark.asyncio
+async def test_rename_tab_persists_to_disk(tmp_path):
+    from mod_tui.persistence.paths import project_workspace_path
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        original_id = app._workspace.tabs[0].id  # type: ignore[union-attr]
+        rename = rename_tab_handler(app)
+        await rename({"tab_id": original_id, "title": "OnDisk"})
+        await pilot.pause()
+        raw = json.loads(project_workspace_path(tmp_path).read_text())
+        assert raw["tabs"][0]["title"] == "OnDisk"
+
+
+# --- reorder_tabs ----------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_reorder_tabs_rearranges_workspace_and_strip(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Add two more tabs so we have three to permute.
+        add = add_tab_handler(app)
+        r1 = json.loads((await add({"title": "Two", "activate": False}))["content"][0]["text"])
+        r2 = json.loads((await add({"title": "Three", "activate": False}))["content"][0]["text"])
+        await pilot.pause()
+        ids = [t.id for t in app._workspace.tabs]  # type: ignore[union-attr]
+        assert len(ids) == 3 and r1["tab_id"] in ids and r2["tab_id"] in ids
+
+        new_order = [ids[2], ids[0], ids[1]]
+        reorder = reorder_tabs_handler(app)
+        result = await reorder({"tab_ids": new_order})
+        await pilot.pause()
+        body = json.loads(result["content"][0]["text"])
+        assert body["reordered"] == new_order
+
+        # Workspace tabs match the new order.
+        assert [t.id for t in app._workspace.tabs] == new_order  # type: ignore[union-attr]
+
+        # The strip's TabPanes appear in the new order.
+        tc = app.query_one("#app-tabs", TabbedContent)
+        pane_ids = [p.id for p in tc.query(TabPane)]
+        assert pane_ids == [f"tab-{tid}" for tid in new_order]
+
+
+@pytest.mark.asyncio
+async def test_reorder_tabs_preserves_active_tab(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        b = json.loads((await add({"title": "B", "activate": False}))["content"][0]["text"])
+        await pilot.pause()
+        active_before = app._active_tab_id
+        ids = [t.id for t in app._workspace.tabs]  # type: ignore[union-attr]
+        # Reverse the order.
+        new_order = list(reversed(ids))
+        reorder = reorder_tabs_handler(app)
+        await reorder({"tab_ids": new_order})
+        await pilot.pause()
+        assert app._active_tab_id == active_before
+        assert b["tab_id"] in [t.id for t in app._workspace.tabs]  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_reorder_tabs_rejects_non_permutation(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ids = [t.id for t in app._workspace.tabs]  # type: ignore[union-attr]
+        reorder = reorder_tabs_handler(app)
+        # Missing id
+        body = json.loads((await reorder({"tab_ids": []}))["content"][0]["text"])
+        assert body.get("error") == "tab_ids_not_a_permutation"
+        # Extra id
+        body = json.loads((await reorder({"tab_ids": ids + ["bogus"]}))["content"][0]["text"])
+        assert body.get("error") == "tab_ids_not_a_permutation"
+        # Duplicates
+        body = json.loads((await reorder({"tab_ids": [ids[0], ids[0]]}))["content"][0]["text"])
+        assert body.get("error") == "tab_ids_not_a_permutation"
+
+
+@pytest.mark.asyncio
+async def test_reorder_tabs_persists_to_disk(tmp_path):
+    from mod_tui.persistence.paths import project_workspace_path
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        await add({"title": "Two", "activate": False})
+        await pilot.pause()
+        ids = [t.id for t in app._workspace.tabs]  # type: ignore[union-attr]
+        reorder = reorder_tabs_handler(app)
+        await reorder({"tab_ids": list(reversed(ids))})
+        await pilot.pause()
+        raw = json.loads(project_workspace_path(tmp_path).read_text())
+        assert [t["id"] for t in raw["tabs"]] == list(reversed(ids))

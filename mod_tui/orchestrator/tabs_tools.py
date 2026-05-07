@@ -102,6 +102,35 @@ def switch_tab_handler(app):
     return switch_tab_tool
 
 
+def rename_tab_handler(app):
+    async def rename_tab_tool(args: dict) -> dict:
+        tab_id = args.get("tab_id")
+        title = args.get("title")
+        if not isinstance(tab_id, str) or not tab_id:
+            return _err("`tab_id` is required and must be a string")
+        if not isinstance(title, str) or not title.strip():
+            return _err("`title` is required and must be a non-empty string")
+        result = await app.rename_tab(tab_id, title)
+        if "error" in result:
+            return _err(result["error"], **{k: v for k, v in result.items() if k != "error"})
+        return _ok(result)
+
+    return rename_tab_tool
+
+
+def reorder_tabs_handler(app):
+    async def reorder_tabs_tool(args: dict) -> dict:
+        tab_ids = args.get("tab_ids")
+        if not isinstance(tab_ids, list) or not all(isinstance(x, str) for x in tab_ids):
+            return _err("`tab_ids` is required and must be a list of strings")
+        result = await app.reorder_tabs(tab_ids)
+        if "error" in result:
+            return _err(result["error"], **{k: v for k, v in result.items() if k != "error"})
+        return _ok(result)
+
+    return reorder_tabs_tool
+
+
 def list_tabs_handler(app):
     async def list_tabs_tool(_args: dict) -> dict:
         if app._workspace is None:

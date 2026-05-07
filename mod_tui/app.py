@@ -441,6 +441,94 @@ class ModTuiApp(App):
         self.event_bus.publish(TabAdded(tab_id=new_id, title=title))
         return new_id
 
+    async def rename_tab(self, tab_id: str, title: str) -> dict:
+        """Update the user-facing label of a tab. Returns a small result dict;
+        never raises on bad input."""
+        if self._workspace is None:
+            return {"error": "workspace_not_initialized"}
+        ws = self._workspace
+        if all(t.id != tab_id for t in ws.tabs):
+            return {"error": "unknown_tab_id", "tab_id": tab_id}
+        if not isinstance(title, str) or not title.strip():
+            return {"error": "title_must_be_nonempty_string"}
+        new_ws = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [
+                {**t.model_dump(mode="json"), "title": title}
+                if t.id == tab_id else t.model_dump(mode="json")
+                for t in ws.tabs
+            ],
+            "active": ws.active,
+            "active_theme": ws.active_theme,
+        })
+        self._workspace = new_ws
+        # Update the strip label without re-mounting the pane (preserves widget state).
+        try:
+            tc = self.query_one("#app-tabs", TabbedContent)
+            tab = tc.get_tab(f"tab-{tab_id}")
+            tab.label = title  # type: ignore[assignment]
+        except Exception:
+            # If the lookup fails (e.g., transient state), persistence still wins —
+            # the next mount will reflect the new title.
+            pass
+        save_local_workspace(self.cwd, self._workspace)
+        return {"renamed": tab_id, "title": title}
+
+    async def reorder_tabs(self, tab_ids: list[str]) -> dict:
+        """Rearrange tabs to match `tab_ids` order. Must be a permutation of
+        the current tab ids — extras, missing ids, or duplicates are rejected.
+        Preserves widget state by moving existing Tab/TabPane children in the
+        live widget tree rather than rebuilding."""
+        if self._workspace is None:
+            return {"error": "workspace_not_initialized"}
+        ws = self._workspace
+        current_ids = [t.id for t in ws.tabs]
+        if not isinstance(tab_ids, list) or not all(isinstance(x, str) for x in tab_ids):
+            return {"error": "tab_ids_must_be_list_of_strings"}
+        if sorted(tab_ids) != sorted(current_ids):
+            return {
+                "error": "tab_ids_not_a_permutation",
+                "current_ids": current_ids,
+                "given_ids": tab_ids,
+            }
+        # Already in order → no-op.
+        if tab_ids == current_ids:
+            return {"reordered": tab_ids, "noop": True}
+        # Reorder workspace.
+        by_id = {t.id: t for t in ws.tabs}
+        new_ws = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [by_id[i].model_dump(mode="json") for i in tab_ids],
+            "active": ws.active,
+            "active_theme": ws.active_theme,
+        })
+        self._workspace = new_ws
+        # Move existing TabPane and tab-strip Tab widgets into the new order.
+        # Walk forward and place each item right after its predecessor — this
+        # establishes the chain pane[0] -> pane[1] -> ... without ever asking
+        # move_child to insert a widget before/after itself. The Tab widgets in
+        # the strip live inside a `tabs-list` Horizontal nested under
+        # ContentTabs, not directly under it — so we move each Tab through its
+        # actual parent.
+        try:
+            from textual.widget import Widget as _Widget
+            tc = self.query_one("#app-tabs", TabbedContent)
+            from textual.widgets._content_switcher import ContentSwitcher
+            switcher = tc.get_child_by_type(ContentSwitcher)
+            panes = [tc.get_pane(f"tab-{tid}") for tid in tab_ids]
+            tabs = [tc.get_tab(f"tab-{tid}") for tid in tab_ids]
+            for i in range(len(tab_ids) - 1):
+                switcher.move_child(panes[i + 1], after=panes[i])
+                tab_parent = tabs[i].parent
+                if isinstance(tab_parent, _Widget) and tabs[i + 1].parent is tab_parent:
+                    tab_parent.move_child(tabs[i + 1], after=tabs[i])
+        except Exception:
+            # UI move failure leaves the in-memory workspace updated; persistence
+            # below preserves the new order across restart.
+            pass
+        save_local_workspace(self.cwd, self._workspace)
+        return {"reordered": tab_ids}
+
     async def action_dispatch(self, name: str) -> None:
         # Look up the action and call it. If it returns a coroutine (async
         # actions like action_quit / action_open_history / action_open_layout_switcher),
