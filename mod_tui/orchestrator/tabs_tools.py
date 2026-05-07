@@ -56,8 +56,16 @@ def add_tab_handler(app):
 
 
 def close_tab_handler(app):
-    """Stub — implemented in Task 11."""
-    raise NotImplementedError
+    async def close_tab_tool(args: dict) -> dict:
+        tab_id = args.get("tab_id")
+        if not isinstance(tab_id, str) or not tab_id:
+            return _err("`tab_id` is required and must be a string")
+        result = await app.close_tab(tab_id)
+        if "error" in result:
+            return _err(result["error"], **{k: v for k, v in result.items() if k != "error"})
+        return _ok(result)
+
+    return close_tab_tool
 
 
 def switch_tab_handler(app):

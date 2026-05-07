@@ -139,3 +139,113 @@ async def test_add_tab_publishes_tab_added_event(tmp_path):
         await handler({"title": "Logs"})
         await pilot.pause()
     assert any(e.title == "Logs" for e in seen)
+
+
+@pytest.mark.asyncio
+async def test_close_tab_removes_pane_and_updates_workspace(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Add a second tab so close has something to remove.
+        add = add_tab_handler(app)
+        result = await add({"title": "Logs"})
+        new_id = json.loads(result["content"][0]["text"])["tab_id"]
+        await pilot.pause()
+
+        close = close_tab_handler(app)
+        result = await close({"tab_id": new_id})
+        await pilot.pause()
+        body = json.loads(result["content"][0]["text"])
+        assert body["closed"] == new_id
+        assert app._workspace is not None
+        assert all(t.id != new_id for t in app._workspace.tabs)
+        tc = app.query_one("#app-tabs", TabbedContent)
+        assert all(p.id != f"tab-{new_id}" for p in tc.query(TabPane))
+
+
+@pytest.mark.asyncio
+async def test_close_tab_refuses_to_close_last_tab(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._workspace is not None
+        only_id = app._workspace.tabs[0].id
+        close = close_tab_handler(app)
+        result = await close({"tab_id": only_id})
+        body = json.loads(result["content"][0]["text"])
+        assert body["error"] == "would_leave_zero_tabs"
+        assert app._workspace is not None
+        assert any(t.id == only_id for t in app._workspace.tabs)
+
+
+@pytest.mark.asyncio
+async def test_close_tab_refuses_when_no_chat_remains(tmp_path):
+    # Seed a workspace where tab "main" has chat and tab "logs" doesn't.
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {"id": "orch", "widget": "OrchestratorChat"}}},
+            {"id": "logs", "title": "Logs",
+             "layout": {"version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"}}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        close = close_tab_handler(app)
+        result = await close({"tab_id": "main"})
+        body = json.loads(result["content"][0]["text"])
+        assert body["error"] == "would_leave_no_chat"
+        assert app._workspace is not None
+        assert any(t.id == "main" for t in app._workspace.tabs)
+
+
+@pytest.mark.asyncio
+async def test_close_tab_unknown_id_returns_error(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        close = close_tab_handler(app)
+        result = await close({"tab_id": "ghost"})
+        body = json.loads(result["content"][0]["text"])
+        assert body["error"] == "unknown_tab_id"
+
+
+@pytest.mark.asyncio
+async def test_close_tab_publishes_tab_closed_event(tmp_path):
+    app = _build_app(tmp_path)
+    seen: list = []
+    from mod_tui.events import TabClosed
+    app.event_bus.subscribe(TabClosed, lambda e: seen.append(e))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        result = await add({"title": "Logs"})
+        new_id = json.loads(result["content"][0]["text"])["tab_id"]
+        await pilot.pause()
+        close = close_tab_handler(app)
+        await close({"tab_id": new_id})
+        await pilot.pause()
+    assert any(e.tab_id == new_id for e in seen)
+
+
+@pytest.mark.asyncio
+async def test_close_active_tab_falls_back_to_neighbor(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        r1 = await add({"title": "Logs", "activate": True})
+        new_id = json.loads(r1["content"][0]["text"])["tab_id"]
+        await pilot.pause()
+        assert app._active_tab_id == new_id
+        close = close_tab_handler(app)
+        await close({"tab_id": new_id})
+        await pilot.pause()
+        # Active falls back to the previous tab.
+        assert app._active_tab_id != new_id
+        assert app._active_tab_id is not None

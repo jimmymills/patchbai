@@ -283,6 +283,43 @@ class ModTuiApp(App):
             "layout": {"id": "orch", "widget": "OrchestratorChat"},
         })
 
+    async def close_tab(self, tab_id: str) -> dict:
+        """Close a tab. Returns a small result dict; never raises on bad input."""
+        if self._workspace is None:
+            return {"error": "workspace_not_initialized"}
+        ws = self._workspace
+        tabs = ws.tabs
+        target = next((t for t in tabs if t.id == tab_id), None)
+        if target is None:
+            return {"error": "unknown_tab_id"}
+        if len(tabs) == 1:
+            return {"error": "would_leave_zero_tabs"}
+        remaining = [t for t in tabs if t.id != tab_id]
+        if not any(_contains_chat(t.layout.layout) for t in remaining):
+            return {"error": "would_leave_no_chat",
+                    "suggestion": "add OrchestratorChat to another tab before closing this one"}
+        # Determine new active: previous tab, or the first remaining if we close index 0.
+        if self._active_tab_id == tab_id:
+            idx = next(i for i, t in enumerate(tabs) if t.id == tab_id)
+            fallback_idx = max(0, idx - 1)
+            new_active = remaining[min(fallback_idx, len(remaining) - 1)].id
+        else:
+            new_active = self._active_tab_id  # type: ignore[assignment]
+        self._workspace = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [t.model_dump(mode="json") for t in remaining],
+            "active": new_active,
+        })
+        self._tab_focus_snapshots.pop(tab_id, None)
+        tc = self.query_one("#app-tabs", TabbedContent)
+        await tc.remove_pane(f"tab-{tab_id}")
+        if self._active_tab_id == tab_id:
+            self._active_tab_id = new_active
+            tc.active = f"tab-{new_active}"
+        save_local_workspace(self.cwd, self._workspace)
+        self.event_bus.publish(TabClosed(tab_id=tab_id))
+        return {"closed": tab_id, "new_active": new_active}
+
     async def add_tab(self, title: str, layout: LayoutSpec, *, activate: bool = True) -> str:
         """Append a new tab. Returns the new tab id. Updates persistence."""
         if self._workspace is None:
