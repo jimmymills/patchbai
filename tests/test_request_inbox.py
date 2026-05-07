@@ -80,9 +80,10 @@ async def test_on_pending_changed_fires_on_wait_timeout_drain():
 
 
 @pytest.mark.asyncio
-async def test_on_pending_changed_does_not_fire_for_intermediate_register_drain_pairs():
-    """Stacked asks: count goes 0→1→2→1→0; we expect every step to fire,
-    so we can distinguish "still non-empty" (>=1) from "now empty" (==0)."""
+async def test_on_pending_changed_fires_on_every_transition_for_stacked_asks():
+    """Stacked asks: every register/drain transition fires the callback.
+    Counts go 0→1→2→1→0, so subscribers can distinguish 'still non-empty'
+    (>=1) from 'now empty' (==0)."""
     counts: list[int] = []
     inbox = RequestInbox(on_pending_changed=counts.append)
     a = inbox.register()
