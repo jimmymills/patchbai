@@ -115,6 +115,16 @@ class StatusBar(Horizontal):
         width: auto;
         padding: 0 1;
     }
+    /* The hints Static expands to absorb all leftover horizontal space and
+       right-aligns its text, parking the shortcut hint flush with the right
+       edge of the bar regardless of how wide the terminal is. The id selector
+       outranks the type selector above (CSS specificity), so it overrides
+       `width: auto` for this one widget. */
+    StatusBar #sb-hints {
+        width: 1fr;
+        text-align: right;
+        color: $text-muted;
+    }
     """
 
     def __init__(self, *, event_bus: EventBus | None = None,
@@ -134,6 +144,10 @@ class StatusBar(Horizontal):
         yield Static(f"layout: {self._layout_name}", id="sb-layout")
         yield Static("", id="sb-cwd")
         yield Static("", id="sb-error")
+        # Always-visible hint for the two most fundamental keybindings:
+        # `?` opens the help notification, `Ctrl+Q` quits. Verified against
+        # PatchbaiApp.BINDINGS. New users never have to guess how to escape.
+        yield Static("? help · ^Q quit", id="sb-hints")
 
     def on_mount(self) -> None:
         from patchbai.events import LayoutApplied, StatsUpdated, WorkspaceCwdChanged
