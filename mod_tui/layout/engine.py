@@ -79,6 +79,8 @@ from textual.containers import Horizontal, Vertical
 from textual.widget import Widget
 from textual.widgets import TabbedContent, TabPane
 
+from mod_tui.layout.splitter import Splitter
+
 
 def _has_border_in_default_css(cls) -> bool:
     """Heuristic: does this class (or an ancestor) declare a border in
@@ -137,7 +139,15 @@ def _build(node, registry) -> Widget:
         return tc
     # Container
     box_cls = Horizontal if node.type == "horizontal" else Vertical
-    box = box_cls(*[_build(c, registry) for c in node.children])
+    built = [_build(c, registry) for c in node.children]
+    # Interleave a draggable Splitter between each pair of siblings so the user
+    # can resize panels with the mouse. Single-child containers get no splitter.
+    interleaved: list[Widget] = []
+    for i, child in enumerate(built):
+        if i > 0:
+            interleaved.append(Splitter(node.type))
+        interleaved.append(child)
+    box = box_cls(*interleaved)
     if node.size:
         box.styles.width = node.size
     return box
