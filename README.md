@@ -491,4 +491,4 @@ the last good layout stays mounted.
 
 ## License
 
-TBD.
+[MIT](LICENSE) © Jimmy Mills.
