@@ -159,6 +159,14 @@ class TabSwitched:
 
 
 @dataclass(frozen=True)
+class WorkspaceCwdChanged:
+    """The app's working directory has been re-rooted at runtime. The
+    workspace state has already been reloaded from `cwd` and the active
+    layout re-applied; subscribers should re-render any cwd-dependent UI."""
+    cwd: str
+
+
+@dataclass(frozen=True)
 class FileSelected:
     """A FileTree (or similar) widget selected a file. Other widgets like
     FileViewer can subscribe with `follow_selection=True` to react."""

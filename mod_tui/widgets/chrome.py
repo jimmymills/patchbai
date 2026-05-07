@@ -1,8 +1,48 @@
+import os
+from pathlib import Path
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Input, Static
 
 from mod_tui.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
+
+
+def _format_cwd(path: Path, *, available_width: int) -> str:
+    """Render `path` for the StatusBar, abbreviating under $HOME and
+    left-truncating with '…/' to fit `available_width` characters.
+
+    Pure: no I/O, no widget access. Drives `_on_cwd_changed` and
+    `on_resize` in StatusBar.
+
+    Uses ``os.path.abspath`` rather than ``Path.resolve`` so the
+    formatter does not follow symlinks — the user sees the path they
+    typed (e.g. ``/var/log/foo``) rather than the kernel-canonical form
+    (``/private/var/log/foo`` on macOS). Path canonicalisation belongs
+    in the validation step inside ``App.change_cwd``, not in the footer.
+    """
+    try:
+        home = Path.home()
+        abs_p = Path(os.path.abspath(path))
+        try:
+            rel = abs_p.relative_to(home)
+            display = "~" + ("/" + str(rel) if str(rel) != "." else "")
+        except ValueError:
+            display = str(abs_p)
+    except Exception:
+        display = str(path)
+
+    if available_width <= 0 or len(display) <= available_width:
+        return display
+    # Try left-truncation that ends at a segment boundary.
+    parts = display.split("/")
+    # Keep peeling leading segments until "…/" + tail fits.
+    for keep in range(len(parts) - 1, 0, -1):
+        candidate = "…/" + "/".join(parts[-keep:])
+        if len(candidate) <= available_width:
+            return candidate
+    # Budget too tight even for "…/leaf" — return bare basename.
+    return parts[-1]
 
 
 class CommandBar(Horizontal):
