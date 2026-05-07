@@ -455,6 +455,13 @@ class RichTranscript(Vertical):
 
     def on_mount(self) -> None:
         from mod_tui.events import OrchestratorSessionSwitched
+        # Anchor the scroll to the bottom: Textual auto-pins the viewport to
+        # the bottom across content additions, releases the anchor when the
+        # user scrolls up, and restores it when they scroll back to the end.
+        try:
+            self.query_one(VerticalScroll).anchor()
+        except Exception:
+            pass
         cwd: Path | None = getattr(self.app, "cwd", None)
         if self._transcript_path is not None:
             store = TranscriptStore(
@@ -540,6 +547,9 @@ class RichTranscript(Vertical):
             self._open_turn("")
         turn = self._current_turn
         assert turn is not None
+        # The VerticalScroll is `anchor()`ed in on_mount, so Textual keeps it
+        # pinned to the bottom across mounts and releases the anchor when the
+        # user scrolls up. No explicit scroll calls needed here.
         if entry.role == "assistant":
             turn.add_text(entry.text)
         elif entry.role == "thinking":
