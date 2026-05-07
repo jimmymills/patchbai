@@ -249,3 +249,34 @@ async def test_close_active_tab_falls_back_to_neighbor(tmp_path):
         # Active falls back to the previous tab.
         assert app._active_tab_id != new_id
         assert app._active_tab_id is not None
+
+
+@pytest.mark.asyncio
+async def test_switch_tab_changes_active(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        r = await add({"title": "Logs", "activate": False})
+        new_id = json.loads(r["content"][0]["text"])["tab_id"]
+        await pilot.pause()
+        original_active = app._active_tab_id
+
+        switch = switch_tab_handler(app)
+        result = await switch({"tab_id": new_id})
+        await pilot.pause()
+        body = json.loads(result["content"][0]["text"])
+        assert body["active"] == new_id
+        assert app._active_tab_id == new_id
+        assert app._active_tab_id != original_active
+
+
+@pytest.mark.asyncio
+async def test_switch_tab_unknown_id_returns_error(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        switch = switch_tab_handler(app)
+        result = await switch({"tab_id": "ghost"})
+        body = json.loads(result["content"][0]["text"])
+        assert body["error"] == "unknown_tab_id"

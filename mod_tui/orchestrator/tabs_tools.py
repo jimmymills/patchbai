@@ -69,8 +69,18 @@ def close_tab_handler(app):
 
 
 def switch_tab_handler(app):
-    """Stub — implemented in Task 12."""
-    raise NotImplementedError
+    async def switch_tab_tool(args: dict) -> dict:
+        tab_id = args.get("tab_id")
+        if not isinstance(tab_id, str) or not tab_id:
+            return _err("`tab_id` is required and must be a string")
+        if app._workspace is None or all(t.id != tab_id for t in app._workspace.tabs):
+            return _err("unknown_tab_id")
+        from textual.widgets import TabbedContent
+        tc = app.query_one("#app-tabs", TabbedContent)
+        tc.active = f"tab-{tab_id}"
+        return _ok({"active": tab_id})
+
+    return switch_tab_tool
 
 
 def list_tabs_handler(app):
