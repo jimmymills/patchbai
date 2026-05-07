@@ -1,3 +1,4 @@
+import secrets
 from pathlib import Path
 
 from textual.app import App, ComposeResult
@@ -38,7 +39,7 @@ from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
 from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
-from mod_tui.workspace.spec import Workspace, workspace_from_layout
+from mod_tui.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -252,6 +253,61 @@ class ModTuiApp(App):
             self.refresh_bindings()
         except AttributeError:
             pass
+
+    # --- tab workspace-mutation surface ------------------------------------
+
+    def _generate_tab_id(self) -> str:
+        """Short, collision-checked id."""
+        existing = {t.id for t in (self._workspace.tabs if self._workspace else [])}
+        while True:
+            candidate = secrets.token_hex(3)  # 6 hex chars
+            if candidate not in existing:
+                return candidate
+
+    def _default_seed_layout(self) -> LayoutSpec:
+        """Layout used when add_tab is called with no layout arg.
+
+        If the workspace already has chat in another tab, seed with a chat-less
+        ActivityFeed (most 'add a new tab' requests will be followed by a
+        set_layout). Otherwise seed with an OrchestratorChat panel."""
+        has_chat = False
+        if self._workspace is not None:
+            has_chat = any(_contains_chat(t.layout.layout) for t in self._workspace.tabs)
+        if has_chat:
+            return LayoutSpec.model_validate({
+                "version": 1,
+                "layout": {"id": "feed", "widget": "ActivityFeed"},
+            })
+        return LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {"id": "orch", "widget": "OrchestratorChat"},
+        })
+
+    async def add_tab(self, title: str, layout: LayoutSpec, *, activate: bool = True) -> str:
+        """Append a new tab. Returns the new tab id. Updates persistence."""
+        if self._workspace is None:
+            raise RuntimeError("workspace not yet initialized")
+        ws = self._workspace
+        new_id = self._generate_tab_id()
+        new_tab = Tab(id=new_id, title=title, layout=layout)
+        new_ws = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [t.model_dump(mode="json") for t in ws.tabs] + [new_tab.model_dump(mode="json")],
+            "active": new_id if activate else ws.active,
+        })
+        self._workspace = new_ws
+        # Mount the new pane and apply its layout.
+        tc = self.query_one("#app-tabs", TabbedContent)
+        pane = TabPane(title, Container(id=f"panel-area-{new_id}"), id=f"tab-{new_id}")
+        await tc.add_pane(pane)
+        area = self.query_one(f"#panel-area-{new_id}", Container)
+        await apply_layout(area, layout, self.registry, layout_name=None)
+        if activate:
+            tc.active = f"tab-{new_id}"
+            self._active_tab_id = new_id
+        save_local_workspace(self.cwd, self._workspace)
+        self.event_bus.publish(TabAdded(tab_id=new_id, title=title))
+        return new_id
 
     async def action_dispatch(self, name: str) -> None:
         # Look up the action and call it. If it returns a coroutine (async
