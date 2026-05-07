@@ -46,12 +46,14 @@ _RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 # /rename <session_id> <title>  — specific session (id is non-space; title is rest)
 _RENAME_RE = re.compile(r"^/rename(?:\s+(.*))?$")
 _HELP_RE = re.compile(r"^/help\s*$")
+_CD_RE = re.compile(r"^/cd\s+(.+?)\s*$")
 
 _HELP_TEXT = (
     "Available commands:\n"
     "  /reset                     Start a fresh orchestrator session\n"
     "  /resume [<session_id>]     Resume a past session (no arg → picker)\n"
     "  /rename [<id>] <title>     Rename the active or a specific session\n"
+    "  /cd <path>                 Re-root the workspace at <path>\n"
     "  /help                      Show this list"
 )
 
@@ -335,6 +337,14 @@ class OrchestratorSession:
         if m:
             self._handle_rename_command(m.group(1) or "")
             return
+        m = _CD_RE.match(text)
+        if m and self._app is not None:
+            path = m.group(1).strip()
+            self._send_tasks = [t for t in self._send_tasks if not t.done()]
+            self._send_tasks.append(
+                asyncio.create_task(self._handle_cd_command(path))
+            )
+            return
         if _HELP_RE.match(text):
             self._publish_notice(_HELP_TEXT)
             return
@@ -381,6 +391,28 @@ class OrchestratorSession:
             return
         label = new_title if new_title else "(cleared)"
         self._publish_notice(f"Renamed session to: {label}")
+
+    async def _handle_cd_command(self, path: str) -> None:
+        if self._app is None:
+            return
+        result = await self._app.change_cwd(path)
+        if "error" in result:
+            err = result["error"]
+            if err == "agents_running":
+                names = ", ".join(a["name"] for a in result.get("agents", []))
+                self._publish_notice(
+                    f"Refusing /cd: agents still running ({names})."
+                )
+            elif err == "invalid_path":
+                self._publish_notice(
+                    f"Invalid path: {result.get('path') or result.get('detail')}"
+                )
+            else:
+                self._publish_notice(f"/cd failed: {err}")
+        elif "unchanged" in result:
+            self._publish_notice("cwd unchanged.")
+        else:
+            self._publish_notice(f"cwd → {result['changed']}")
 
     async def _generate_title_async(self, session_id: str, first_user_message: str) -> None:
         """Issue a one-shot SDK query to summarize the first message into a

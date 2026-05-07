@@ -545,6 +545,22 @@ _SPECS: list[_ToolSpec] = [
 ]
 
 
+def _change_cwd_handler(app):
+    async def change_cwd_tool(args: dict) -> dict:
+        path = args.get("path")
+        if not path:
+            return {"content": [{"type": "text", "text": "path is required"}]}
+        result = await app.change_cwd(path)
+        if "error" in result:
+            return {"content": [{"type": "text",
+                                 "text": f"change_cwd error: {result}"}]}
+        if result.get("unchanged"):
+            return {"content": [{"type": "text", "text": "cwd unchanged."}]}
+        return {"content": [{"type": "text",
+                             "text": f"Re-rooted at {result['changed']}."}]}
+    return change_cwd_tool
+
+
 def build_orchestrator_tools(
     manager: AgentManager,
     *,
@@ -604,6 +620,7 @@ def build_orchestrator_tools(
         handlers["list_tabs"] = list_tabs_handler(app)
         handlers["rename_tab"] = rename_tab_handler(app)
         handlers["reorder_tabs"] = reorder_tabs_handler(app)
+        handlers["change_cwd"] = _change_cwd_handler(app)
     return handlers
 
 
@@ -840,6 +857,16 @@ def build_orchestrator_mcp_server(
             "Widget state is preserved across the reorder.",
             {"tab_ids": list},
         )(reorder_tabs_handler(app)))
+        sdk_tools.append(tool(
+            "change_cwd",
+            "Re-root the workspace at a new working directory. `path` is "
+            "expanded for `~` and resolved to absolute. Refuses if any "
+            "child agents are still running (kill or wait first). On "
+            "success, the previous workspace.json is saved at the OLD cwd, "
+            "the orchestrator session is reset, and the new cwd's "
+            "workspace.json is loaded (or seeded from the dashboard).",
+            {"path": str},
+        )(_change_cwd_handler(app)))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",

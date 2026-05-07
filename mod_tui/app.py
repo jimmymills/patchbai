@@ -236,6 +236,7 @@ class ModTuiApp(App):
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("ctrl+shift+l", "open_theme_switcher", "themes"),
         Binding("ctrl+shift+r", "reset_panel_sizes", "reset panel sizes"),
+        Binding("ctrl+shift+d", "open_change_cwd", "change cwd"),
         Binding("?", "show_help", "help"),
         Binding("ctrl+t", "new_tab", "new tab", priority=True),
         Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
@@ -264,6 +265,8 @@ class ModTuiApp(App):
         # "" so save_theme can snapshot a clean state before any apply runs.
         self._active_theme_extra_css: str = ""
         self.cwd = Path(cwd) if cwd else Path.cwd()
+        import asyncio as _asyncio
+        self._cwd_swap_lock = _asyncio.Lock()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
         self._workspace: Workspace | None = None
@@ -346,6 +349,16 @@ class ModTuiApp(App):
                 "active tab's layout from its named source."
             ),
             args_schema={},
+        )
+        self.actions_registry.register(
+            "change_cwd",
+            lambda path: self._dispatch_change_cwd(path),
+            description="Change the workspace's cwd at runtime.",
+            args_schema={"path": str},
+        )
+        self.actions_registry.register(
+            "open_change_cwd", self.action_open_change_cwd,
+            description="Open the change-cwd modal.", args_schema={},
         )
 
     def _focus_panel(self, panel_id: str) -> None:
@@ -606,9 +619,10 @@ class ModTuiApp(App):
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
             "ctrl-shift-l themes · ctrl-shift-r reset panel sizes · "
+            "ctrl-shift-d change cwd · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
             "ctrl-w close tab · /reset new · /resume past · /rename title · "
-            "/help cmds · ? help",
+            "/cd path · /help cmds · ? help",
             title="keybindings",
         )
 
@@ -673,6 +687,48 @@ class ModTuiApp(App):
                 available_builtins=builtins,
                 active=active,
             ),
+            _on_picked,
+        )
+
+    def _dispatch_change_cwd(self, path: str) -> None:
+        """Action wrapper around change_cwd — schedules the async call."""
+        import asyncio as _asyncio
+        _asyncio.create_task(self._change_cwd_with_notify(path))
+
+    async def _change_cwd_with_notify(self, path: str) -> None:
+        result = await self.change_cwd(path)
+        if "error" in result:
+            err = result["error"]
+            if err == "agents_running":
+                names = ", ".join(a["name"] for a in result.get("agents", []))
+                self.notify(
+                    f"Refusing to change cwd: agents still running ({names}).",
+                    severity="warning",
+                )
+            elif err == "invalid_path":
+                self.notify(
+                    f"Invalid path: {result.get('path') or result.get('detail')}",
+                    severity="warning",
+                )
+            else:
+                self.notify(f"change_cwd failed: {err}", severity="warning")
+        elif "unchanged" in result:
+            self.notify("cwd unchanged.")
+        else:
+            self.notify(f"cwd → {result['changed']}")
+
+    def action_open_change_cwd(self) -> None:
+        if self._workspace is None:
+            return
+
+        def _on_picked(path: str | None) -> None:
+            if not path:
+                return
+            self._dispatch_change_cwd(path)
+
+        from mod_tui.widgets.change_cwd_screen import ChangeCwdScreen
+        self.push_screen(
+            ChangeCwdScreen(initial=str(self.cwd)),
             _on_picked,
         )
 
@@ -830,6 +886,109 @@ class ModTuiApp(App):
         await apply_layout(area, spec, self.registry, layout_name=layout_name)
         self._current_layout_name = layout_name
         save_local_workspace(self.cwd, self._workspace)
+
+    async def change_cwd(self, new_cwd: "str | Path") -> dict:
+        """Re-root the running workspace at `new_cwd`. Stops the
+        orchestrator and manager, swaps `self.cwd`, rebuilds both, loads
+        (or seeds) the new cwd's workspace, re-applies the active theme,
+        and publishes WorkspaceCwdChanged.
+
+        Returns a result dict; never raises on user input.
+        """
+        from mod_tui.events import WorkspaceCwdChanged
+        from mod_tui.agents.sdk_adapter import RealSDKAdapter
+
+        async with self._cwd_swap_lock:
+            # Validate.
+            try:
+                resolved = Path(new_cwd).expanduser().resolve()
+            except Exception as e:
+                return {"error": "invalid_path", "detail": str(e)}
+            if not resolved.exists() or not resolved.is_dir():
+                return {"error": "invalid_path", "path": str(resolved)}
+            try:
+                current = Path(self.cwd).resolve()
+            except Exception:
+                current = self.cwd
+            if resolved == current:
+                return {"unchanged": True}
+
+            # Refuse with running children.
+            running = [
+                {"id": info.id, "name": info.name}
+                for info in self.manager.list_infos()
+                if not info.state.is_terminal
+            ]
+            if running:
+                return {"error": "agents_running", "agents": running}
+
+            # Save the OLD workspace one last time.
+            if self._workspace is not None:
+                try:
+                    save_local_workspace(self.cwd, self._workspace)
+                except Exception:
+                    pass
+
+            # Tear down current orchestrator + manager.
+            try:
+                await self.orchestrator.stop()
+            except Exception:
+                pass
+            try:
+                await self.manager.shutdown()
+            except Exception:
+                pass
+
+            # Swap cwd and reset workspace state.
+            self.cwd = resolved
+            self._workspace = None
+            self._active_tab_id = None
+            self._current_layout_name = None
+            self._tab_focus_snapshots.clear()
+
+            # Rebuild manager + orchestrator.
+            self.manager = AgentManager(
+                cwd=self.cwd, bus=self.event_bus,
+                adapter_factory=RealSDKAdapter,
+            )
+            self.orchestrator = OrchestratorSession(
+                cwd=self.cwd, bus=self.event_bus, manager=self.manager,
+                apply_layout=self._orchestrator_apply_layout,
+                layouts_store=self.layouts_store,
+                themes_store=self.themes_store,
+                config_store=self.config_store,
+                actions=self.actions_registry,
+                rebind_keys=self._rebind_keys,
+                widget_registry=self.registry,
+                current_layout=lambda: self._active_layout(),
+                app=self,
+            )
+            self.orchestrator._auto_title_enabled = True
+            await self.orchestrator.start()
+
+            # Load (or seed) the new workspace.
+            ws = self._load_or_seed_workspace()
+            self._workspace = ws
+            self._active_tab_id = ws.active
+            await self._mount_workspace(ws)
+            save_local_workspace(self.cwd, ws)
+
+            # Re-apply theme.
+            active_name = (
+                ws.active_theme
+                or self.config_store.load().ui.active_theme
+                or "default"
+            )
+            try:
+                await self._apply_theme_by_name(active_name, persist=False)
+            except Exception:
+                try:
+                    await self._apply_theme_by_name("default", persist=False)
+                except Exception:
+                    pass
+
+            self.event_bus.publish(WorkspaceCwdChanged(cwd=str(self.cwd)))
+            return {"changed": str(self.cwd)}
 
     # --- stats aggregation -------------------------------------------------
 
