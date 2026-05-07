@@ -171,3 +171,53 @@ async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
     assert tool_uses[0].tool_name == "bash"
     assert tool_results and tool_results[0].tool_id == "toolu_xyz"
     assert tool_results[0].tool_name is None
+
+
+@pytest.mark.asyncio
+async def test_session_exposes_sdk_session_id_after_first_result(tmp_path):
+    bus = EventBus()
+    adapter = FakeSDKAdapter(scripts=[_ok_script()])
+    session = AgentSession(
+        info=_info(),
+        adapter=adapter,
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+    await session.start(options=ClaudeAgentOptions())
+    await session.send("hi")
+    await session.wait_idle()
+    assert session.session_id == "fake-session"
+
+
+@pytest.mark.asyncio
+async def test_session_on_session_id_fires_once(tmp_path):
+    bus = EventBus()
+    adapter = FakeSDKAdapter(scripts=[_ok_script(), _ok_script()])
+    seen: list[str] = []
+    session = AgentSession(
+        info=_info(),
+        adapter=adapter,
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+        on_session_id=seen.append,
+    )
+    await session.start(options=ClaudeAgentOptions())
+    await session.send("hi")
+    await session.wait_idle()
+    await session.send("again")
+    await session.wait_idle()
+    assert seen == ["fake-session"]
+
+
+@pytest.mark.asyncio
+async def test_session_id_is_none_before_first_result(tmp_path):
+    bus = EventBus()
+    adapter = FakeSDKAdapter(scripts=[_ok_script()])
+    session = AgentSession(
+        info=_info(),
+        adapter=adapter,
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+    await session.start(options=ClaudeAgentOptions())
+    assert session.session_id is None

@@ -1,7 +1,7 @@
 import asyncio
 import dataclasses
 import time
-from typing import Iterable
+from typing import Callable, Iterable
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -35,15 +35,22 @@ class AgentSession:
         adapter: SDKAdapter,
         transcript: AgentTranscript,
         bus: EventBus,
+        on_session_id: "Callable[[str], None] | None" = None,
     ) -> None:
         self.info = info
         self._adapter = adapter
         self._transcript = transcript
         self._bus = bus
+        self._on_session_id = on_session_id
+        self._session_id: str | None = None
         self._stream_task: asyncio.Task | None = None
         self._idle_event = asyncio.Event()
         self._idle_event.set()
         self._send_lock = asyncio.Lock()
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session_id
 
     async def start(self, *, options: ClaudeAgentOptions) -> None:
         await self._adapter.start(options=options)
@@ -127,6 +134,14 @@ class AgentSession:
             # Skip — verbose protocol noise.
             pass
         elif isinstance(msg, ResultMessage):
+            if self._session_id is None and msg.session_id:
+                self._session_id = msg.session_id
+                if self._on_session_id is not None:
+                    try:
+                        self._on_session_id(msg.session_id)
+                    except Exception:
+                        # Callback errors must not poison the SDK stream.
+                        pass
             usage = msg.usage or {}
             self.info.tokens_in += int(usage.get("input_tokens", 0) or 0)
             self.info.tokens_out += int(usage.get("output_tokens", 0) or 0)
