@@ -295,3 +295,144 @@ async def test_concurrent_resets_serialize(tmp_path):
         assert orch._sdk_session_id == "third"
     finally:
         await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_resume_known_session_passes_resume_to_sdk(tmp_path):
+    from mod_tui.events import OrchestratorSessionSwitched
+
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="target",
+        transcript_path=str(tmp_path / ".mod_tui" / "transcripts" / "orchestrator.target.jsonl"),
+        started_at=100.0, last_activity=200.0,
+    ))
+
+    adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="boot")])
+    adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="target")])
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=adapter1)
+    orch._next_adapter_factory = lambda: adapter2
+    switched: list[OrchestratorSessionSwitched] = []
+    bus.subscribe(OrchestratorSessionSwitched, switched.append)
+
+    await orch.start()
+    try:
+        await orch.resume("target")
+        assert adapter2.last_options.resume == "target"
+        assert switched[-1].session_id == "target"
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_resume_unknown_session_is_noop_with_notice(tmp_path):
+    from mod_tui.events import OrchestratorReply
+
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    await orch.start()
+    try:
+        before = orch._sdk_session_id
+        await orch.resume("does-not-exist")
+        assert orch._sdk_session_id == before  # no swap
+        assert any("no such session" in r.text.lower() for r in replies)
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_resume_legacy_falls_back_to_reset(tmp_path):
+    from mod_tui.events import OrchestratorReply
+
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="legacy-99", transcript_path="x.jsonl",
+        started_at=100.0, last_activity=200.0, legacy=True,
+    ))
+    adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="boot")])
+    adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="fresh")])
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=adapter1)
+    orch._next_adapter_factory = lambda: adapter2
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    await orch.start()
+    try:
+        await orch.resume("legacy-99")
+        assert adapter2.last_options.resume is None  # fresh, not resumed
+        assert any("predates" in r.text.lower() or "fresh" in r.text.lower()
+                   for r in replies)
+    finally:
+        await orch.stop()
+
+
+class _RejectingAdapter(_RecordingAdapter):
+    def __init__(self, scripts, reject_resume_id: str):
+        super().__init__(scripts)
+        self._reject_id = reject_resume_id
+
+    async def start(self, *, options):
+        if options.resume == self._reject_id:
+            raise RuntimeError("simulated SDK rejection")
+        await super().start(options=options)
+
+
+@pytest.mark.asyncio
+async def test_resume_falls_back_when_sdk_rejects(tmp_path):
+    from mod_tui.events import OrchestratorReply
+
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="bad", transcript_path="x.jsonl",
+        started_at=100.0, last_activity=200.0,
+    ))
+    boot_adapter = _RecordingAdapter(scripts=[_ok_script(session_id="boot")])
+    rejecting = _RejectingAdapter(scripts=[_ok_script(session_id="bad")], reject_resume_id="bad")
+    fresh_adapter = _RecordingAdapter(scripts=[_ok_script(session_id="fresh")])
+
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=boot_adapter)
+    factories = iter([lambda: rejecting, lambda: fresh_adapter])
+    original_swap = orch._swap_inner
+    async def _swap(*, resume):
+        try:
+            orch._next_adapter_factory = next(factories)
+        except StopIteration:
+            pass
+        await original_swap(resume=resume)
+    orch._swap_inner = _swap
+
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    await orch.start()
+    try:
+        await orch.resume("bad")
+        # Send a probe to flush the ResultMessage from the fresh adapter.
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("probe"))
+        await orch.wait_idle()
+        # Index entry for "bad" preserved.
+        assert idx.get("bad") is not None
+        # Active session is the fresh fallback.
+        assert orch._sdk_session_id == "fresh"
+        assert any("could not resume" in r.text.lower() for r in replies)
+    finally:
+        await orch.stop()

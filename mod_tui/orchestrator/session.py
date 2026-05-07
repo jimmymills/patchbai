@@ -280,8 +280,30 @@ class OrchestratorSession:
             await self._swap_inner(resume=None)
 
     async def resume(self, session_id: str) -> None:
-        # Full implementation lands in Task 11.
-        raise NotImplementedError
+        async with self._switching_lock:
+            entry = self._index.get(session_id)
+            if entry is None:
+                self._publish_notice(f"No such session: {session_id}")
+                return
+            if entry.legacy:
+                self._publish_notice(
+                    "This session predates SDK resume support; starting a fresh session."
+                )
+                await self._swap_inner(resume=None)
+                return
+            try:
+                await self._swap_inner(resume=session_id)
+            except Exception:
+                log.exception("SDK rejected resume=%s; falling back to fresh", session_id)
+                self._publish_notice(
+                    f"Could not resume {session_id}; starting a fresh session."
+                )
+                self._inner = None
+                await self._swap_inner(resume=None)
+
+    def _publish_notice(self, text: str) -> None:
+        # Surface as an OrchestratorReply so it appears inline in the chat.
+        self._bus.publish(OrchestratorReply(text))
 
     async def _swap_inner(self, *, resume: str | None) -> None:
         # Stop current, start a new inner with either resume=<id> or a fresh id.
