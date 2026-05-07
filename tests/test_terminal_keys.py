@@ -119,3 +119,44 @@ def test_unknown_key_returns_none():
 def test_no_character_for_printable_key_returns_none():
     # A key string we don't recognize and no character — drop it.
     assert _enc("nonsense_key", None) is None
+
+
+def test_ctrl_at_is_null_alias_for_ctrl_space():
+    assert _enc("ctrl+at", None) == b"\x00"
+
+
+def test_ctrl_right_square_bracket():
+    assert _enc("ctrl+right_square_bracket", None) == b"\x1d"
+
+
+def test_ctrl_slash():
+    assert _enc("ctrl+slash", None) == b"\x1f"
+
+
+def test_ctrl_underscore():
+    assert _enc("ctrl+underscore", None) == b"\x1f"
+
+
+def test_ctrl_question_mark():
+    assert _enc("ctrl+question_mark", None) == b"\x7f"
+
+
+def test_alt_function_key():
+    # alt+f5 should be ESC followed by the F5 sequence.
+    assert _enc("alt+f5", None) == b"\x1b\x1b[15~"
+
+
+def test_alt_space():
+    # alt+space should be ESC + space.
+    assert _enc("alt+space", None) == b"\x1b "
+
+
+def test_ctrl_non_ascii_letter_returns_none():
+    # Tightened: "ctrl+ñ" used to return junk byte 137; now should return None.
+    assert _enc("ctrl+ñ", None) is None
+
+
+def test_empty_character_string_returns_none():
+    # If Textual ever delivers an empty character string for an unknown key,
+    # we should drop it rather than emitting empty bytes.
+    assert _enc("nonsense_key", "") is None

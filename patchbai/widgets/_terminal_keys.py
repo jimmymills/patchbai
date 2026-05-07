@@ -15,6 +15,7 @@ _SIMPLE: dict[str, bytes] = {
     "shift+tab": b"\x1b[Z",
     "backspace": b"\x7f",
     "escape": b"\x1b",
+    "space": b" ",
     "up": b"\x1b[A",
     "down": b"\x1b[B",
     "right": b"\x1b[C",
@@ -61,7 +62,12 @@ def encode_key(key: str, character: str | None) -> bytes | None:
     # Alt+X → ESC + (recursively encoded X).
     if key.startswith("alt+"):
         rest = key[len("alt+") :]
-        sub = encode_key(rest, character if rest == character else None)
+        # Pass the character through only if it matches the un-prefixed key
+        # (the printable Alt+letter case, e.g. ("alt+a","a") → recurse with ("a","a")).
+        # For named keys like "alt+up" we want recursion to hit _SIMPLE, so drop
+        # any character we got (Textual usually doesn't supply one for those anyway).
+        sub_char = character if character == rest else None
+        sub = encode_key(rest, sub_char)
         if sub is None and character is not None:
             sub = character.encode("utf-8")
         return None if sub is None else ESC + sub
@@ -71,14 +77,11 @@ def encode_key(key: str, character: str | None) -> bytes | None:
 
     if key.startswith("ctrl+"):
         suffix = key[len("ctrl+") :]
-        if len(suffix) == 1 and suffix.isalpha():
+        if len(suffix) == 1 and "a" <= suffix.lower() <= "z":
             return bytes([ord(suffix.lower()) - ord("a") + 1])
         if key in _CTRL_NAMED:
             return _CTRL_NAMED[key]
         return None
-
-    if key == "space" and character == " ":
-        return b" "
 
     if character is not None and len(character) >= 1:
         return character.encode("utf-8")
