@@ -53,31 +53,85 @@ from mod_tui.widgets.transcript_screen import TranscriptScreen
 from mod_tui.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
 
 
-def _apply_size_updates(
-    root_layout: dict,
-    parent_path: tuple[int, ...],
-    updates: tuple[tuple[int, str], ...],
-) -> bool:
+def _resolve_container(root_layout: dict, parent_path: tuple[int, ...]) -> dict | None:
     """Walk `root_layout` (a dict shaped like LayoutSpec.layout) following
-    `parent_path` (each step indexes into `children`), then write the new
-    size strings into the matching child dicts. Returns True if every step
-    of the path resolved and at least one update was applied. Mutates the
-    dict in place — the caller is expected to pass a fresh dump."""
+    `parent_path` (each step indexes into `children`) and return the parent
+    container dict. Returns None if the path doesn't resolve to a node with
+    a `children` list."""
     node = root_layout
     for idx in parent_path:
         children = node.get("children")
         if not isinstance(children, list) or idx >= len(children):
-            return False
+            return None
         node = children[idx]
-    children = node.get("children")
-    if not isinstance(children, list):
+    if not isinstance(node.get("children"), list):
+        return None
+    return node
+
+
+def _cells_to_percentages(cells: tuple[int, ...] | list[int]) -> list[str]:
+    """Convert a tuple of post-drag outer cell counts into percentage strings
+    that sum to exactly 100%. Each value is at least `1%`. The last entry
+    absorbs the rounding remainder so the sum is precise."""
+    total = sum(cells)
+    if total <= 0:
+        return [f"{round(100 / max(1, len(cells)))}%" for _ in cells]
+    raw = [max(1, round(c / total * 100)) for c in cells]
+    raw[-1] += 100 - sum(raw)
+    if raw[-1] < 1:
+        raw[-1] = 1
+    return [f"{n}%" for n in raw]
+
+
+def _apply_resize(
+    root_layout: dict,
+    parent_path: tuple[int, ...],
+    children_cells: tuple[int, ...],
+) -> bool:
+    """Renormalize the targeted parent container's children to percentages
+    summing to 100, derived from `children_cells`. Mutates `root_layout` in
+    place. Returns True iff the path resolved and the child counts match."""
+    parent = _resolve_container(root_layout, parent_path)
+    if parent is None:
         return False
-    applied = False
-    for child_idx, new_size in updates:
-        if 0 <= child_idx < len(children):
-            children[child_idx]["size"] = new_size
-            applied = True
-    return applied
+    children = parent["children"]
+    if len(children) != len(children_cells):
+        return False
+    for child, pct in zip(children, _cells_to_percentages(children_cells)):
+        child["size"] = pct
+    return True
+
+
+def _normalize_layout_percentages(layout_dict: dict) -> bool:
+    """Walk a LayoutSpec dict and, for every Container whose children all have
+    percentage sizes, scale those percentages to sum to exactly 100%. Repairs
+    workspaces saved by older Splitter code that produced sums < 100% (which
+    showed up as a growing blank gap on the layout edge). Mutates in place;
+    returns True if any container was rewritten."""
+    changed = False
+
+    def _walk(node: dict) -> None:
+        nonlocal changed
+        children = node.get("children") if isinstance(node, dict) else None
+        if not isinstance(children, list):
+            return
+        sizes = [c.get("size") for c in children]
+        if children and all(isinstance(s, str) and s.endswith("%") for s in sizes):
+            try:
+                nums = [float(s[:-1]) for s in sizes]  # type: ignore[union-attr]
+            except ValueError:
+                nums = []
+            total = sum(nums) if nums else 0.0
+            if nums and total > 0 and abs(total - 100) > 0.5:
+                normalized = _cells_to_percentages(tuple(round(n * 1000) for n in nums))
+                for c, pct in zip(children, normalized):
+                    c["size"] = pct
+                changed = True
+        for c in children:
+            _walk(c)
+
+    _walk(layout_dict)
+    return changed
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -698,13 +752,36 @@ class ModTuiApp(App):
         to seeding from the built-in dashboard."""
         ws = load_local_workspace(self.cwd)
         if ws is not None:
-            return ws
+            return self._migrate_workspace_percentages(ws)
         # Migration: legacy layout.json -> single-tab workspace.
         from mod_tui.persistence.layout_store import load_layout as _load_legacy
         legacy = _load_legacy(self.cwd)
         if legacy is not None:
             return workspace_from_layout(legacy, tab_id="default", title="default")
         return workspace_from_layout(dashboard_layout(), tab_id="default", title="default")
+
+    def _migrate_workspace_percentages(self, ws: Workspace) -> Workspace:
+        """One-shot repair: walk every tab's layout and renormalize Container
+        percentage children to sum to 100%. Repairs workspaces saved by older
+        Splitter code whose drift left visible blank space at the layout
+        edges. No-op when sums are already at 100%."""
+        raw = ws.model_dump(mode="json")
+        any_changed = False
+        for tab in raw["tabs"]:
+            if _normalize_layout_percentages(tab["layout"]["layout"]):
+                any_changed = True
+        if not any_changed:
+            return ws
+        try:
+            migrated = Workspace.model_validate(raw)
+        except Exception:
+            return ws
+        # Persist the repaired layout so the next launch starts clean.
+        try:
+            save_local_workspace(self.cwd, migrated)
+        except Exception:
+            pass
+        return migrated
 
     async def _mount_workspace(self, ws: Workspace) -> None:
         tc = self.query_one("#app-tabs", TabbedContent)
@@ -804,7 +881,7 @@ class ModTuiApp(App):
             tab_dump = t.model_dump(mode="json")
             if t.id == event.tab_id:
                 root_layout = tab_dump["layout"]["layout"]
-                if _apply_size_updates(root_layout, event.parent_path, event.updates):
+                if _apply_resize(root_layout, event.parent_path, event.children_cells):
                     mutated = True
             new_tabs.append(tab_dump)
         if not mutated:

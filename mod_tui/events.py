@@ -129,12 +129,16 @@ class LayoutFailed:
 @dataclass(frozen=True)
 class LayoutResized:
     """User finished a mouse-drag resize on a Splitter between two siblings.
-    Carries the new size strings for the two affected children, expressed as
-    percentages of the parent container's inner extent in the dragged dimension.
-    """
+
+    Carries the parent container's post-drag layout state as a tuple of
+    `outer_size` cell counts — one entry per *non-splitter* child, in spec
+    order. The app handler renormalizes those cells into percentages that
+    sum to 100%, which keeps the layout converged across re-saves instead of
+    drifting (the previous design rounded each pair independently using
+    inner widths and was off by border + splitter cells per drag)."""
     tab_id: str
     parent_path: tuple[int, ...]
-    updates: tuple[tuple[int, str], ...]  # (child_index, new_size_string)
+    children_cells: tuple[int, ...]
 
 
 @dataclass(frozen=True)

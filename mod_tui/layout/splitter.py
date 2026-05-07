@@ -98,30 +98,37 @@ class Splitter(Widget):
     def on_mouse_up(self, event: events.MouseUp) -> None:
         if self._drag_start is None:
             return
+        sx, sy = self._drag_start
+        moved = (event.screen_x, event.screen_y) != (sx, sy)
         self._drag_start = None
         self.remove_class("-dragging")
         self.release_mouse()
         event.stop()
-        self._publish_resize()
+        # A plain click (mouse_down + mouse_up at same coords) shouldn't
+        # rewrite the spec — only publish on a real drag.
+        if moved:
+            self._publish_resize()
 
     def _publish_resize(self) -> None:
-        """Convert the post-drag pixel sizes of the two affected siblings to
-        percentages of the parent's inner extent and emit LayoutResized."""
-        prev_sib, next_sib = self._neighbors()
-        if prev_sib is None or next_sib is None:
-            return
+        """Snapshot the parent's post-drag layout and emit LayoutResized.
+
+        Uses each non-splitter child's `outer_size` (full footprint including
+        any border) so the app handler can convert to percentages that sum to
+        exactly 100% — the previous version compared inner widths against a
+        denominator that included the splitter and child borders, so every
+        save lost ~3% of the layout to drift."""
         parent = self.parent
         if not isinstance(parent, Widget):
             return
-        if self._container_orientation == "horizontal":
-            parent_extent = parent.size.width
-            prev_cells = prev_sib.size.width
-            next_cells = next_sib.size.width
-        else:
-            parent_extent = parent.size.height
-            prev_cells = prev_sib.size.height
-            next_cells = next_sib.size.height
-        if parent_extent <= 0:
+        cells: list[int] = []
+        for child in parent.children:
+            if isinstance(child, Splitter):
+                continue
+            if self._container_orientation == "horizontal":
+                cells.append(child.outer_size.width)
+            else:
+                cells.append(child.outer_size.height)
+        if not cells or sum(cells) <= 0:
             return
 
         tab_id = self._owning_tab_id()
@@ -131,15 +138,10 @@ class Splitter(Widget):
         if bus is None:
             return
 
-        prev_pct = max(1, round(prev_cells / parent_extent * 100))
-        next_pct = max(1, round(next_cells / parent_extent * 100))
         bus.publish(LayoutResized(
             tab_id=tab_id,
             parent_path=self._parent_path,
-            updates=(
-                (self._prev_index, f"{prev_pct}%"),
-                (self._next_index, f"{next_pct}%"),
-            ),
+            children_cells=tuple(cells),
         ))
 
     def _neighbors(self) -> tuple[Widget | None, Widget | None]:
