@@ -51,6 +51,9 @@ def _contains_chat(node: Node) -> bool:
     if isinstance(node, Panel):
         return node.widget == "OrchestratorChat"
     if isinstance(node, Tabs):
+        # Tabs.children is list[Panel] (leaf-only invariant in spec.py), so
+        # a flat scan is sufficient — no recursion needed. If Tabs ever
+        # accepts nested containers, this branch must recurse like Container.
         return any(c.widget == "OrchestratorChat" for c in node.children)
     # node is Container — exhausted by the discriminated Node union.
     return any(_contains_chat(c) for c in node.children)

@@ -324,10 +324,15 @@ class ModTuiApp(App):
             "active": new_active,
         })
         self._tab_focus_snapshots.pop(tab_id, None)
-        tc = self.query_one("#app-tabs", TabbedContent)
-        await tc.remove_pane(f"tab-{tab_id}")
+        # Update _active_tab_id BEFORE awaiting remove_pane: removing the
+        # active pane can fire TabActivated synchronously, and the handler
+        # short-circuits when new_active == self._active_tab_id. Without this
+        # ordering the handler would run with stale state.
         if self._active_tab_id == tab_id:
             self._active_tab_id = new_active
+        tc = self.query_one("#app-tabs", TabbedContent)
+        await tc.remove_pane(f"tab-{tab_id}")
+        if tc.active != f"tab-{new_active}":
             tc.active = f"tab-{new_active}"
         save_local_workspace(self.cwd, self._workspace)
         self.event_bus.publish(TabClosed(tab_id=tab_id))
@@ -536,6 +541,9 @@ class ModTuiApp(App):
             except Exception:
                 pass
         self._active_tab_id = new_active
+        # model_copy bypasses model_validator. Safe here because TabActivated
+        # only fires for panes that already exist in self._workspace.tabs, so
+        # the "active id must be in tabs" invariant cannot be violated.
         ws = self._workspace.model_copy(update={"active": new_active})
         self._workspace = ws
         save_local_workspace(self.cwd, ws)
