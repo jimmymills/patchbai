@@ -58,12 +58,13 @@ class PermissionModal(ModalScreen[None]):
         *,
         inbox_lookup: Callable[[str], PermissionInbox | None],
         grants: PermissionGrants,
+        initial_request: PermissionRequested | None = None,
     ) -> None:
         super().__init__()
         self._inbox_lookup = inbox_lookup
         self._grants = grants
         self._queue: list[PermissionRequested] = []
-        self._current_request: PermissionRequested | None = None
+        self._current_request: PermissionRequested | None = initial_request
         self._unsub_req = lambda: None
         self._unsub_res = lambda: None
 
@@ -87,6 +88,8 @@ class PermissionModal(ModalScreen[None]):
         bus: EventBus = self.app.event_bus
         self._unsub_req = bus.subscribe(PermissionRequested, self._on_request)
         self._unsub_res = bus.subscribe(PermissionResolved, self._on_resolved_elsewhere)
+        if self._current_request is not None:
+            self._render_current()
 
     def on_unmount(self) -> None:
         self._unsub_req()

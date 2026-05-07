@@ -57,3 +57,26 @@ async def test_permission_request_does_nothing_when_bypass(tmp_path: Path):
         ))
         await pilot.pause()
         assert not isinstance(app.screen, PermissionModal)
+
+
+@pytest.mark.asyncio
+async def test_first_request_renders_in_pushed_modal(tmp_path: Path):
+    # Regression: the very first PermissionRequested that triggers the
+    # modal push must reach the modal — otherwise it sits idle while the
+    # SDK callback awaits forever. The fix is to thread the initial event
+    # into the modal via constructor.
+    from patchbai.app import PatchbaiApp
+    from patchbai.events import PermissionRequested
+    from patchbai.widgets.permission_modal import PermissionModal
+
+    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.event_bus.publish(PermissionRequested(
+            agent_id="a1", agent_name="researcher", request_id="r1",
+            tool_name="Read", tool_input={"path": "x"},
+        ))
+        await pilot.pause()
+        assert isinstance(app.screen, PermissionModal)
+        assert app.screen._current_request is not None
+        assert app.screen._current_request.tool_name == "Read"

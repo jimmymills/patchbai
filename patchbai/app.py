@@ -1066,6 +1066,7 @@ class PatchbaiApp(App):
             PermissionModal(
                 inbox_lookup=_inbox_lookup,
                 grants=self._permission_grants,
+                initial_request=event,
             ),
             _on_dismissed,
         )
