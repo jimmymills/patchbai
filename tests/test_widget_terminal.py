@@ -227,3 +227,54 @@ async def test_terminal_drops_unknown_key_silently():
         await pilot.pause()
         assert getattr(term, "_last_write", None) is None
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_printable_letter():
+    """Most common keystroke — typing a letter — must reach the PTY as-is."""
+    app = _Host(command=["/bin/cat"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("a")
+        await pilot.pause()
+        assert term._last_write == b"a"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_backspace():
+    """Backspace was handled by the old whitelist; verify the new encoder path keeps it."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("backspace")
+        await pilot.pause()
+        assert term._last_write == b"\x7f"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_alt_arrow():
+    """Alt+ recursion through encode_key must route correctly via on_key."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("alt+up")
+        await pilot.pause()
+        assert term._last_write == b"\x1b\x1b[A"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_function_key():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("f5")
+        await pilot.pause()
+        assert term._last_write == b"\x1b[15~"
+        term._teardown()

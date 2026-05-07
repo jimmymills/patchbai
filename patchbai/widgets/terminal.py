@@ -191,9 +191,12 @@ class Terminal(Container):
         if data is None:
             return
         try:
-            # PtyProcessUnicode.write expects str; round-trip safely.
+            # encode_key returns bytes; PtyProcessUnicode.write wraps a utf-8 text
+            # stream, so decode->re-encode is lossless for any output of encode_key
+            # (all paths produce well-formed utf-8).
             self._pty.write(data.decode("utf-8", errors="replace"))
         except Exception:
+            # TODO(phase 2): surface PTY write errors via _show_error
             return
         self._last_write = data
         event.stop()
