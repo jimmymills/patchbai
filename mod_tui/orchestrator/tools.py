@@ -9,6 +9,12 @@ from mod_tui.agents.manager import AgentManager
 from mod_tui.config import ConfigStore, KeyBinding
 from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
+from mod_tui.orchestrator.tabs_tools import (
+    add_tab_handler,
+    close_tab_handler,
+    list_tabs_handler,
+    switch_tab_handler,
+)
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 
 
@@ -367,6 +373,7 @@ def build_orchestrator_tools(
     rebind_keys=None,
     widget_registry: WidgetRegistry | None = None,
     current_layout=None,
+    app=None,
 ):
     """Return a dict {tool_name: async_handler} for unit testing.
 
@@ -377,6 +384,8 @@ def build_orchestrator_tools(
     config_store + actions: if both provided, config/keybinding tools are added.
     rebind_keys: optional callable invoked after any keybinding change.
     widget_registry: if provided, a list_widgets tool is added.
+    app: if provided, tab management tools (add_tab, close_tab, switch_tab,
+    list_tabs) are registered.
     """
     handlers: dict = {}
     for spec in _SPECS:
@@ -397,6 +406,11 @@ def build_orchestrator_tools(
         handlers["list_widgets"] = _list_widgets_handler(widget_registry)
     if widget_registry is not None and current_layout is not None:
         handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry)
+    if app is not None:
+        handlers["add_tab"] = add_tab_handler(app)
+        handlers["close_tab"] = close_tab_handler(app)
+        handlers["switch_tab"] = switch_tab_handler(app)
+        handlers["list_tabs"] = list_tabs_handler(app)
     return handlers
 
 
@@ -410,6 +424,7 @@ def build_orchestrator_mcp_server(
     rebind_keys=None,
     widget_registry: WidgetRegistry | None = None,
     current_layout=None,
+    app=None,
 ):
     sdk_tools = []
     for spec in _SPECS:
@@ -520,6 +535,36 @@ def build_orchestrator_mcp_server(
             "to avoid freezing the resolved title as an explicit override.",
             {},
         )(_get_layout_handler(current_layout, widget_registry)))
+    if app is not None:
+        sdk_tools.append(tool(
+            "add_tab",
+            "Create a new app-level tab. `title` is the user-facing label "
+            "on the tab strip. Optional `layout` may be a LayoutSpec dict, "
+            "the name of a saved layout (resolved from the named-layouts "
+            "store), or omitted (a default seed is used). Optional "
+            "`activate` (default true) makes the new tab the active one. "
+            "Returns the new tab id.",
+            {"title": str, "layout": dict, "activate": bool},
+        )(add_tab_handler(app)))
+        sdk_tools.append(tool(
+            "close_tab",
+            "Close the tab with the given id. Refuses if it would leave "
+            "the workspace with zero OrchestratorChat panels (returns a "
+            "structured error so you can add chat to another tab first). "
+            "Refuses if it's the last tab.",
+            {"tab_id": str},
+        )(close_tab_handler(app)))
+        sdk_tools.append(tool(
+            "switch_tab",
+            "Make the tab with the given id the active one.",
+            {"tab_id": str},
+        )(switch_tab_handler(app)))
+        sdk_tools.append(tool(
+            "list_tabs",
+            "List all tabs with id, title, active flag, has_chat flag, "
+            "and the list of panel ids contained in each tab.",
+            {},
+        )(list_tabs_handler(app)))
     return create_sdk_mcp_server(
         name="mod_tui_orchestrator",
         version="1.0.0",

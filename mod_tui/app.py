@@ -172,6 +172,7 @@ class ModTuiApp(App):
             rebind_keys=self._rebind_keys,
             widget_registry=self.registry,
             current_layout=lambda: self._active_layout(),
+            app=self,
         )
 
     # --- action registration -----------------------------------------------
