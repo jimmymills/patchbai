@@ -9,7 +9,7 @@ from claude_agent_sdk import ClaudeAgentOptions
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter, SDKAdapter
 from mod_tui.agents.session import AgentSession
-from mod_tui.agents.state import AgentInfo, AgentState
+from mod_tui.agents.state import AgentInfo
 from mod_tui.events import (
     AgentMessageAppended,
     AgentNotifiedOrchestrator,

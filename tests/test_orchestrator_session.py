@@ -32,14 +32,6 @@ def _ok_script() -> list:
     ]
 
 
-def _make_manager(tmp_path) -> AgentManager:
-    return AgentManager(
-        cwd=tmp_path,
-        bus=EventBus(),
-        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
-    )
-
-
 @pytest.mark.asyncio
 async def test_orchestrator_session_publishes_reply_for_user_message(tmp_path):
     bus = EventBus()
