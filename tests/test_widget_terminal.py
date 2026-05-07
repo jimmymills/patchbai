@@ -319,3 +319,34 @@ async def test_terminal_restart_respawns():
         await pilot.pause()
         assert respawned is not None
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_announces_nonzero_exit_status():
+    import asyncio
+    app = _Host(command=["/bin/sh", "-c", "exit 7"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+            if term._pty is None:
+                break
+        text = "\n".join(term._screen.display)
+        assert "[process exited 7]" in text, f"expected exit-7 banner, got:\n{text!r}"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_restart_is_noop_while_alive():
+    """Calling action_restart while the child is alive must not double-spawn."""
+    app = _Host(command=["/bin/cat"])  # cat sticks around indefinitely
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        original_pty = term._pty
+        assert original_pty is not None
+        term.action_restart()  # should be a no-op since the child is alive
+        assert term._pty is original_pty
+        term._teardown()

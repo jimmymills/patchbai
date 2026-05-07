@@ -144,19 +144,21 @@ class Terminal(Container):
 
     def _announce_exit(self) -> None:
         # Capture status if available before teardown clears _pty.
-        status: object = "?"
+        # Banner status: int (real exit code), or "?" sentinel when we can't determine it.
+        status: int | str = "?"
         if self._pty is not None:
             try:
-                status = self._pty.exitstatus
-                if status is None:
-                    # PtyProcessUnicode caches exitstatus only after wait();
-                    # call it once with a tiny timeout to populate it.
-                    self._pty.wait()
-                    status = self._pty.exitstatus
+                ex = self._pty.exitstatus
+                if ex is None:
+                    # isalive() polls waitpid(WNOHANG) and populates exitstatus
+                    # as a side effect. Non-blocking; safe even if a grandchild
+                    # inherited the slave fd and is still running.
+                    if not self._pty.isalive():
+                        ex = self._pty.exitstatus
+                if ex is not None:
+                    status = ex
             except Exception:
-                status = "?"
-        if status is None:
-            status = "?"
+                pass
         banner = f"\r\n[process exited {status}]\r\n"
         try:
             self._stream.feed(banner)
