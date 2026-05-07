@@ -280,3 +280,49 @@ async def test_switch_tab_unknown_id_returns_error(tmp_path):
         result = await switch({"tab_id": "ghost"})
         body = json.loads(result["content"][0]["text"])
         assert body["error"] == "unknown_tab_id"
+
+
+@pytest.mark.asyncio
+async def test_list_tabs_returns_metadata(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        await add({"title": "Logs", "activate": False})
+        await pilot.pause()
+        ls = list_tabs_handler(app)
+        result = await ls({})
+        body = json.loads(result["content"][0]["text"])
+        assert isinstance(body, list)
+        assert len(body) == 2
+        for entry in body:
+            assert {"id", "title", "active", "has_chat", "panel_ids"} <= set(entry.keys())
+        assert sum(1 for t in body if t["active"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_tabs_panel_ids_include_panels_in_panel_tabs(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        add = add_tab_handler(app)
+        await add({
+            "title": "Mixed",
+            "layout": {
+                "version": 1,
+                "layout": {
+                    "type": "tabs",
+                    "children": [
+                        {"id": "feed", "widget": "ActivityFeed"},
+                        {"id": "logs", "widget": "LogTail"},
+                    ],
+                },
+            },
+            "activate": False,
+        })
+        await pilot.pause()
+        ls = list_tabs_handler(app)
+        result = await ls({})
+        body = json.loads(result["content"][0]["text"])
+        mixed = next(t for t in body if t["title"] == "Mixed")
+        assert set(mixed["panel_ids"]) == {"feed", "logs"}
