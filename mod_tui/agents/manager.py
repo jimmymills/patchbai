@@ -67,7 +67,18 @@ class AgentManager:
             bus=self._bus,
         )
         self._sessions[agent_id] = session
-        self._inboxes[agent_id] = RequestInbox()
+        # Capture the session in a closure so the inbox callback can flip
+        # state. We intentionally bind `session` (not `self._sessions[...]`)
+        # so a later kill() doesn't leave the closure resolving to None.
+        def _on_pending_changed(count: int, _session=session) -> None:
+            if count > 0:
+                _session._mark_waiting()
+            else:
+                _session._mark_unwaiting()
+
+        self._inboxes[agent_id] = RequestInbox(
+            on_pending_changed=_on_pending_changed
+        )
         self._index.upsert(info)
         self._bus.publish(AgentSpawned(info=info))
 
