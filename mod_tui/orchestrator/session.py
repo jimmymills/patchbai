@@ -83,6 +83,8 @@ class OrchestratorSession:
             cwd=str(cwd),
             started_at=time.time(),
         )
+        self._current_session_first_message: str | None = None
+        self._current_session_num_turns: int = 0
         self._inner: AgentSession | None = None  # built in start()
         self._unsub_user: callable = lambda: None
         self._unsub_msg: callable = lambda: None
@@ -203,8 +205,8 @@ class OrchestratorSession:
                 transcript_path=str(self._active_transcript_path),
                 started_at=self._info.started_at,
                 last_activity=now,
-                first_user_message=None,
-                num_turns=0,
+                first_user_message=self._current_session_first_message,
+                num_turns=self._current_session_num_turns,
                 tokens_in=self._info.tokens_in,
                 tokens_out=self._info.tokens_out,
                 cost=self._info.cost,
@@ -271,6 +273,8 @@ class OrchestratorSession:
             self._send_tasks.append(asyncio.create_task(self.resume(m.group(1))))
             return
         # Fall through: ordinary prompt.
+        if self._current_session_first_message is None:
+            self._current_session_first_message = text
         self._send_tasks = [t for t in self._send_tasks if not t.done()]
         task = self._inner.queue_send(text)
         self._send_tasks.append(task)
@@ -302,7 +306,13 @@ class OrchestratorSession:
                 await self._swap_inner(resume=None)
 
     def _publish_notice(self, text: str) -> None:
-        # Surface as an OrchestratorReply so it appears inline in the chat.
+        # Toast for the running app (production UI surface).
+        if self._app is not None:
+            try:
+                self._app.notify(text, title="orchestrator")
+            except Exception:
+                pass
+        # OrchestratorReply event for tests + bus subscribers.
         self._bus.publish(OrchestratorReply(text))
 
     async def _swap_inner(self, *, resume: str | None) -> None:
@@ -323,6 +333,8 @@ class OrchestratorSession:
             new_session_id = new_id
             transcript_path = orchestrator_session_transcript_path(self._cwd, new_id)
             self._sdk_session_id = new_id
+        self._current_session_first_message = None
+        self._current_session_num_turns = 0
         self._active_transcript_path = transcript_path
 
         # Pull a fresh adapter. In production this comes from the
@@ -351,6 +363,31 @@ class OrchestratorSession:
         # public "the orchestrator said something" signal other code asserts on.
         if event.role == "assistant":
             self._bus.publish(OrchestratorReply(event.text))
+            self._current_session_num_turns += 1
+            self._refresh_session_summary()
+
+    def _refresh_session_summary(self) -> None:
+        """Update the index entry for the active session with current
+        first_user_message + num_turns + activity. No-op if the session
+        hasn't been confirmed (_sdk_session_id not yet observed) or
+        if the entry hasn't been created yet (handled by
+        _on_session_id_observed)."""
+        if self._sdk_session_id is None:
+            return
+        existing = self._index.get(self._sdk_session_id)
+        if existing is None:
+            return
+        existing.last_activity = time.time()
+        # Only set first_user_message if not already set — the very first
+        # prompt of the session is the canonical answer; later prompts
+        # don't overwrite.
+        if existing.first_user_message is None and self._current_session_first_message:
+            existing.first_user_message = self._current_session_first_message
+        existing.num_turns = max(existing.num_turns, self._current_session_num_turns)
+        existing.tokens_in = self._info.tokens_in
+        existing.tokens_out = self._info.tokens_out
+        existing.cost = self._info.cost
+        self._index.upsert(existing)
 
     def _on_child_notified(self, event: AgentNotifiedOrchestrator) -> None:
         synthetic = (

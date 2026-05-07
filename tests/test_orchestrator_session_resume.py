@@ -484,3 +484,108 @@ async def test_resume_falls_back_when_sdk_rejects(tmp_path):
         assert any("could not resume" in r.text.lower() for r in replies)
     finally:
         await orch.stop()
+
+
+# ---------------------------------------------------------------------------
+# Issue 1: app.notify called for toast notices
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_notice_calls_app_notify_when_app_set(tmp_path):
+    """When OrchestratorSession is constructed with app=..., notices toast."""
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+
+    notifications: list[tuple[str, str]] = []
+
+    class _AppStub:
+        def notify(self, text, *, title=""):
+            notifications.append((text, title))
+
+    orch = OrchestratorSession(
+        cwd=tmp_path, bus=bus, manager=manager,
+        adapter=adapter, app=_AppStub(),
+    )
+    await orch.start()
+    try:
+        await orch.resume("does-not-exist")
+        assert any("no such session" in t.lower() for t, _ in notifications)
+        assert all(title == "orchestrator" for _, title in notifications)
+    finally:
+        await orch.stop()
+
+
+# ---------------------------------------------------------------------------
+# Issue 2: first_user_message and num_turns populated
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_first_user_message_and_num_turns_populated(tmp_path):
+    """After a turn, the index entry has the user prompt and turn count."""
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="record-me")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("what is 2+2?"))
+        await orch.wait_idle()
+
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        entry = idx.get("record-me")
+        assert entry is not None
+        assert entry.first_user_message == "what is 2+2?"
+        assert entry.num_turns == 1
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_first_user_message_does_not_change_on_later_turns(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="sticky"), _ok_script(session_id="sticky")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("first prompt"))
+        await orch.wait_idle()
+        bus.publish(UserMessageToOrchestrator("second prompt"))
+        await orch.wait_idle()
+
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        entry = idx.get("sticky")
+        assert entry.first_user_message == "first prompt"  # not overwritten
+        assert entry.num_turns == 2
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_slash_commands_do_not_count_as_first_user_message(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="real-id")])
+    new_adapter = _RecordingAdapter(scripts=[_ok_script(session_id="post-reset")])
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=adapter)
+    orch._next_adapter_factory = lambda: new_adapter
+
+    await orch.start()
+    try:
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("/reset"))
+        await orch.wait_idle()
+        bus.publish(UserMessageToOrchestrator("first real prompt"))
+        await orch.wait_idle()
+
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        entry = idx.get("post-reset")
+        assert entry is not None
+        assert entry.first_user_message == "first real prompt"
+    finally:
+        await orch.stop()
