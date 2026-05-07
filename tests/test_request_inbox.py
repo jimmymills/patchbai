@@ -57,3 +57,50 @@ async def test_on_pending_changed_fires_when_inbox_becomes_non_empty():
     inbox = RequestInbox(on_pending_changed=counts.append)
     inbox.register()
     assert counts == [1]
+
+
+@pytest.mark.asyncio
+async def test_on_pending_changed_fires_on_wait_drain_after_resolve():
+    counts: list[int] = []
+    inbox = RequestInbox(on_pending_changed=counts.append)
+    rid = inbox.register()
+    inbox.resolve(rid, "answer")
+    await inbox.wait(rid, timeout_s=1.0)
+    assert counts == [1, 0]
+
+
+@pytest.mark.asyncio
+async def test_on_pending_changed_fires_on_wait_timeout_drain():
+    counts: list[int] = []
+    inbox = RequestInbox(on_pending_changed=counts.append)
+    rid = inbox.register()
+    with pytest.raises(asyncio.TimeoutError):
+        await inbox.wait(rid, timeout_s=0.05)
+    assert counts == [1, 0]
+
+
+@pytest.mark.asyncio
+async def test_on_pending_changed_does_not_fire_for_intermediate_register_drain_pairs():
+    """Stacked asks: count goes 0→1→2→1→0; we expect every step to fire,
+    so we can distinguish "still non-empty" (>=1) from "now empty" (==0)."""
+    counts: list[int] = []
+    inbox = RequestInbox(on_pending_changed=counts.append)
+    a = inbox.register()
+    b = inbox.register()
+    inbox.resolve(a, "a")
+    await inbox.wait(a, timeout_s=1.0)
+    inbox.resolve(b, "b")
+    await inbox.wait(b, timeout_s=1.0)
+    assert counts == [1, 2, 1, 0]
+
+
+@pytest.mark.asyncio
+async def test_on_pending_changed_callback_exception_is_swallowed():
+    def boom(_count: int) -> None:
+        raise RuntimeError("boom")
+
+    inbox = RequestInbox(on_pending_changed=boom)
+    # Must not raise.
+    rid = inbox.register()
+    inbox.resolve(rid, "ok")
+    await inbox.wait(rid, timeout_s=1.0)
