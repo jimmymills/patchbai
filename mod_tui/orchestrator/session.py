@@ -19,7 +19,10 @@ from mod_tui.events import (
     UserMessageToOrchestrator,
 )
 from mod_tui.orchestrator.tools import build_orchestrator_mcp_server
-from mod_tui.persistence.orchestrator_sessions import OrchestratorSessionsIndex
+from mod_tui.persistence.orchestrator_sessions import (
+    OrchestratorSessionEntry,
+    OrchestratorSessionsIndex,
+)
 from mod_tui.persistence.paths import orchestrator_session_transcript_path
 from mod_tui.persistence.transcript_store import AgentTranscript
 
@@ -77,6 +80,10 @@ class OrchestratorSession:
         self._unsub_notify: callable = lambda: None
         self._unsub_ask: callable = lambda: None
         self._send_tasks: list[asyncio.Task] = []
+
+    @property
+    def active_transcript_path(self) -> "Path | None":
+        return self._active_transcript_path
 
     async def start(self) -> None:
         # One-time migration of any pre-existing orchestrator.jsonl.
@@ -164,8 +171,40 @@ class OrchestratorSession:
         await self._inner.start(options=ClaudeAgentOptions(**options_kwargs))
 
     def _on_session_id_observed(self, session_id: str) -> None:
-        self._sdk_session_id = session_id
-        # Index upsert added in Task 8.
+        # Update in-memory pointer to whatever the SDK actually attached us to.
+        if self._sdk_session_id != session_id:
+            log.warning(
+                "orchestrator session_id mismatch: passed %s observed %s",
+                self._sdk_session_id, session_id,
+            )
+            self._sdk_session_id = session_id
+            # Note: _active_transcript_path is NOT re-pointed here — the
+            # AgentTranscript was already opened at the original path and
+            # all writes go there. We keep _active_transcript_path stable
+            # so callers (e.g. OrchestratorChat) can read from the right file.
+
+        existing = self._index.get(session_id)
+        now = time.time()
+        if existing is None:
+            entry = OrchestratorSessionEntry(
+                session_id=session_id,
+                transcript_path=str(self._active_transcript_path),
+                started_at=self._info.started_at,
+                last_activity=now,
+                first_user_message=None,
+                num_turns=0,
+                tokens_in=self._info.tokens_in,
+                tokens_out=self._info.tokens_out,
+                cost=self._info.cost,
+                legacy=False,
+            )
+        else:
+            existing.last_activity = now
+            existing.tokens_in = self._info.tokens_in
+            existing.tokens_out = self._info.tokens_out
+            existing.cost = self._info.cost
+            entry = existing
+        self._index.upsert(entry)
 
     async def interrupt(self) -> None:
         """Cancel the SDK's currently-running query, if any.

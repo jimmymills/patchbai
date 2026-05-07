@@ -110,3 +110,39 @@ async def test_start_runs_legacy_migration(tmp_path):
                    for p in transcripts.iterdir())
     finally:
         await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_active_transcript_path_reflects_active_session(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="brand-new")])
+    orch, _ = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        p = orch.active_transcript_path
+        assert p is not None
+        assert p.name.startswith("orchestrator.")
+        assert p.suffix == ".jsonl"
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_first_result_message_upserts_index(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="confirmed-id")])
+    orch, _ = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        # Send one message so a ResultMessage flows.
+        from mod_tui.events import UserMessageToOrchestrator
+        orch._bus.publish(UserMessageToOrchestrator("hi"))
+        await orch.wait_idle()
+
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        entries = idx.list()
+        ids = {e.session_id for e in entries}
+        assert "confirmed-id" in ids
+        entry = idx.get("confirmed-id")
+        assert entry is not None
+        assert entry.legacy is False
+    finally:
+        await orch.stop()
