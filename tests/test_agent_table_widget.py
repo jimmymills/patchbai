@@ -411,9 +411,9 @@ async def test_archived_row_sinks_to_bottom_when_visible():
 async def test_message_bumps_agent_to_top_of_its_bucket():
     # Two RUNNING agents; the one that just received a message should
     # rise to the top of the RUNNING bucket via the last_activity
-    # tiebreaker. To get the bump, we publish a state event whose info
-    # carries the new last_activity (since AgentMessageAppended itself
-    # doesn't carry the AgentInfo — but _on_msg uses the cached info).
+    # tiebreaker. AgentMessageAppended carries no AgentInfo, so we
+    # mutate `a.last_activity` in place and rely on _on_msg using the
+    # cached info — the same contract AgentSession uses in production.
     bus = EventBus()
     app = _HostApp(bus)
     async with app.run_test() as pilot:
@@ -431,8 +431,9 @@ async def test_message_bumps_agent_to_top_of_its_bucket():
         keys = [str(row.value) for row in table.rows.keys()]
         assert keys == ["b", "a"]
 
-        # Now a gets a message; bump its last_activity past b's and
-        # republish via AgentStateChanged (same state, fresher timestamp).
+        # Now a gets a message; bump its last_activity past b's first, then
+        # publish AgentMessageAppended. _on_msg sees the fresh value via the
+        # cached info reference and triggers a re-sort.
         a.last_activity = 300.0
         bus.publish(AgentMessageAppended(
             agent_id="a", role="assistant", text="hello",
