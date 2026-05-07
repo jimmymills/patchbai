@@ -160,6 +160,9 @@ class ModTuiApp(App):
         global_dir: Path | None = None,
     ) -> None:
         super().__init__()
+        # Cache for the currently-applied theme's extra_css. Initialized to
+        # "" so save_theme can snapshot a clean state before any apply runs.
+        self._active_theme_extra_css: str = ""
         self.cwd = Path(cwd) if cwd else Path.cwd()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
