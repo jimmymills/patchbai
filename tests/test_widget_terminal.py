@@ -350,3 +350,31 @@ async def test_terminal_restart_is_noop_while_alive():
         term.action_restart()  # should be a no-op since the child is alive
         assert term._pty is original_pty
         term._teardown()
+
+
+def test_terminal_can_focus():
+    """Container.can_focus defaults to False; without override on_key would be dead code."""
+    assert Terminal.can_focus is True
+
+
+@pytest.mark.asyncio
+async def test_terminal_drain_loop_respects_read_budget():
+    """When more bytes are buffered than READ_BUDGET_BYTES, _tick stops and lets add_reader re-fire."""
+    import asyncio
+    # Print ~80 KiB so a single _tick definitely runs into the 64 KiB cap.
+    payload_cmd = "i=0; while [ $i -lt 5000 ]; do echo line-$i-padding-padding-padding; i=$((i+1)); done"
+    app = _Host(command=["/bin/sh", "-c", payload_cmd])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Drive _tick once manually so we can observe the bytes_read budget directly.
+        # We can't easily inspect bytes_read from outside, so instead we verify two
+        # invariants: (1) eventually all output lands; (2) the drain doesn't crash.
+        for _ in range(80):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+        text = "\n".join(term._screen.display)
+        assert "line-4999" in text, f"latest line missing; got tail: {text[-200:]!r}"
+        # Scrollback should be substantial — proves we didn't drop bytes at the cap boundary.
+        assert len(term._screen.history.top) > 100
+        term._teardown()

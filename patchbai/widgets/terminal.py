@@ -31,8 +31,8 @@ class Terminal(Container):
       cwd: working directory (default: process cwd)
       env: extra env vars merged into os.environ
 
-    Limitations: line-mode keystroke forwarding only; no mouse; resize
-    on the fly is best-effort. POSIX-only (ptyprocess).
+    Limitations: no mouse forwarding; no bracketed paste; no Kitty
+    keyboard protocol. POSIX-only (ptyprocess).
     """
 
     DEFAULT_CSS = """
@@ -51,8 +51,8 @@ class Terminal(Container):
 
     DEFAULT_COLS = 80
     DEFAULT_ROWS = 24
-    HISTORY_LINES = 2000  # ~17 MB worst case at 80 cols × 112B per pyte Char
-    READ_BUDGET_BYTES = 64 * 1024  # cap per _tick to avoid starving the asyncio loop
+    HISTORY_LINES = 2000  # scrollback rows; memory grows linearly with terminal width
+    READ_BUDGET_BYTES = 64 * 1024  # per-tick drain cap; hitting it is fine — add_reader fires again next tick
 
     def __init__(
         self,
