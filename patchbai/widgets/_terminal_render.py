@@ -10,20 +10,38 @@ import pyte
 from rich.style import Style
 from rich.text import Text
 
-# pyte returns these named colors as strings; Rich understands them directly.
+# Rich understands these named colors directly (subset of rich.color.ANSI_COLOR_NAMES
+# we expect from pyte after translation below).
 _NAMED_COLORS = frozenset({
     "default",
     "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
-    "brown",
-    "brightblack", "brightred", "brightgreen", "brightyellow",
-    "brightblue", "brightmagenta", "brightcyan", "brightwhite",
+    "bright_black", "bright_red", "bright_green", "bright_yellow",
+    "bright_blue", "bright_magenta", "bright_cyan", "bright_white",
 })
+
+# pyte uses some color names Rich doesn't recognise (notably "brown" for SGR 33
+# and "bright<color>" without an underscore). Translate them to the Rich form
+# before pass-through so Style() construction never raises ColorParseError.
+_PYTE_TO_RICH_NAME = {
+    "brown": "yellow",
+    "brightblack": "bright_black",
+    "brightred": "bright_red",
+    "brightgreen": "bright_green",
+    "brightyellow": "bright_yellow",
+    "brightblue": "bright_blue",
+    "brightmagenta": "bright_magenta",
+    "brightcyan": "bright_cyan",
+    "brightwhite": "bright_white",
+}
 
 
 def _color_to_rich(color: str) -> str | None:
     """Translate a pyte color string to a Rich color spec, or None for default."""
     if not color or color == "default":
         return None
+    # Translate pyte-only names (e.g. 'brown', 'brightred') to their Rich forms.
+    if color in _PYTE_TO_RICH_NAME:
+        return _PYTE_TO_RICH_NAME[color]
     if color in _NAMED_COLORS:
         return color
     # 6-char hex string (truecolor or 256-color resolved by pyte)
@@ -62,7 +80,9 @@ def render_screen(screen: pyte.Screen, *, show_cursor: bool) -> Text:
     list small (one cell per character would be O(rows*cols) spans).
 
     If `show_cursor` is True and the cursor is not hidden, the cell under
-    the cursor is rendered with reverse=True (overlaid on its existing style).
+    the cursor is rendered as its own one-cell run with reverse XOR'd
+    against the underlying cell, so it stays visible even when neighbors
+    already carry reverse=True.
     """
     text = Text()
     cols = screen.columns
@@ -82,9 +102,23 @@ def render_screen(screen: pyte.Screen, *, show_cursor: bool) -> Text:
             cell = line_buf[x]
             base = cell_style(cell)
             is_cursor = cursor_visible and y == cursor_y and x == cursor_x
-            effective = ((base or Style()) + Style(reverse=True)) if is_cursor else base
+            if is_cursor:
+                # XOR reverse so the cursor cell visually pops even when the
+                # underlying cell already has reverse=True.
+                base_reverse = bool(base and base.reverse)
+                effective = (base or Style()) + Style(reverse=not base_reverse)
+            else:
+                effective = base
             data = cell.data or " "
-            if not run_started:
+            if is_cursor:
+                # Always flush before/after the cursor so it cannot coalesce
+                # with adjacent cells that happen to share its effective style.
+                _flush(text, run_chars, run_style)
+                _flush(text, [data], effective)
+                run_chars = []
+                run_style = None
+                run_started = False
+            elif not run_started:
                 run_chars = [data]
                 run_style = effective
                 run_started = True
