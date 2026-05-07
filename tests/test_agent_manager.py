@@ -187,8 +187,8 @@ async def test_set_archived_works_for_persisted_agent_without_live_session(
     # (seeded from agents.json on mount) but has no entry in
     # AgentManager._sessions. Pressing `d` on such a row used to crash with
     # KeyError; archive must operate on the persisted record instead.
-    from mod_tui.agents.state import AgentInfo, AgentState
-    from mod_tui.persistence.agents_index import AgentsIndex
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.persistence.agents_index import AgentsIndex
 
     AgentsIndex(cwd=tmp_path).save([
         AgentInfo(id="ghost", name="lister", cwd=str(tmp_path),

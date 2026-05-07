@@ -74,7 +74,7 @@ async def test_status_bar_widgets_laid_out_side_by_side(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = ModTuiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(140, 30)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
