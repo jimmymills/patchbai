@@ -10,6 +10,10 @@ def project_layout_path(cwd: Path) -> Path:
     return project_state_dir(cwd) / "layout.json"
 
 
+def project_workspace_path(cwd: Path) -> Path:
+    return project_state_dir(cwd) / "workspace.json"
+
+
 def project_transcripts_dir(cwd: Path) -> Path:
     return project_state_dir(cwd) / "transcripts"
 
