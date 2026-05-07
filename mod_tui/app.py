@@ -35,6 +35,7 @@ from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
+from mod_tui.widgets.new_tab_screen import NewTabScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
 from mod_tui.widgets.terminal import Terminal
@@ -132,6 +133,8 @@ class ModTuiApp(App):
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("?", "show_help", "help"),
+        Binding("ctrl+t", "new_tab", "new tab", priority=True),
+        Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
         Binding("ctrl+1", "switch_tab_index(0)", "tab 1"),
         Binding("ctrl+2", "switch_tab_index(1)", "tab 2"),
         Binding("ctrl+3", "switch_tab_index(2)", "tab 3"),
@@ -417,6 +420,24 @@ class ModTuiApp(App):
             _asyncio.create_task(self._orchestrator_apply_layout(spec, layout_name=name))
 
         self.push_screen(LayoutSwitcherScreen(store=self.layouts_store), _on_picked)
+
+    def action_new_tab(self) -> None:
+        import asyncio as _asyncio
+
+        def _on_picked(title: str | None) -> None:
+            if not title:
+                return
+            layout = self._default_seed_layout()
+            _asyncio.create_task(self.add_tab(title, layout, activate=True))
+
+        self.push_screen(NewTabScreen(), _on_picked)
+
+    async def action_close_active_tab(self) -> None:
+        if self._active_tab_id is None:
+            return
+        result = await self.close_tab(self._active_tab_id)
+        if "error" in result:
+            self.notify(f"can't close tab: {result['error']}", severity="warning")
 
     # --- helpers -----------------------------------------------------------
 

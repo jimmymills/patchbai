@@ -234,3 +234,56 @@ async def test_ctrl_5_with_only_two_tabs_is_noop(tmp_path):
         await pilot.press("ctrl+5")
         await pilot.pause()
         assert app._active_tab_id == original
+
+
+@pytest.mark.asyncio
+async def test_ctrl_t_opens_new_tab_modal_and_creates_tab(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._workspace is not None
+        before = len(app._workspace.tabs)
+        await pilot.press("ctrl+t")
+        await pilot.pause()
+        await pilot.press("L", "o", "g", "s", "enter")
+        await pilot.pause()
+        assert app._workspace is not None
+        assert len(app._workspace.tabs) == before + 1
+        assert app._workspace.tabs[-1].title == "Logs"
+
+
+@pytest.mark.asyncio
+async def test_ctrl_w_on_last_tab_is_noop(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app._workspace is not None
+        before = len(app._workspace.tabs)
+        await pilot.press("ctrl+w")
+        await pilot.pause()
+        assert app._workspace is not None
+        assert len(app._workspace.tabs) == before
+
+
+@pytest.mark.asyncio
+async def test_ctrl_w_closes_active_tab(tmp_path):
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {"id": "orch", "widget": "OrchestratorChat"}}},
+            {"id": "logs", "title": "Logs",
+             "layout": {"version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"}}},
+        ],
+        "active": "logs",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+w")
+        await pilot.pause()
+        assert app._workspace is not None
+        assert all(t.id != "logs" for t in app._workspace.tabs)
+        assert app._active_tab_id == "main"
