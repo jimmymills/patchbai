@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.containers import Container as TxContainer
@@ -69,3 +71,29 @@ async def test_app_writes_workspace_json_on_launch(tmp_path):
         await pilot.pause()
         ws_path = tmp_path / ".mod_tui" / "workspace.json"
         assert ws_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_legacy_layout_json_is_migrated_to_workspace(tmp_path):
+    legacy = {
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat", "size": "70%"},
+                {"id": "feed", "widget": "ActivityFeed", "size": "30%"},
+            ],
+        },
+        "focus": "orch",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "layout.json").write_text(json.dumps(legacy))
+
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        ws_raw = json.loads((tmp_path / ".mod_tui" / "workspace.json").read_text())
+        assert len(ws_raw["tabs"]) == 1
+        assert ws_raw["active"] == "default"
+        assert ws_raw["tabs"][0]["layout"]["focus"] == "orch"
+        assert (tmp_path / ".mod_tui" / "layout.json").exists()
