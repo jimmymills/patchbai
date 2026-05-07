@@ -32,6 +32,9 @@ Operation = MountPanel | UnmountPanel | UpdateProps
 def _collect_panels(node, out: dict[str, Panel]) -> None:
     if isinstance(node, Panel):
         out[node.id] = node
+    elif isinstance(node, Tabs):
+        for c in node.children:
+            out[c.id] = c
     elif isinstance(node, Container):
         for c in node.children:
             _collect_panels(c, out)
