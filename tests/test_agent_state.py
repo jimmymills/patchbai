@@ -85,3 +85,14 @@ def test_agent_info_from_dict_tolerates_legacy_records():
     info = AgentInfo.from_dict(legacy)
     assert info.session_id is None
     assert info.spawn_options is None
+
+
+def test_awaiting_permission_is_a_distinct_state():
+    from patchbai.agents.state import AgentState
+    assert AgentState.AWAITING_PERMISSION.value == "awaiting_permission"
+    assert AgentState.AWAITING_PERMISSION != AgentState.WAITING
+
+
+def test_awaiting_permission_is_not_terminal():
+    from patchbai.agents.state import AgentState
+    assert AgentState.AWAITING_PERMISSION.is_terminal is False
