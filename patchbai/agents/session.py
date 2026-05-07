@@ -49,6 +49,7 @@ class AgentSession:
         self._idle_event.set()
         self._send_lock = asyncio.Lock()
         self._pre_wait_state: AgentState | None = None
+        self._pre_perm_state: AgentState | None = None
 
     @property
     def session_id(self) -> str | None:
@@ -202,6 +203,31 @@ class AgentSession:
         self._pre_wait_state = None
         if target.is_terminal:
             # Defensive: never resurrect a terminal state.
+            return
+        self._set_state(target)
+
+    def _mark_awaiting_permission(self) -> None:
+        """Enter AWAITING_PERMISSION, snapshotting the prior state.
+
+        Idempotent. Composes with _mark_waiting: a session can transition
+        RUNNING → AWAITING_PERMISSION → WAITING → AWAITING_PERMISSION
+        → RUNNING and end up where it started. Skipped if terminal.
+        """
+        if self.info.state.is_terminal:
+            return
+        if self.info.state == AgentState.AWAITING_PERMISSION:
+            return
+        self._pre_perm_state = self.info.state
+        self._set_state(AgentState.AWAITING_PERMISSION)
+
+    def _mark_done_permission(self) -> None:
+        """Exit AWAITING_PERMISSION, restoring the pre-permission state."""
+        if self.info.state != AgentState.AWAITING_PERMISSION:
+            self._pre_perm_state = None
+            return
+        target = self._pre_perm_state or AgentState.RUNNING
+        self._pre_perm_state = None
+        if target.is_terminal:
             return
         self._set_state(target)
 

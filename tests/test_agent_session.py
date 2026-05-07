@@ -320,3 +320,59 @@ async def test_mark_unwaiting_does_not_resurrect_terminal_state(tmp_path):
     session.info.state = AgentState.DONE
     session._mark_unwaiting()
     assert session.info.state == AgentState.DONE
+
+
+@pytest.mark.asyncio
+async def test_mark_awaiting_permission_flips_state_and_restores():
+    from pathlib import Path
+    from patchbai.agents.session import AgentSession
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.events import EventBus
+    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchbai.persistence.transcript_store import AgentTranscript
+
+    info = AgentInfo(id="x", name="x", cwd="/tmp", started_at=0.0)
+    info.state = AgentState.RUNNING
+    session = AgentSession(
+        info=info,
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=Path("/tmp"), agent_id="x"),
+        bus=EventBus(),
+    )
+
+    session._mark_awaiting_permission()
+    assert info.state == AgentState.AWAITING_PERMISSION
+
+    session._mark_done_permission()
+    assert info.state == AgentState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_mark_awaiting_permission_stacked_with_waiting_restores_correctly():
+    from pathlib import Path
+    from patchbai.agents.session import AgentSession
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.events import EventBus
+    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchbai.persistence.transcript_store import AgentTranscript
+
+    info = AgentInfo(id="x", name="x", cwd="/tmp", started_at=0.0)
+    info.state = AgentState.RUNNING
+    session = AgentSession(
+        info=info,
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=Path("/tmp"), agent_id="x"),
+        bus=EventBus(),
+    )
+
+    session._mark_awaiting_permission()
+    assert info.state == AgentState.AWAITING_PERMISSION
+
+    session._mark_waiting()
+    assert info.state == AgentState.WAITING
+
+    session._mark_unwaiting()
+    assert info.state == AgentState.AWAITING_PERMISSION
+
+    session._mark_done_permission()
+    assert info.state == AgentState.RUNNING
