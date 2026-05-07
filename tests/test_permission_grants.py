@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from patchbai.agents.permission_grants import PermissionGrants
 
 
