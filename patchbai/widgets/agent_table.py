@@ -3,6 +3,7 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import DataTable
 
+from patchbai.agents.sort import sort_agents
 from patchbai.agents.state import AgentInfo
 from patchbai.events import (
     AgentArchiveChanged,
@@ -83,7 +84,9 @@ class AgentTable(Container):
             for info in AgentsIndex(cwd=cwd).load():
                 if info.id == "orchestrator":
                     continue
-                self._add_row(info)
+                # Just record into _infos; the rebuild below renders rows in order.
+                self._infos[info.id] = info
+            self._rebuild_sorted()
 
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
@@ -103,7 +106,9 @@ class AgentTable(Container):
     # --- event handlers ---------------------------------------------------
 
     def _on_spawned(self, event: AgentSpawned) -> None:
-        self._add_row(event.info)
+        # Record the new agent and rebuild so it lands at the right priority.
+        self._infos[event.info.id] = event.info
+        self._rebuild_sorted()
 
     def _on_state(self, event: AgentStateChanged) -> None:
         # Preserve any archived flag we already know about — AgentStateChanged
@@ -114,16 +119,18 @@ class AgentTable(Container):
         if prev is not None and prev.archived and not event.info.archived:
             event.info.archived = True
         self._infos[event.info.id] = event.info
-        self._sync_row(event.info)
+        self._rebuild_sorted()
 
     def _on_msg(self, event: AgentMessageAppended) -> None:
         self._last_actions[event.agent_id] = f"[{event.role}] {event.text[:60]}"
         if event.agent_id in self._infos:
-            self._sync_row(self._infos[event.agent_id])
+            # last_activity feeds the sort tiebreaker, so rebuild to let the
+            # row bubble up within its bucket and refresh its last-action cell.
+            self._rebuild_sorted()
 
     def _on_archive_changed(self, event: AgentArchiveChanged) -> None:
         self._infos[event.info.id] = event.info
-        self._sync_row(event.info)
+        self._rebuild_sorted()
 
     # --- actions ----------------------------------------------------------
 
@@ -141,7 +148,7 @@ class AgentTable(Container):
 
     def action_toggle_show_archived(self) -> None:
         self._show_archived = not self._show_archived
-        self._rebuild_rows()
+        self._rebuild_sorted()
 
     # --- internals --------------------------------------------------------
 
@@ -158,56 +165,30 @@ class AgentTable(Container):
     def _is_visible(self, info: AgentInfo) -> bool:
         return self._show_archived or not info.archived
 
-    def _add_row(self, info: AgentInfo) -> None:
-        """Record `info` and add a row to the DataTable iff it should be
-        visible under the current filter. Idempotent — a duplicate call for
-        an already-rendered agent is a no-op (still refreshes `_infos`)."""
-        self._infos[info.id] = info
-        if info.id in self._rows:
-            return
-        if not self._is_visible(info):
-            return
+    def _rebuild_sorted(self) -> None:
+        """Clear and re-add rows from `_infos` in default sort order, honoring
+        the visibility filter. Preserves the cursor's focused agent across the
+        rebuild so a sort-induced reorder doesn't snap the user back to row 0."""
         table = self.query_one(DataTable)
-        table.add_row(*self._render_cells(info), key=info.id)
-        self._rows[info.id] = info.id  # row key == agent id
 
-    def _remove_row(self, agent_id: str) -> None:
-        table = self.query_one(DataTable)
-        try:
-            table.remove_row(agent_id)
-        except Exception:
-            return
-        self._rows.pop(agent_id, None)
+        # Capture cursor agent BEFORE clear(); coordinate_to_cell_key throws
+        # after the table is empty.
+        cursor_agent_id = self._cursor_agent_id()
 
-    def _sync_row(self, info: AgentInfo) -> None:
-        """Make the table reflect `info` given the current visibility filter:
-        add/remove rows as needed, update cells if already present."""
-        visible = self._is_visible(info)
-        present = info.id in self._rows
-        if visible and not present:
-            self._add_row(info)
-            return
-        if not visible and present:
-            self._remove_row(info.id)
-            return
-        if visible and present:
-            self._refresh_cells(info)
-
-    def _refresh_cells(self, info: AgentInfo) -> None:
-        table = self.query_one(DataTable)
-        cells = self._render_cells(info)
-        for col, value in zip(self.COLUMNS, cells):
-            table.update_cell(info.id, col, value)
-
-    def _rebuild_rows(self) -> None:
-        """Clear and re-add rows from `_infos` honoring the visibility flag.
-        Used when `_show_archived` toggles."""
-        table = self.query_one(DataTable)
         table.clear()
         self._rows.clear()
-        for info in self._infos.values():
-            if self._is_visible(info):
-                self._add_row(info)
+
+        visible = [info for info in self._infos.values() if self._is_visible(info)]
+        for info in sort_agents(visible):
+            table.add_row(*self._render_cells(info), key=info.id)
+            self._rows[info.id] = info.id
+
+        # Restore cursor onto the same agent if it's still visible.
+        if cursor_agent_id is not None and cursor_agent_id in self._rows:
+            for index, row_key in enumerate(table.rows.keys()):
+                if str(row_key.value) == cursor_agent_id:
+                    table.move_cursor(row=index)
+                    break
 
     def _render_cells(self, info: AgentInfo) -> tuple:
         # Wrap each cell in Rich Text so values that may contain markup-like
