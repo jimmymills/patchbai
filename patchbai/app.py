@@ -13,7 +13,7 @@ from patchbai.agents.sdk_adapter import RealSDKAdapter
 from patchbai.config import ConfigStore
 from patchbai.events import (
     AgentSpawned, AgentStateChanged, AgentTokensTouched, EventBus, LayoutResized,
-    OpenResumePicker, StatsUpdated, TabAdded, TabClosed, TabSwitched,
+    OpenResumePicker, PermissionRequested, StatsUpdated, TabAdded, TabClosed, TabSwitched,
 )
 from patchbai.layout.defaults import dashboard_layout
 from patchbai.layout.engine import apply as apply_layout
@@ -289,6 +289,9 @@ class PatchbaiApp(App):
         self._permission_grants = (
             None if bypass_permissions else PermissionGrants(cwd=self.cwd)
         )
+        # Latch: True while the PermissionModal is on the screen stack.
+        # Prevents double-push; reset to False in the modal's dismiss callback.
+        self._permission_modal_open = False
 
         self.manager = manager or AgentManager(
             cwd=self.cwd,
@@ -1042,6 +1045,31 @@ class PatchbaiApp(App):
             active_agents=active,
         ))
 
+    def _on_permission_requested(self, event: PermissionRequested) -> None:
+        from patchbai.widgets.permission_modal import PermissionModal
+        # The modal's own subscription handles queueing once it's mounted.
+        # Skip pushing a second one if it's already on the stack.
+        if self._permission_modal_open:
+            return
+        self._permission_modal_open = True
+
+        def _on_dismissed(_: object) -> None:
+            self._permission_modal_open = False
+
+        # Lookup is unified across orchestrator + child agents.
+        def _inbox_lookup(agent_id: str):
+            if agent_id == "orchestrator":
+                return self.orchestrator.get_permission_inbox()
+            return self.manager.get_permission_inbox(agent_id)
+
+        self.push_screen(
+            PermissionModal(
+                inbox_lookup=_inbox_lookup,
+                grants=self._permission_grants,
+            ),
+            _on_dismissed,
+        )
+
     # --- splitter persistence ---------------------------------------------
 
     def _on_layout_resized(self, event: LayoutResized) -> None:
@@ -1157,6 +1185,10 @@ class PatchbaiApp(App):
         self.event_bus.subscribe(AgentTokensTouched, self._on_stats_changed)
         self.event_bus.subscribe(AgentStateChanged, self._on_stats_changed)
         self.event_bus.subscribe(AgentSpawned, self._on_stats_changed)
+        if self._permission_grants is not None:
+            self.event_bus.subscribe(
+                PermissionRequested, self._on_permission_requested,
+            )
         ws = self._load_or_seed_workspace()
         self._workspace = ws
         self._active_tab_id = ws.active
