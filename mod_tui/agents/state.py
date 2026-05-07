@@ -26,6 +26,7 @@ class AgentInfo:
     cost: float = 0.0
     tokens_in: int = 0
     tokens_out: int = 0
+    archived: bool = False
     # SDK session id observed from the first ResultMessage. Required to
     # resume the conversation in a fresh process after a crash/restart.
     session_id: str | None = None
@@ -55,6 +56,7 @@ class AgentInfo:
             "cost": self.cost,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
+            "archived": self.archived,
             "session_id": self.session_id,
             "spawn_options": self.spawn_options,
         }
@@ -72,6 +74,7 @@ class AgentInfo:
             cost=d.get("cost", 0.0),
             tokens_in=d.get("tokens_in", 0),
             tokens_out=d.get("tokens_out", 0),
+            archived=d.get("archived", False),
             session_id=d.get("session_id"),
             spawn_options=d.get("spawn_options"),
         )

@@ -103,6 +103,13 @@ class AgentNotifiedOrchestrator:
 
 
 @dataclass(frozen=True)
+class AgentArchiveChanged:
+    """An agent's `archived` flag was toggled. Carries a frozen snapshot of
+    the AgentInfo so subscribers (AgentTable, persistence) can refresh."""
+    info: AgentInfo
+
+
+@dataclass(frozen=True)
 class DirectMessageToAgent:
     """User typed directly to a focused AgentTranscript's input."""
     agent_id: str
