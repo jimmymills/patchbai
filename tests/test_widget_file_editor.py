@@ -1,9 +1,11 @@
+import os
 from pathlib import Path
 
 import pytest
 from textual.app import App
+from textual.screen import ModalScreen
 
-from mod_tui.widgets.file_editor import FileEditor
+from mod_tui.widgets.file_editor import ConfirmOverwriteScreen, FileEditor
 
 
 class _Host(App):
@@ -211,3 +213,97 @@ async def test_file_editor_ctrl_s_binding_triggers_save(tmp_path: Path):
         await pilot.pause()
         assert p.read_text(encoding="utf-8") == "x = 99\n"
         assert editor.is_dirty is False
+
+
+@pytest.mark.asyncio
+async def test_file_editor_external_change_pushes_overwrite_modal(tmp_path: Path):
+    p = tmp_path / "foo.py"
+    p.write_text("original\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        editor.text = "user edits\n"
+        await pilot.pause()
+
+        # Mutate the file on disk so size changes from the cached baseline.
+        p.write_text("CHANGED ON DISK\n", encoding="utf-8")
+        # Bump mtime even on fast filesystems.
+        new_mtime = (editor._loaded_mtime or 0.0) + 5.0
+        os.utime(p, (new_mtime, new_mtime))
+
+        # Save in a worker so we don't block this coroutine on push_screen_wait.
+        result_holder: dict = {}
+
+        async def _do_save() -> None:
+            result_holder["result"] = await editor.action_save()
+
+        app.run_worker(_do_save(), exclusive=True)
+        await pilot.pause()
+
+        # The overwrite modal should now be on the screen stack.
+        assert isinstance(app.screen, ConfirmOverwriteScreen)
+
+        # Cancel: the file on disk must remain the externally-changed text.
+        app.screen.dismiss("cancel")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert result_holder["result"] is False
+        assert p.read_text(encoding="utf-8") == "CHANGED ON DISK\n"
+        assert editor.is_dirty is True
+
+
+@pytest.mark.asyncio
+async def test_file_editor_external_change_overwrite_writes_file(tmp_path: Path):
+    p = tmp_path / "foo.py"
+    p.write_text("original\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        editor.text = "user edits\n"
+        await pilot.pause()
+
+        p.write_text("CHANGED ON DISK\n", encoding="utf-8")
+        new_mtime = (editor._loaded_mtime or 0.0) + 5.0
+        os.utime(p, (new_mtime, new_mtime))
+
+        result_holder: dict = {}
+
+        async def _do_save() -> None:
+            result_holder["result"] = await editor.action_save()
+
+        app.run_worker(_do_save(), exclusive=True)
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmOverwriteScreen)
+        app.screen.dismiss("overwrite")
+        await pilot.pause()
+        await pilot.pause()
+
+        assert result_holder["result"] is True
+        assert p.read_text(encoding="utf-8") == "user edits\n"
+        assert editor.is_dirty is False
+
+
+@pytest.mark.asyncio
+async def test_file_editor_save_recreates_file_deleted_under_us(tmp_path: Path):
+    """If the file we loaded was deleted, save should recreate it without prompting."""
+    p = tmp_path / "foo.py"
+    p.write_text("original\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        editor.text = "back from the dead\n"
+        await pilot.pause()
+        p.unlink()
+
+        result = await editor.action_save()
+        await pilot.pause()
+
+        assert result is True
+        assert p.read_text(encoding="utf-8") == "back from the dead\n"

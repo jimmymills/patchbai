@@ -1,8 +1,11 @@
 import logging
 from pathlib import Path
 
+from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.widgets import TextArea
+from textual.containers import Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Button, Static, TextArea
 
 from mod_tui.widgets._file_lang import load_text as _load_text
 
@@ -89,6 +92,17 @@ class FileEditor(TextArea):
         # error-placeholder text after a failed load.
         if self._loaded_mtime is None and self.text == self._loaded_text:
             return False
+        if self._loaded_mtime is not None:
+            current = _stat_or_none(self._current_path)
+            if current is not None and (
+                current[0] != self._loaded_mtime
+                or current[1] != self._loaded_size
+            ):
+                verb = await self.app.push_screen_wait(
+                    ConfirmOverwriteScreen(name=self._current_path.name)
+                )
+                if verb != "overwrite":
+                    return False
         try:
             self._current_path.parent.mkdir(parents=True, exist_ok=True)
             self._current_path.write_text(self.text, encoding="utf-8")
@@ -108,3 +122,42 @@ class FileEditor(TextArea):
     def default_border_title(cls, props: dict) -> str:
         fp = props.get("file_path")
         return f"Edit: {Path(fp).name}" if fp else "Edit"
+
+
+class ConfirmOverwriteScreen(ModalScreen[str]):
+    """Modal shown when Ctrl+S detects the file changed on disk since load.
+
+    Dismisses with one of: 'overwrite', 'cancel'.
+    """
+
+    DEFAULT_CSS = """
+    ConfirmOverwriteScreen { align: center middle; }
+    ConfirmOverwriteScreen > Vertical {
+        width: 60; height: auto; padding: 1 2;
+        background: $surface; border: round $primary;
+    }
+    ConfirmOverwriteScreen .row { height: auto; }
+    ConfirmOverwriteScreen Button { margin-right: 1; }
+    """
+
+    BINDINGS = [("escape", "cancel", "cancel")]
+
+    def __init__(self, *, name: str) -> None:
+        super().__init__()
+        self._name = name
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static(
+                f"{self._name} was changed on disk since you opened it. "
+                f"Overwrite anyway?"
+            )
+            yield Static(" ")
+            yield Button("Overwrite", id="overwrite", variant="warning")
+            yield Button("Cancel", id="cancel")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id or "cancel")
+
+    def action_cancel(self) -> None:
+        self.dismiss("cancel")
