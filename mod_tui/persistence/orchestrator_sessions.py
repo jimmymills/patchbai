@@ -78,5 +78,40 @@ class OrchestratorSessionsIndex:
                 return e
         return None
 
+    def migrate_legacy_if_needed(self) -> None:
+        """One-time migration: rename .mod_tui/transcripts/orchestrator.jsonl
+        to orchestrator.legacy-<ts>.jsonl and register a legacy=True entry.
+
+        No-op if the index already has any entries OR if no legacy file exists.
+        """
+        from mod_tui.persistence.paths import project_transcripts_dir
+
+        if self._path.exists():
+            return  # index already exists — don't touch
+
+        legacy_path = project_transcripts_dir(self._cwd) / "orchestrator.jsonl"
+        if not legacy_path.exists():
+            return
+
+        mtime = legacy_path.stat().st_mtime
+        legacy_id = f"legacy-{int(mtime)}"
+        new_path = project_transcripts_dir(self._cwd) / f"orchestrator.{legacy_id}.jsonl"
+        legacy_path.rename(new_path)
+
+        entry = OrchestratorSessionEntry(
+            session_id=legacy_id,
+            transcript_path=str(new_path.relative_to(self._cwd))
+                if new_path.is_relative_to(self._cwd) else str(new_path),
+            started_at=mtime,
+            last_activity=mtime,
+            first_user_message=None,
+            num_turns=0,
+            tokens_in=0,
+            tokens_out=0,
+            cost=0.0,
+            legacy=True,
+        )
+        self.upsert(entry)
+
     def _save(self, entries: list[OrchestratorSessionEntry]) -> None:
         write_json_atomic(self._path, [asdict(e) for e in entries])
