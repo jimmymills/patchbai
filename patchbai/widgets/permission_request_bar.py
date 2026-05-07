@@ -1,4 +1,7 @@
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from patchbai.agents.permission_grants import PermissionGrants
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from textual.app import ComposeResult
