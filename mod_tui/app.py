@@ -619,9 +619,10 @@ class ModTuiApp(App):
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
             "ctrl-shift-l themes · ctrl-shift-r reset panel sizes · "
+            "ctrl-shift-d change cwd · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
             "ctrl-w close tab · /reset new · /resume past · /rename title · "
-            "/help cmds · ? help",
+            "/cd path · /help cmds · ? help",
             title="keybindings",
         )
 
