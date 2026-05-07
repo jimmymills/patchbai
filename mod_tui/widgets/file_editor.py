@@ -36,3 +36,29 @@ class FileEditor(TextArea):
         self._follow_selection = follow_selection
         self._current_path: Path | None = Path(file_path) if file_path else None
         self._loaded_text: str = text
+        self._dirty: bool = False
+
+    @property
+    def is_dirty(self) -> bool:
+        return self._dirty
+
+    def on_mount(self) -> None:
+        self._refresh_border_title()
+
+    def on_text_area_changed(self, _event) -> None:
+        new_dirty = self.text != self._loaded_text
+        if new_dirty != self._dirty:
+            self._dirty = new_dirty
+            self._refresh_border_title()
+
+    def _refresh_border_title(self) -> None:
+        if self._current_path is None:
+            self.border_title = "Edit"
+            return
+        name = self._current_path.name
+        self.border_title = f"Edit: {name} *" if self._dirty else f"Edit: {name}"
+
+    @classmethod
+    def default_border_title(cls, props: dict) -> str:
+        fp = props.get("file_path")
+        return f"Edit: {Path(fp).name}" if fp else "Edit"

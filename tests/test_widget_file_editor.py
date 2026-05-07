@@ -68,3 +68,62 @@ async def test_file_editor_blank_when_no_path():
         editor = app.query_one(FileEditor)
         assert editor.text == ""
         assert editor.language is None
+
+
+@pytest.mark.asyncio
+async def test_file_editor_default_border_title_uses_filename():
+    title = FileEditor.default_border_title({"file_path": "/tmp/foo.py"})
+    assert title == "Edit: foo.py"
+
+
+@pytest.mark.asyncio
+async def test_file_editor_default_border_title_no_path():
+    title = FileEditor.default_border_title({})
+    assert title == "Edit"
+
+
+@pytest.mark.asyncio
+async def test_file_editor_marks_dirty_after_typing(tmp_path: Path):
+    p = tmp_path / "foo.py"
+    p.write_text("x = 1\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        assert editor.is_dirty is False
+        editor.text = "x = 2\n"
+        await pilot.pause()
+        assert editor.is_dirty is True
+
+
+@pytest.mark.asyncio
+async def test_file_editor_typing_back_to_original_clears_dirty(tmp_path: Path):
+    p = tmp_path / "foo.py"
+    p.write_text("x = 1\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        editor.text = "x = 2\n"
+        await pilot.pause()
+        assert editor.is_dirty is True
+        editor.text = "x = 1\n"
+        await pilot.pause()
+        assert editor.is_dirty is False
+
+
+@pytest.mark.asyncio
+async def test_file_editor_border_title_shows_dirty_marker(tmp_path: Path):
+    p = tmp_path / "foo.py"
+    p.write_text("x = 1\n", encoding="utf-8")
+
+    app = _Host(str(p))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        assert editor.border_title == "Edit: foo.py"
+        editor.text = "x = 2\n"
+        await pilot.pause()
+        assert editor.border_title == "Edit: foo.py *"
