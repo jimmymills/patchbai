@@ -619,7 +619,7 @@ class ModTuiApp(App):
         await self.manager.shutdown()
 
     async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if isinstance(self.screen, (HistoryScreen, LayoutSwitcherScreen)):
+        if isinstance(self.screen, (HistoryScreen, LayoutSwitcherScreen, ResumeScreen)):
             return
         agent_id = str(event.row_key.value)
         await self.push_screen(TranscriptScreen(agent_id=agent_id, event_bus=self.event_bus))
