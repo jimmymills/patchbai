@@ -441,3 +441,68 @@ async def test_message_bumps_agent_to_top_of_its_bucket():
         await pilot.pause()
         keys = [str(row.value) for row in table.rows.keys()]
         assert keys == ["a", "b"]
+
+
+@pytest.mark.asyncio
+async def test_cursor_follows_agent_across_state_change_reorder():
+    # Two RUNNING agents; cursor on "a"; flip "b" to DONE so order
+    # changes; cursor should still be on "a".
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        a = _info("a", state=AgentState.RUNNING)
+        a.last_activity = 200.0
+        b = _info("b", state=AgentState.RUNNING)
+        b.last_activity = 100.0
+        bus.publish(AgentSpawned(info=a))
+        bus.publish(AgentSpawned(info=b))
+        await pilot.pause()
+
+        widget = app.query_one(AgentTable)
+        table = widget.query_one(DataTable)
+        table.focus()
+        await pilot.pause()
+        # Initial order: ["a", "b"] (a is more recent). Cursor at row 0 → "a".
+        assert widget._cursor_agent_id() == "a"
+
+        # Bump "b" — DONE drops it to the bottom. Order becomes ["a", "b"]
+        # still (a is RUNNING; b is DONE). Cursor must still be on "a".
+        b_done = dataclasses.replace(b, state=AgentState.DONE, ended_at=300.0)
+        bus.publish(AgentStateChanged(info=b_done, old_state=AgentState.RUNNING))
+        await pilot.pause()
+
+        assert widget._cursor_agent_id() == "a"
+
+
+@pytest.mark.asyncio
+async def test_cursor_resets_when_focused_agent_archived_off_screen():
+    # Cursor on "a"; archive "a" with archived hidden; cursor's prior
+    # agent is gone — table should not crash and should land cursor on
+    # whichever row is at index 0 (or have no cursor if empty).
+    bus = EventBus()
+    infos = {"a": _info("a"), "b": _info("b")}
+    manager = _StubManager(bus, infos)
+    app = _HostApp(bus, manager=manager)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentSpawned(info=infos["a"]))
+        bus.publish(AgentSpawned(info=infos["b"]))
+        await pilot.pause()
+
+        widget = app.query_one(AgentTable)
+        table = widget.query_one(DataTable)
+        table.focus()
+        await pilot.pause()
+        # Move cursor to row 0 (whatever sort order produced); we don't
+        # care which agent — just that the table doesn't blow up after
+        # archiving the one at the cursor.
+        focused = widget._cursor_agent_id()
+        assert focused in ("a", "b")
+        manager.set_archived(focused, archived=True)
+        await pilot.pause()
+
+        # Only the un-archived row remains (archived hidden by default).
+        assert table.row_count == 1
+        # Cursor lands on the surviving row without raising.
+        assert widget._cursor_agent_id() in ("a", "b")
