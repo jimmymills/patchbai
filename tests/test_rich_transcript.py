@@ -357,6 +357,119 @@ async def test_state_change_for_other_agent_is_ignored(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_thinking_and_tools_wrap_in_process_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import (
+        _ProcessGroup, _ThinkingGroup, _ToolCall,
+    )
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="..."))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        procs = list(widget.query(_ProcessGroup))
+        assert len(procs) == 1
+        proc = procs[0]
+        # Thinking + tool widgets are descendants of the process group.
+        assert len(proc.query(_ThinkingGroup)) == 1
+        assert len(proc.query(_ToolCall)) == 1
+        # Expanded while running.
+        assert proc.collapsed is False
+        assert "Working" in proc.title
+
+
+@pytest.mark.asyncio
+async def test_assistant_text_closes_process_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ProcessGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="ok", tool_id="t1",
+        ))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="done"))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        proc = widget.query_one(_ProcessGroup)
+        # Final-response collapse: outer fold closes when assistant text arrives.
+        assert proc.collapsed is True
+        assert "Process" in proc.title
+
+
+@pytest.mark.asyncio
+async def test_second_round_opens_new_process_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ProcessGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t1", tool_name="bash",
+        ))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="ok", tool_id="t1",
+        ))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="step 1"))
+        # New round of work after the first response.
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{}",
+            tool_id="t2", tool_name="read",
+        ))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_result", text="ok", tool_id="t2",
+        ))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        procs = list(widget.query(_ProcessGroup))
+        assert len(procs) == 2
+        # First one closed when the assistant text arrived; second is still
+        # open because no further assistant text closed it yet.
+        assert procs[0].collapsed is True
+        assert procs[1].collapsed is False
+
+
+@pytest.mark.asyncio
+async def test_text_only_turn_has_no_process_group(tmp_path):
+    from mod_tui.widgets.rich_transcript import _ProcessGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="hi"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="hello"))
+        await pilot.pause()
+
+        widget = app.query_one(RichTranscript)
+        # No thinking, no tools — process group is created lazily, so none.
+        assert len(widget.query(_ProcessGroup)) == 0
+
+
+@pytest.mark.asyncio
 async def test_running_tool_call_spinner_advances(tmp_path):
     from mod_tui.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 

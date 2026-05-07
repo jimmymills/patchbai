@@ -153,6 +153,99 @@ class _ThinkingGroup(Collapsible):
         self.collapsed = True
 
 
+class _ProcessGroup(Collapsible):
+    """Outer fold around the thinking + tool widgets between the user
+    prompt and the next assistant response.
+
+    Lets the user hide the entire intermediate process behind one click,
+    so a finished turn reads as 'prompt → final response' with the work
+    one expand-step away.
+    """
+
+    DEFAULT_CSS = """
+    _ProcessGroup {
+        margin: 0;
+    }
+    """
+
+    def __init__(self) -> None:
+        # Inner Vertical we own, so add_step() has a stable mount target.
+        # Collapsible itself doesn't expose a public API for dynamic content
+        # mounting; passing _body as the only "contents" child gives us one.
+        self._body = Vertical()
+        self._pending_steps: list = []
+        self._tool_count = 0
+        self._started = time.monotonic()
+        self._done = False
+        self._spinner_idx = 0
+        self._spinner_timer = None
+        super().__init__(
+            self._body,
+            title=self._build_running_title(),
+            collapsed=False,
+        )
+
+    def _build_running_title(self) -> str:
+        return f"{_SPINNER_FRAMES[self._spinner_idx]} Working…"
+
+    def on_mount(self) -> None:
+        # _body is mounted via Collapsible.compose → Contents → _body. By
+        # the time on_mount fires for us, _body may or may not be attached
+        # yet; _flush_pending re-schedules itself if it isn't.
+        self._flush_pending()
+        if self._done:
+            return
+        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick)
+
+    def _tick(self) -> None:
+        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
+        self.title = self._build_running_title()
+
+    def _flush_pending(self) -> None:
+        if not self._pending_steps:
+            return
+        if self._body.is_attached:
+            self._body.mount(*self._pending_steps)
+            self._pending_steps.clear()
+        else:
+            self.call_after_refresh(self._flush_pending)
+
+    def add_step(self, widget) -> None:
+        if isinstance(widget, _ToolCall):
+            self._tool_count += 1
+        if self._body.is_attached:
+            self._body.mount(widget)
+            return
+        self._pending_steps.append(widget)
+        if self.is_attached:
+            self.call_after_refresh(self._flush_pending)
+
+    def mark_done(self) -> None:
+        if self._done:
+            return
+        self._done = True
+        if self._spinner_timer is not None:
+            self._spinner_timer.stop()
+            self._spinner_timer = None
+        # Propagate done to pending children so they don't start spinners
+        # when they finally mount inside a collapsed group.
+        for child in self._pending_steps:
+            mark = getattr(child, "mark_done", None)
+            if mark is not None:
+                mark()
+        if self._pending_steps and self._body.is_attached:
+            self._body.mount(*self._pending_steps)
+            self._pending_steps.clear()
+        elapsed = time.monotonic() - self._started
+        if self._tool_count == 1:
+            self.title = f"Process · 1 tool · {elapsed:.1f}s"
+        elif self._tool_count > 1:
+            self.title = f"Process · {self._tool_count} tools · {elapsed:.1f}s"
+        else:
+            self.title = f"Process · {elapsed:.1f}s"
+        self.collapsed = True
+
+
 class _AssistantBlock(Static):
     """Final assistant text rendered as markdown via Rich.
 
@@ -202,6 +295,7 @@ class _TurnContainer(Vertical):
         self._user_text = user_text
         self._tool_widgets: dict = {}
         self._current_thinking: _ThinkingGroup | None = None
+        self._current_process: _ProcessGroup | None = None
 
     def compose(self) -> ComposeResult:
         line = Text()
@@ -212,40 +306,62 @@ class _TurnContainer(Vertical):
     def _close_thinking_group(self) -> None:
         self._current_thinking = None
 
+    def _close_process_group(self) -> None:
+        if self._current_process is not None:
+            self._current_process.mark_done()
+            self._current_process = None
+
+    def _ensure_process_group(self) -> _ProcessGroup:
+        if self._current_process is None:
+            group = _ProcessGroup()
+            self._current_process = group
+            self.mount(group)
+        return self._current_process
+
     def add_thinking(self, text: str) -> None:
+        process = self._ensure_process_group()
         if self._current_thinking is None:
             group = _ThinkingGroup()
             self._current_thinking = group
-            self.mount(group)
+            process.add_step(group)
         self._current_thinking.append(text)
 
     def add_tool_call(
         self, *, tool_id: str | None, tool_name: str | None, args_text: str,
     ) -> None:
         self._close_thinking_group()
+        process = self._ensure_process_group()
         widget = _ToolCall(
             tool_id=tool_id, tool_name=tool_name, args_text=args_text,
         )
         self._tool_widgets[tool_id or id(widget)] = widget
-        self.mount(widget)
+        process.add_step(widget)
 
     def attach_tool_result(self, *, tool_id: str | None, content_text: str) -> None:
         self._close_thinking_group()
         widget = self._tool_widgets.get(tool_id) if tool_id else None
         if widget is None:
-            # Old transcript fallback or out-of-order: attach to most-recent
-            # _ToolCall whose result hasn't been set yet.
-            for w in reversed(list(self.query(_ToolCall))):
-                # NOTE: use .content (not .renderable) for this Textual version.
-                if "(running…)" in str(w._result_static.content):
-                    widget = w
+            # Old-transcript fallback or out-of-order: attach to the most
+            # recent _ToolCall in this turn whose result hasn't been set.
+            # We iterate _tool_widgets (insertion-ordered) instead of the
+            # DOM because tool widgets may still be queued inside a process
+            # group's _pending_steps and not yet attached.
+            # NOTE: use .content (not .renderable) for this Textual version.
+            for tw in reversed(list(self._tool_widgets.values())):
+                if "(running…)" in str(tw._result_static.content):
+                    widget = tw
                     break
         if widget is None:
-            # Truly orphaned — mount a free-floating result line.
+            # Truly orphaned — mount a free-floating result line, inside the
+            # active process group if one exists, else on the turn directly.
             line = Text()
             line.append("result (orphan): ", style="bold red")
             line.append(content_text)
-            self.mount(Static(line))
+            orphan = Static(line)
+            if self._current_process is not None:
+                self._current_process.add_step(orphan)
+            else:
+                self.mount(orphan)
             return
         # Naive error detection — refined in later tasks if needed.
         is_err = content_text.lower().startswith("error")
@@ -253,6 +369,9 @@ class _TurnContainer(Vertical):
 
     def add_text(self, text: str) -> None:
         self._close_thinking_group()
+        # Final-response text closes the current round of process steps;
+        # any subsequent thinking/tools open a fresh _ProcessGroup.
+        self._close_process_group()
         prefix = Text()
         prefix.append("claude:", style="bold")
         self.mount(Static(prefix, classes="msg-final-prefix"))
@@ -261,10 +380,15 @@ class _TurnContainer(Vertical):
     def mark_done(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-done")
+        # query() recurses into _ProcessGroup, so this still finds tools and
+        # thinking groups even when they live inside a process group.
         for tool in self.query(_ToolCall):
             tool.mark_done()
         for group in self.query(_ThinkingGroup):
             group.mark_done()
+        for proc in self.query(_ProcessGroup):
+            proc.mark_done()
+        self._current_process = None
 
     def mark_error(self) -> None:
         self.remove_class("turn-running")
@@ -273,6 +397,9 @@ class _TurnContainer(Vertical):
             tool.mark_done()
         for group in self.query(_ThinkingGroup):
             group.mark_done()
+        for proc in self.query(_ProcessGroup):
+            proc.mark_done()
+        self._current_process = None
 
     def rendered_text(self) -> str:
         parts: list[str] = []
