@@ -1,11 +1,8 @@
 # Patchbai
 
-A Textual terminal app for running and supervising multiple Claude Code
-sessions in one place — with a twist: the **agent itself can reshape the UI**.
-A top-level "orchestrator" Claude Code session lives inside the TUI, talks to
-you, spawns child agents, and rearranges panels, switches themes, rebinds
-keys, or even ships custom widgets at runtime by emitting a declarative
-layout spec..
+**A Textual TUI that turns N parallel Claude Code sessions into one
+orchestrator-managed workspace — and lets the agent reshape the UI to fit
+the work.**
 
 ```
 ┌─ Orchestrator ──────────────────────┐ ┌─ Agents ─────────────────────────┐
@@ -20,6 +17,62 @@ layout spec..
  / cmd · ctrl-q quit · ctrl-h history · ctrl-l layouts · ctrl-shift-l themes
  tokens 12,431↑ 3,210↓ · $0.04 · 2 active · layout: dashboard
 ```
+
+## The pitch
+
+You're running three Claude Code sessions at once. One's refactoring auth,
+one's writing tests, one's doing a security pass. They live in three
+terminal tabs with three scrollbacks, and you're the one mentally juggling
+which is waiting on what.
+
+**Patchbai is the room you wish you had.** One TUI. One top-level Claude —
+the *orchestrator* — runs the show. You tell it what you want done in
+plain English; it spawns the right children with the right tool
+allowlists, watches their progress, and pulls them onscreen when they
+need you. Tell it *"give me the file tree on the left and the diff viewer
+on the right"* and the layout actually changes — the orchestrator emits a
+declarative spec and the engine swaps panels in place, atomically, with
+rollback on failure.
+
+You get this without giving anything up. Children are real Claude Code
+sessions running through the official Agent SDK, with your
+`~/.claude/settings.json` permissions. No screen-scraping, no fragile
+regex over PTY output — the orchestrator reads transcripts, sends
+messages, interrupts, and kills via structured in-process MCP tools. When
+you're tired of being orchestrator-mediated, the `Terminal` widget drops
+you into the actual `claude` CLI in any panel.
+
+It's conversational the whole way down. You spawn:
+
+> *"Spawn three agents in parallel: `tests` running pytest, `lint` running ruff + pyright, `format` running ruff format. Notify me when any of them fail."*
+
+You arrange:
+
+> *"Open a **Review** tab: orchestrator on top, FileTree next to a DiffViewer below it. Save it as `review`."*
+
+You react:
+
+> *"Interrupt migrator — I want to change its instructions."*<br>
+> *"Re-run the last failed agent with `--cov` added."*<br>
+> *"Build a custom widget that sparklines my token usage and stick it as a 25% sidebar."*
+
+Each of those is one message. The orchestrator owns the spec; you own
+the ideas.
+
+### Who it's for
+
+- **Devs running 2+ Claude sessions in parallel.** Refactor + tests +
+  review, frontend + backend, debug + bisect — all in one window with one
+  shared StatusBar of tokens, cost, and active children.
+- **Code reviewers** who want a tab per PR with the right diff viewer
+  and file tree wired up automatically, and a saved layout that applies
+  in any repo.
+- **Pipeline-builders and researchers** running one *notebook* agent and
+  several worker agents off it, with a single chronological feed of who's
+  doing what and an append-only JSONL audit trail per child.
+- **People who hate switching terminal tabs.** The whole interface is
+  conversational; layout, theme, keybinding, tab, and cwd changes are a
+  sentence away — and every change persists.
 
 ## Why use it
 
@@ -224,6 +277,214 @@ Try:
 - `save that as "review"`
 - `bind ctrl-r to focus_orchestrator`
 - `make a theme called dim with a dark slate palette`
+
+## Examples: agent management
+
+Spawning, supervising, redirecting, interrupting, and replaying children
+— all conversational. Behind every example is a structured tool call
+(`spawn_agent`, `send_to_agent`, `interrupt_agent`, `kill_agent`,
+`read_agent_transcript`, …) layered on top of the Claude Agent SDK.
+
+### Spawn with narrow scope
+
+> *"Spawn a `researcher` agent with only Read and WebSearch — have it survey alternatives to Pydantic v1 and write findings to `docs/migration-research.md`."*
+
+Translates to roughly:
+
+```python
+spawn_agent(
+    name="researcher",
+    prompt="Survey alternatives to Pydantic v1 and write findings "
+           "to docs/migration-research.md",
+    allowed_tools=["Read", "WebSearch", "Edit"],
+)
+```
+
+`allowed_tools` / `disallowed_tools` default to inheriting your
+`~/.claude/settings.json`; the orchestrator can narrow per-spawn so a
+read-only researcher can't accidentally `Bash` or a migrator can't reach
+the network.
+
+> *"Spawn a `migrator` agent in `~/Developer/auth-svc` running on Sonnet 4.5 — its job is to apply the Pydantic v2 migration to that repo."*
+>
+> *"Spawn `docs-writer` with only Read and Edit, system prompt: 'You are a docs writer. Use the project's existing voice. Never edit code.'"*
+
+### Run several in parallel
+
+> *"Spawn three agents in parallel: `tests` running `pytest -x --ff`, `lint` running ruff + pyright, `format` running ruff format. Notify me when any of them fail."*
+
+Each child gets its own row in the `AgentTable`, its own JSONL transcript
+under `<cwd>/.patchbai/transcripts/<id>.jsonl`, and its own state
+machine. Token / cost totals roll up to the StatusBar so you can watch
+spend in aggregate.
+
+> *"For every PR in this repo's queue, spawn a reviewer agent in its own tab named after the PR number, give each one the diff and a checklist."*
+
+### Watch and steer them
+
+> *"Show me what `auth-refactor` is doing right now."* &nbsp;(reads the transcript, can also `set_layout` an `AgentTranscript` panel)
+>
+> *"Tell `auth-refactor` to also update the docstrings while it's in there."*
+>
+> *"Interrupt `migrator` — I want to change its instructions."*
+>
+> *"Kill `lint` and respawn it with allowlist Read + Bash only."*
+>
+> *"Summarize what every running child has done in the last 5 minutes."*
+
+You can also focus an `AgentTranscript` panel and type into its bottom
+input — that goes straight to the child, bypassing the orchestrator. The
+orchestrator still sees your message in its event stream so it stays
+informed without mediating.
+
+### Children that ask back
+
+Children get two MCP tools injected automatically:
+
+- **`notify_orchestrator(msg)`** — fire-and-forget. Surfaces in the
+  orchestrator's chat as `[child → orchestrator] msg`.
+- **`ask_orchestrator(question, timeout_s=300)`** — blocks the child's
+  tool call until the orchestrator replies via `send_to_agent`, then
+  returns the reply as the tool result.
+
+So a migration agent can stop and ask:
+
+```
+[migrator → orchestrator] (asking) Should I bump min Python to 3.11
+or stay on 3.10? The Pydantic v2 path is cleaner on 3.11.
+```
+
+You answer through the orchestrator — *"Tell migrator to go with 3.11"*
+— and the answer becomes the tool result on the child's side. No modal,
+no context-switch.
+
+### Replay from history
+
+`ctrl-h` opens the History view: every agent that has ever run in this
+cwd, with its prompt, status, and link to its transcript. Pick one to
+view its messages in a modal; ask the orchestrator to re-run it with
+modifications and it spawns a fresh child built from the original prompt
+plus your tweak.
+
+> *"Re-run the last failed agent with debug logging on."*
+>
+> *"Look up that bisect agent from yesterday and continue the same task with the new commits."*
+>
+> *"Show me every agent that touched `src/auth.py` this week."*
+
+### Resume orchestrator sessions
+
+The orchestrator's own conversation is journaled to
+`<cwd>/.patchbai/transcripts/orchestrator.jsonl`. `/resume` (or
+*"resume the session about the auth refactor"*) opens a picker; pick a
+past orchestrator session and patchbai loads the full message history.
+Children from that session are not auto-revived — they're listed in
+History so you can re-run any that still matter, deliberately.
+
+## Examples: layout self-management
+
+Everything below is something you literally type in the orchestrator chat
+(or `/` command bar). The orchestrator translates intent into the right
+combination of `add_tab` / `set_layout` / `save_layout` / `bind_key` /
+`set_theme` tool calls and applies the change atomically — if anything
+fails validation, the previous layout stays mounted.
+
+### Build new tabs
+
+> *"Create a new tab called **Editor** with 20% FileTree on the left and 80% FileEditor on the right that follows the tree's selection."*
+
+```
+┌─ Files (20%) ─┐┌─ Editor (80%) ───────────────────┐
+│ src/          ││ def handler(req):                │
+│  app.py       ││     ...                          │
+│  auth.py      ││                                  │
+│ tests/        ││                                  │
+└───────────────┘└──────────────────────────────────┘
+```
+
+Behind the scenes the orchestrator emits a `LayoutSpec` like:
+
+```json
+{
+  "version": 1,
+  "layout": {
+    "type": "horizontal",
+    "children": [
+      { "id": "tree", "size": "20%", "widget": "FileTree",
+        "props": { "path": "." } },
+      { "id": "edit", "size": "80%", "widget": "FileEditor",
+        "props": { "follow_selection": true } }
+    ]
+  },
+  "focus": "edit"
+}
+```
+
+`FileTree` publishes `FileSelected` events on the bus; `FileEditor` with
+`follow_selection: true` subscribes and reloads on click.
+
+> *"Open a **Review** tab: orchestrator on top at 40%, below it a FileTree (30%) next to a DiffViewer (70%) showing the staged diff."*
+>
+> *"Add a **Logs** tab with a LogTail of `pytest.log` taking the full pane."*
+>
+> *"Make a **Triage** tab with the AgentTable on top and the ActivityFeed below it."*
+
+### Reshape the current layout
+
+> *"Make the orchestrator panel 70% wide instead of 60."*
+>
+> *"Add a Notebook called `plan` to the right side of this layout at 25% width."*
+>
+> *"Drop a Terminal running `claude` at the bottom of this tab, 30% tall."*
+>
+> *"Replace the activity feed with an AgentTranscript bound to the `auth-refactor` child."*
+>
+> *"Stack the file tree and a Markdown viewer of `README.md` vertically in the left column."*
+
+Same-id + same-widget panels are reused (no scroll-jump). Different
+widget at the same id swaps in place. Missing ids unmount.
+
+### Save, load, and bind layouts
+
+> *"Save this as `review` and bind `ctrl-shift-r` to load it."*
+>
+> *"Switch to the `dashboard` layout."*
+>
+> *"List my saved layouts."*
+>
+> *"Reset the panel sizes on this tab to whatever I had saved."* &nbsp;(or hit `ctrl-shift-r`)
+
+Saved layouts live in `~/.config/patchbai/layouts/<name>.json` and survive
+across cwds.
+
+### Multi-agent dashboards
+
+> *"Spawn an agent named `tests` running `pytest -x --ff`, then put its transcript on the left and a LogTail of `pytest.log` on the right."*
+>
+> *"Open a 4-pane grid: orchestrator top-left, AgentTable top-right, AgentTranscript for `auth-refactor` bottom-left, DiffViewer of the latest edit bottom-right."*
+>
+> *"Give every running child its own tab, named after the child, each with just an AgentTranscript panel."*
+
+### Tabs, themes, and keys
+
+> *"Move the Editor tab to first and switch to it."*
+>
+> *"Close the Logs tab."*
+>
+> *"Make a theme called `dim` with a dark slate palette and apply it to this project only."*
+>
+> *"Bind `ctrl-r` to `focus_orchestrator`, and `ctrl-shift-t` to `open_theme_switcher`."*
+
+### Custom widgets at runtime
+
+When the curated library doesn't fit, the orchestrator can ship Python
+source in the same `set_layout` call:
+
+> *"Build a custom `TokenChart` widget that draws my token usage over the last hour as a sparkline, and put it as a 25% sidebar on the right."*
+
+The source runs in an isolated module namespace; if instantiation fails
+the whole apply rolls back and you get a `layout-failed` notification —
+the last good layout stays mounted.
 
 ## Limitations (v1)
 
