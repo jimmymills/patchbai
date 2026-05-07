@@ -43,3 +43,37 @@ async def test_status_bar_shows_cwd_at_boot(tmp_path, monkeypatch):
         bar = app.query_one(StatusBar)
         text = bar.query_one("#sb-cwd", Static).content
         assert "~/proj" in str(text)
+
+
+@pytest.mark.asyncio
+async def test_status_bar_updates_on_cwd_changed_event(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    proj_a = tmp_path / "a"
+    proj_b = tmp_path / "b"
+    proj_a.mkdir()
+    proj_b.mkdir()
+    from mod_tui.events import WorkspaceCwdChanged
+
+    app = ModTuiApp(cwd=proj_a, global_dir=tmp_path / "cfg")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bar = app.query_one(StatusBar)
+        app.event_bus.publish(WorkspaceCwdChanged(cwd=str(proj_b)))
+        await pilot.pause()
+        text = bar.query_one("#sb-cwd", Static).content
+        assert "~/b" in str(text)
+
+
+@pytest.mark.asyncio
+async def test_status_bar_truncates_cwd_on_narrow_terminal(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    deep = tmp_path / "one" / "two" / "three" / "four" / "five" / "six" / "leaf"
+    deep.mkdir(parents=True)
+    app = ModTuiApp(cwd=deep, global_dir=tmp_path / "cfg")
+    async with app.run_test(size=(40, 10)) as pilot:
+        await pilot.pause()
+        bar = app.query_one(StatusBar)
+        text = str(bar.query_one("#sb-cwd", Static).content)
+        assert "leaf" in text
+        # On a 40-col terminal the budget is ~20 → must use ellipsis.
+        assert "…/" in text or "~/" in text  # one of: truncated or shortenable

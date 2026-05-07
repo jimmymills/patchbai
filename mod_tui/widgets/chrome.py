@@ -182,6 +182,11 @@ class StatusBar(Horizontal):
     def _on_cwd_changed(self, event) -> None:
         self._render_cwd(Path(event.cwd))
 
+    def on_resize(self, _event) -> None:
+        # Re-render so the cwd budget tracks the actual container width.
+        if self._cwd_path is not None:
+            self._render_cwd(self._cwd_path)
+
     def set_layout_name(self, name: str) -> None:
         self._layout_name = name
         self.query_one("#sb-layout", Static).update(f"layout: {name}")
