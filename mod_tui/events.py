@@ -94,12 +94,31 @@ class LayoutApplied:
     """The LayoutEngine successfully applied a new spec."""
     spec: "LayoutSpec"
     layout_name: str | None = None  # if loaded by name; else None
+    tab_id: str | None = None  # set when published per-tab
 
 
 @dataclass(frozen=True)
 class LayoutFailed:
     """The LayoutEngine rejected a spec at build time."""
     error: str
+    tab_id: str | None = None
+
+
+@dataclass(frozen=True)
+class TabAdded:
+    tab_id: str
+    title: str
+
+
+@dataclass(frozen=True)
+class TabClosed:
+    tab_id: str
+
+
+@dataclass(frozen=True)
+class TabSwitched:
+    tab_id: str
+    title: str
 
 
 @dataclass(frozen=True)
