@@ -1,13 +1,11 @@
-# patchbai
+# Patchbai
 
 A Textual terminal app for running and supervising multiple Claude Code
 sessions in one place — with a twist: the **agent itself can reshape the UI**.
 A top-level "orchestrator" Claude Code session lives inside the TUI, talks to
 you, spawns child agents, and rearranges panels, switches themes, rebinds
 keys, or even ships custom widgets at runtime by emitting a declarative
-layout spec.
-
-Entry points: `patchbai` and the short alias `mt`.
+layout spec..
 
 ```
 ┌─ Orchestrator ──────────────────────┐ ┌─ Agents ─────────────────────────┐
@@ -212,7 +210,6 @@ patchbai
 
 ```bash
 patchbai               # use the current directory as the workspace cwd
-mt                     # short alias
 ```
 
 First launch in a directory seeds the built-in dashboard (orchestrator
@@ -227,30 +224,6 @@ Try:
 - `save that as "review"`
 - `bind ctrl-r to focus_orchestrator`
 - `make a theme called dim with a dark slate palette`
-
-## Project layout
-
-```
-patchbai/
-  app.py                   # Textual App, tabs, chrome, key bindings, lifecycle
-  config.py                # config.toml schema + atomic IO
-  events.py                # EventBus + event types
-  actions.py               # action registry (bindable verbs)
-  agents/                  # AgentManager, child sessions, SDK adapter
-  orchestrator/            # orchestrator session + MCP tool surface
-  layout/                  # LayoutSpec, diff/mount engine, widget registry
-  workspace/               # Workspace + Tab models
-  widgets/                 # one file per built-in widget
-  theme/                   # ThemeSpec + apply
-  persistence/             # per-cwd and global stores (atomic)
-docs/superpowers/
-  specs/                   # design docs (start here for the v1 design spec)
-  plans/                   # implementation plans
-tests/                     # pytest, including App.run_test() integration tests
-```
-
-The canonical design spec is
-[`docs/superpowers/specs/2026-05-06-patchbai-design.md`](docs/superpowers/specs/2026-05-06-patchbai-design.md).
 
 ## Limitations (v1)
 
