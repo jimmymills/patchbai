@@ -122,3 +122,16 @@ async def test_change_cwd_refuses_with_running_children(tmp_path):
         assert result.get("error") == "agents_running"
         assert result.get("agents") and result["agents"][0]["name"] == "worker"
         assert app.cwd == proj_a.resolve() or app.cwd == proj_a
+
+
+@pytest.mark.asyncio
+async def test_ctrl_shift_d_opens_change_cwd_modal(tmp_path):
+    proj = tmp_path / "p"
+    proj.mkdir()
+    app, _ = _build_app(proj)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+shift+d")
+        await pilot.pause()
+        from mod_tui.widgets.change_cwd_screen import ChangeCwdScreen
+        assert isinstance(app.screen, ChangeCwdScreen)

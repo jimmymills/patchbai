@@ -236,6 +236,7 @@ class ModTuiApp(App):
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("ctrl+shift+l", "open_theme_switcher", "themes"),
         Binding("ctrl+shift+r", "reset_panel_sizes", "reset panel sizes"),
+        Binding("ctrl+shift+d", "open_change_cwd", "change cwd"),
         Binding("?", "show_help", "help"),
         Binding("ctrl+t", "new_tab", "new tab", priority=True),
         Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
@@ -348,6 +349,16 @@ class ModTuiApp(App):
                 "active tab's layout from its named source."
             ),
             args_schema={},
+        )
+        self.actions_registry.register(
+            "change_cwd",
+            lambda path: self._dispatch_change_cwd(path),
+            description="Change the workspace's cwd at runtime.",
+            args_schema={"path": str},
+        )
+        self.actions_registry.register(
+            "open_change_cwd", self.action_open_change_cwd,
+            description="Open the change-cwd modal.", args_schema={},
         )
 
     def _focus_panel(self, panel_id: str) -> None:
@@ -675,6 +686,48 @@ class ModTuiApp(App):
                 available_builtins=builtins,
                 active=active,
             ),
+            _on_picked,
+        )
+
+    def _dispatch_change_cwd(self, path: str) -> None:
+        """Action wrapper around change_cwd — schedules the async call."""
+        import asyncio as _asyncio
+        _asyncio.create_task(self._change_cwd_with_notify(path))
+
+    async def _change_cwd_with_notify(self, path: str) -> None:
+        result = await self.change_cwd(path)
+        if "error" in result:
+            err = result["error"]
+            if err == "agents_running":
+                names = ", ".join(a["name"] for a in result.get("agents", []))
+                self.notify(
+                    f"Refusing to change cwd: agents still running ({names}).",
+                    severity="warning",
+                )
+            elif err == "invalid_path":
+                self.notify(
+                    f"Invalid path: {result.get('path') or result.get('detail')}",
+                    severity="warning",
+                )
+            else:
+                self.notify(f"change_cwd failed: {err}", severity="warning")
+        elif "unchanged" in result:
+            self.notify("cwd unchanged.")
+        else:
+            self.notify(f"cwd → {result['changed']}")
+
+    def action_open_change_cwd(self) -> None:
+        if self._workspace is None:
+            return
+
+        def _on_picked(path: str | None) -> None:
+            if not path:
+                return
+            self._dispatch_change_cwd(path)
+
+        from mod_tui.widgets.change_cwd_screen import ChangeCwdScreen
+        self.push_screen(
+            ChangeCwdScreen(initial=str(self.cwd)),
             _on_picked,
         )
 
