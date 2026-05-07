@@ -1,3 +1,4 @@
+import asyncio
 import os
 import select
 
@@ -67,6 +68,7 @@ class Terminal(Container):
         self._screen = pyte.HistoryScreen(self.DEFAULT_COLS, self.DEFAULT_ROWS, history=self.HISTORY_LINES)
         self._stream = pyte.Stream(self._screen)
         self._timer = None
+        self._reader_registered: bool = False
 
     def compose(self) -> ComposeResult:
         yield Static("", id="terminal-screen")
@@ -82,12 +84,20 @@ class Terminal(Container):
         except Exception as e:
             self._show_error(f"PTY spawn failed: {e}")
             return
-        self._timer = self.set_interval(0.05, self._tick)
+        loop = asyncio.get_running_loop()
+        loop.add_reader(self._pty.fd, self._tick)
+        self._reader_registered = True
 
     def on_unmount(self) -> None:
         self._teardown()
 
     def _teardown(self) -> None:
+        if self._reader_registered and self._pty is not None:
+            try:
+                asyncio.get_running_loop().remove_reader(self._pty.fd)
+            except Exception:
+                pass
+            self._reader_registered = False
         if self._timer is not None:
             try:
                 self._timer.stop()
@@ -104,19 +114,24 @@ class Terminal(Container):
     def _tick(self) -> None:
         if self._pty is None:
             return
-        try:
-            ready, _, _ = select.select([self._pty.fd], [], [], 0)
-            if not ready:
-                return
-            chunk = self._pty.read(1024)
-        except EOFError:
-            self._teardown()
-            return
-        except Exception:
-            return
-        if chunk:
-            # PtyProcessUnicode already decoded; pyte.Stream consumes str.
+        # Drain everything available without blocking. select-loop keeps us nonblocking.
+        any_data = False
+        while True:
+            try:
+                ready, _, _ = select.select([self._pty.fd], [], [], 0)
+                if not ready:
+                    break
+                chunk = self._pty.read(4096)
+            except EOFError:
+                self._teardown()
+                break
+            except Exception:
+                break
+            if not chunk:
+                break
             self._stream.feed(chunk)
+            any_data = True
+        if any_data:
             self._refresh()
 
     def _refresh(self) -> None:

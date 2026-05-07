@@ -111,3 +111,35 @@ async def test_terminal_handles_non_ascii_output():
         assert "café" in text, f"expected 'café' in screen, got {text!r}"
         assert "🚀" in text, f"expected rocket emoji in screen, got {text!r}"
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_uses_add_reader_not_timer():
+    """on_mount should register an fd reader on the asyncio loop, not a timer."""
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Internal flag set when add_reader was used:
+        assert term._pty is not None
+        assert getattr(term, "_reader_registered", False) is True
+        term._teardown()
+        # After teardown the reader is gone.
+        assert getattr(term, "_reader_registered", False) is False
+
+
+@pytest.mark.asyncio
+async def test_terminal_drains_via_add_reader():
+    """Output appears without anyone calling _tick manually."""
+    import asyncio
+    app = _Host(command=["/bin/sh", "-c", "printf hello-async; sleep 0.3"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Give the loop time to drain stdout via add_reader, no _tick calls.
+        for _ in range(20):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+        text = "\n".join(term._screen.display)
+        assert "hello-async" in text
+        term._teardown()
