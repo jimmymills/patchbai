@@ -205,10 +205,38 @@ async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
     await orch.start()
     try:
         from mod_tui.events import UserMessageToOrchestrator
-        bus.publish(UserMessageToOrchestrator("/help"))
+        bus.publish(UserMessageToOrchestrator("/notacommand"))
         await orch.wait_idle()
         # Adapter saw the prompt as a query.
         assert adapter._next_query_index == 1
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_help_command_lists_commands_without_hitting_sdk(tmp_path):
+    """`/help` must be intercepted (not forwarded to the SDK) and must
+    publish an OrchestratorReply listing the available slash commands."""
+    from mod_tui.events import OrchestratorReply, UserMessageToOrchestrator
+
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
+
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("/help"))
+        await orch.wait_idle()
+
+        # Adapter must not have been queried with "/help".
+        assert adapter._next_query_index == 0
+
+        # The help notice was published as an OrchestratorReply that names
+        # every command the user can run.
+        joined = "\n".join(r.text for r in replies)
+        for cmd in ("/reset", "/resume", "/rename", "/help"):
+            assert cmd in joined, f"help reply missing {cmd}: {joined!r}"
     finally:
         await orch.stop()
 

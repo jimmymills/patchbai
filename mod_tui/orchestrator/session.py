@@ -44,6 +44,15 @@ _RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 # /rename <title>  — current session
 # /rename <session_id> <title>  — specific session (id is non-space; title is rest)
 _RENAME_RE = re.compile(r"^/rename(?:\s+(.*))?$")
+_HELP_RE = re.compile(r"^/help\s*$")
+
+_HELP_TEXT = (
+    "Available commands:\n"
+    "  /reset                     Start a fresh orchestrator session\n"
+    "  /resume [<session_id>]     Resume a past session (no arg → picker)\n"
+    "  /rename [<id>] <title>     Rename the active or a specific session\n"
+    "  /help                      Show this list"
+)
 
 _TITLE_PROMPT = (
     "Summarize the following user message in 5-7 words for use as a session "
@@ -313,6 +322,9 @@ class OrchestratorSession:
         m = _RENAME_RE.match(text)
         if m:
             self._handle_rename_command(m.group(1) or "")
+            return
+        if _HELP_RE.match(text):
+            self._publish_notice(_HELP_TEXT)
             return
         # Fall through: ordinary prompt.
         if self._current_session_first_message is None:
