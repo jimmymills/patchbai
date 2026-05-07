@@ -151,3 +151,24 @@ async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
         await pilot.pause()
         result = await asyncio.wait_for(cb_task, timeout=2.0)
         assert isinstance(result, PermissionResultAllow)
+
+
+@pytest.mark.asyncio
+async def test_bypass_skips_modal_subscriptions(tmp_path: Path):
+    from patchbai.app import PatchbaiApp
+    from patchbai.events import PermissionRequested
+
+    app = PatchbaiApp(
+        cwd=tmp_path, global_dir=tmp_path / "cfg",
+        bypass_permissions=True,
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Manager and orchestrator are bypass-mode.
+        assert app.manager._grants is None
+        assert app.orchestrator.permission_grants is None
+        # No callback wired.
+        assert app.orchestrator._can_use_tool_callback is None
+        # No PermissionRequested handler on the bus.
+        handlers = app.event_bus._subs.get(PermissionRequested, [])
+        assert handlers == []
