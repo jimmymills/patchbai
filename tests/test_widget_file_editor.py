@@ -308,3 +308,59 @@ async def test_file_editor_save_recreates_file_deleted_under_us(tmp_path: Path):
 
         assert result is True
         assert p.read_text(encoding="utf-8") == "back from the dead\n"
+
+
+@pytest.mark.asyncio
+async def test_file_editor_load_file_replaces_buffer_and_path(tmp_path: Path):
+    a = tmp_path / "a.py"
+    a.write_text("a = 1\n", encoding="utf-8")
+    b = tmp_path / "b.py"
+    b.write_text("b = 2\n", encoding="utf-8")
+
+    app = _Host(str(a))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        assert editor.text.startswith("a = 1")
+        editor.load_file(str(b))
+        await pilot.pause()
+        assert editor.text.startswith("b = 2")
+        assert editor.is_dirty is False
+        assert editor.border_title == "Edit: b.py"
+
+
+@pytest.mark.asyncio
+async def test_file_editor_load_file_changes_language(tmp_path: Path):
+    a = tmp_path / "a.py"
+    a.write_text("a = 1\n", encoding="utf-8")
+    b = tmp_path / "b.md"
+    b.write_text("# heading\n", encoding="utf-8")
+
+    app = _Host(str(a))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        assert editor.language == "python"
+        editor.load_file(str(b))
+        await pilot.pause()
+        assert editor.language == "markdown"
+
+
+@pytest.mark.asyncio
+async def test_file_editor_load_file_clears_dirty(tmp_path: Path):
+    a = tmp_path / "a.py"
+    a.write_text("a = 1\n", encoding="utf-8")
+    b = tmp_path / "b.py"
+    b.write_text("b = 2\n", encoding="utf-8")
+
+    app = _Host(str(a))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        editor = app.query_one(FileEditor)
+        editor.text = "scratch\n"
+        await pilot.pause()
+        assert editor.is_dirty is True
+        editor.load_file(str(b))
+        await pilot.pause()
+        assert editor.is_dirty is False
+        assert editor.text.startswith("b = 2")

@@ -64,6 +64,27 @@ class FileEditor(TextArea):
             self._loaded_mtime = None
             self._loaded_size = None
 
+    def load_file(self, file_path: str) -> None:
+        path = Path(file_path)
+        text, language = _load_text(path)
+        self.text = text
+        if language is not None:
+            try:
+                self.language = language
+            except Exception:
+                pass
+        self._current_path = path
+        self._loaded_text = text
+        if path.exists():
+            stat = _stat_or_none(path)
+            self._loaded_mtime = stat[0] if stat else None
+            self._loaded_size = stat[1] if stat else None
+        else:
+            self._loaded_mtime = None
+            self._loaded_size = None
+        self._dirty = False
+        self._refresh_border_title()
+
     @property
     def is_dirty(self) -> bool:
         return self._dirty
