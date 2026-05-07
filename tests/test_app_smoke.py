@@ -69,6 +69,30 @@ async def test_slash_focuses_command_bar(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_slash_types_into_focused_input(tmp_path: Path):
+    """Regression: '/' must reach a focused Input as text, not steal focus.
+
+    Previously the binding was priority=True, so the keypress fired the
+    `focus_command_bar` action before the orchestrator chat input could
+    consume it as a character.
+    """
+    from textual.widgets import Input
+
+    app = _build_test_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        chat_input = app.query_one(OrchestratorChat).query_one(Input)
+        chat_input.focus()
+        await pilot.pause()
+        await pilot.press("/")
+        await pilot.press(*"clear")
+        # The character reached the input as text instead of triggering the
+        # command-bar focus binding.
+        assert chat_input.value == "/clear"
+        assert chat_input.has_focus
+
+
+@pytest.mark.asyncio
 async def test_layout_persists_across_app_runs(tmp_path: Path):
     # First run.
     app1 = _build_test_app(tmp_path)

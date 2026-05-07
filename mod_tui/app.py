@@ -128,7 +128,7 @@ class ModTuiApp(App):
 
     # Default bindings applied before any config-loaded bindings.
     BINDINGS = [
-        Binding("/", "focus_command_bar", "command bar", priority=True),
+        Binding("/", "focus_command_bar", "command bar"),
         Binding("ctrl+q", "quit", "quit"),
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
@@ -252,13 +252,22 @@ class ModTuiApp(App):
         # Layer config bindings on top.
         cfg = self.config_store.load()
         for key, b in cfg.bindings.items():
+            # priority=True bindings fire before the focused widget gets the
+            # key, which prevents Inputs from receiving printable characters
+            # (e.g. "/", "?"). Only modifier-combo keys (ctrl+/alt+/shift+)
+            # need priority — single-character bindings like "/" must not,
+            # so they reach the focused Input as text.
+            is_modifier_combo = "+" in key
             # Normalize single non-alphanumeric characters to their Textual key
             # name (e.g. "~" → "tilde") so that pilot.press / live key events
             # match the binding key stored in key_to_bindings.
             if len(key) == 1 and not key.isalnum():
                 key = _character_to_key(key)
             self._bindings._add_binding(
-                Binding(key, f"dispatch('{b.action}')", b.action, priority=True)
+                Binding(
+                    key, f"dispatch('{b.action}')", b.action,
+                    priority=is_modifier_combo,
+                )
             )
 
         # Ask Textual to refresh any Footer / binding-display widgets.
