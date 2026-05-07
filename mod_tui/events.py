@@ -31,6 +31,19 @@ class OrchestratorReply:
 
 
 @dataclass(frozen=True)
+class OrchestratorSessionSwitched:
+    """The orchestrator session was swapped (via /reset or /resume)."""
+    session_id: str
+    transcript_path: str
+
+
+@dataclass(frozen=True)
+class OpenResumePicker:
+    """Request from the orchestrator that the app open the resume modal."""
+    pass
+
+
+@dataclass(frozen=True)
 class StatsUpdated:
     """StatusBar stats refresh."""
     tokens_in: int = 0

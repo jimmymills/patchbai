@@ -39,9 +39,23 @@ class OrchestratorChat(Vertical):
         self._bus = event_bus
 
     def compose(self) -> ComposeResult:
-        yield RichTranscript(agent_id=self.AGENT_ID, event_bus=self._bus)
-        yield Input(placeholder="Message orchestrator… (enter to send, ctrl+c to interrupt)",
-                    id="orch-input")
+        path = None
+        try:
+            orch = getattr(self.app, "orchestrator", None)
+            if orch is not None:
+                path = orch.active_transcript_path
+        except Exception:
+            path = None
+        yield RichTranscript(
+            agent_id=self.AGENT_ID, event_bus=self._bus, transcript_path=path,
+        )
+        yield Input(
+            placeholder=(
+                "Message orchestrator… "
+                "(/reset, /resume, /rename, ctrl+c to interrupt)"
+            ),
+            id="orch-input",
+        )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if not event.value.strip():

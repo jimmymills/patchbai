@@ -171,3 +171,15 @@ def test_layout_failed_includes_tab_id():
     assert e.tab_id == "t1"
     e2 = LayoutFailed(error="boom")
     assert e2.tab_id is None
+
+
+def test_orchestrator_session_switched_event_carries_id_and_path():
+    from mod_tui.events import OrchestratorSessionSwitched
+    e = OrchestratorSessionSwitched(session_id="abc", transcript_path="/tmp/x.jsonl")
+    assert e.session_id == "abc"
+    assert e.transcript_path == "/tmp/x.jsonl"
+
+
+def test_open_resume_picker_event_is_constructible():
+    from mod_tui.events import OpenResumePicker
+    OpenResumePicker()  # smoke

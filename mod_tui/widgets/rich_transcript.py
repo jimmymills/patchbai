@@ -434,12 +434,15 @@ class RichTranscript(Vertical):
         *,
         agent_id: str,
         event_bus: EventBus | None = None,
+        transcript_path: "Path | None" = None,
     ) -> None:
         super().__init__()
         self._agent_id = agent_id
         self._bus = event_bus
+        self._transcript_path = transcript_path
         self._unsub_msg = lambda: None
         self._unsub_state = lambda: None
+        self._unsub_switched = lambda: None
         self._current_turn: _TurnContainer | None = None
 
     @property
@@ -451,25 +454,61 @@ class RichTranscript(Vertical):
         yield VerticalScroll()
 
     def on_mount(self) -> None:
+        from mod_tui.events import OrchestratorSessionSwitched
         cwd: Path | None = getattr(self.app, "cwd", None)
-        if cwd is not None:
+        if self._transcript_path is not None:
+            store = TranscriptStore(
+                cwd=cwd or Path("."), agent_id=self._agent_id,
+                path=self._transcript_path,
+            )
+            for entry in store.read_all():
+                self._dispatch_entry(entry)
+        elif cwd is not None:
             store = TranscriptStore(cwd=cwd, agent_id=self._agent_id)
             for entry in store.read_all():
                 self._dispatch_entry(entry)
-            # Replay never sees a state-change event, so close whatever turn
-            # we ended on. New live events that arrive afterward will open a
-            # fresh turn via the user-entry path.
-            if self._current_turn is not None:
-                self._current_turn.mark_done()
-                self._current_turn = None
+        if self._current_turn is not None:
+            self._current_turn.mark_done()
+            self._current_turn = None
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_msg = bus.subscribe(AgentMessageAppended, self._on_appended)
             self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
+            self._unsub_switched = bus.subscribe(
+                OrchestratorSessionSwitched, self._on_session_switched,
+            )
 
     def on_unmount(self) -> None:
         self._unsub_msg()
         self._unsub_state()
+        self._unsub_switched()
+
+    def replace_source(self, transcript_path: Path) -> None:
+        """Clear the scroll and replay from a new transcript path.
+
+        Called when the orchestrator session is swapped via /reset or /resume.
+        Live event filtering still keys off `agent_id` (unchanged).
+        """
+        self._transcript_path = transcript_path
+        scroll = self.query_one(VerticalScroll)
+        for child in list(scroll.children):
+            child.remove()
+        self._current_turn = None
+        cwd = getattr(self.app, "cwd", None) or Path(".")
+        store = TranscriptStore(
+            cwd=cwd, agent_id=self._agent_id, path=transcript_path,
+        )
+        for entry in store.read_all():
+            self._dispatch_entry(entry)
+        if self._current_turn is not None:
+            self._current_turn.mark_done()
+            self._current_turn = None
+
+    def _on_session_switched(self, event) -> None:
+        # Filter by agent_id semantics: only the orchestrator transcript reacts.
+        if self._agent_id != "orchestrator":
+            return
+        self.replace_source(Path(event.transcript_path))
 
     def _on_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self._agent_id:

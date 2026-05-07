@@ -36,3 +36,9 @@ def test_global_config_dir_under_xdg_or_home(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     assert global_config_dir() == tmp_path / ".config" / "mod_tui"
+
+
+def test_orchestrator_session_transcript_path_uses_session_id(tmp_path):
+    from mod_tui.persistence.paths import orchestrator_session_transcript_path
+    p = orchestrator_session_transcript_path(tmp_path, "abc-123")
+    assert p == tmp_path / ".mod_tui" / "transcripts" / "orchestrator.abc-123.jsonl"

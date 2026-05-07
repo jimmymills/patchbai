@@ -26,6 +26,10 @@ def project_orchestrator_transcript(cwd: Path) -> Path:
     return project_transcripts_dir(cwd) / "orchestrator.jsonl"
 
 
+def orchestrator_session_transcript_path(cwd: Path, session_id: str) -> Path:
+    return project_transcripts_dir(cwd) / f"orchestrator.{session_id}.jsonl"
+
+
 def global_config_dir() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     if xdg:

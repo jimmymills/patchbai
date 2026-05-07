@@ -3,10 +3,7 @@ import logging
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from mod_tui.persistence.paths import (
-    project_transcript_path,
-    project_transcripts_dir,
-)
+from mod_tui.persistence.paths import project_transcript_path
 
 log = logging.getLogger(__name__)
 
@@ -27,13 +24,19 @@ class AgentTranscript:
     so plan-1 callers don't have to change.
     """
 
-    def __init__(self, cwd: Path, agent_id: str) -> None:
+    def __init__(
+        self,
+        cwd: Path,
+        agent_id: str,
+        *,
+        path: Path | None = None,
+    ) -> None:
         self._cwd = cwd
         self._agent_id = agent_id
-        self._path = project_transcript_path(cwd, agent_id)
+        self._path = Path(path) if path is not None else project_transcript_path(cwd, agent_id)
 
     def append(self, entry: TranscriptEntry) -> None:
-        project_transcripts_dir(self._cwd).mkdir(parents=True, exist_ok=True)
+        self._path.parent.mkdir(parents=True, exist_ok=True)
         with self._path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(asdict(entry)) + "\n")
 

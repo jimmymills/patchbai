@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from mod_tui.persistence.transcript_store import (
+    AgentTranscript,
     OrchestratorTranscript,
     TranscriptEntry,
 )
@@ -43,3 +44,27 @@ def test_corrupted_line_is_skipped(tmp_path: Path):
         TranscriptEntry(role="user", text="ok"),
         TranscriptEntry(role="orch", text="still works"),
     ]
+
+
+def test_agent_transcript_path_override_uses_explicit_path(tmp_path):
+    custom = tmp_path / "custom_dir" / "my_session.jsonl"
+    t = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=custom)
+    t.append(TranscriptEntry(role="user", text="hi"))
+    assert custom.exists()
+    assert (tmp_path / ".mod_tui" / "transcripts" / "orchestrator.jsonl").exists() is False
+
+
+def test_agent_transcript_path_override_creates_parents(tmp_path):
+    custom = tmp_path / "deep" / "nested" / "x.jsonl"
+    t = AgentTranscript(cwd=tmp_path, agent_id="ignored", path=custom)
+    t.append(TranscriptEntry(role="user", text="hi"))
+    assert custom.exists()
+
+
+def test_agent_transcript_path_override_reads_back(tmp_path):
+    custom = tmp_path / "x.jsonl"
+    t = AgentTranscript(cwd=tmp_path, agent_id="ignored", path=custom)
+    t.append(TranscriptEntry(role="user", text="hello"))
+    t.append(TranscriptEntry(role="assistant", text="hi"))
+    out = AgentTranscript(cwd=tmp_path, agent_id="ignored", path=custom).read_all()
+    assert [e.text for e in out] == ["hello", "hi"]
