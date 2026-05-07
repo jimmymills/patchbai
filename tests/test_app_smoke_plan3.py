@@ -5,8 +5,10 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
+from mod_tui.agents.state import AgentState
 from mod_tui.events import (
     AgentRequestedUserInput,
+    AgentStateChanged,
     EventBus,
     UserMessageToOrchestrator,
 )
@@ -44,10 +46,16 @@ async def test_ask_orchestrator_round_trip(tmp_path):
     )
     await orchestrator.start()
 
+    state_events: list[AgentStateChanged] = []
+    bus.subscribe(AgentStateChanged, state_events.append)
+
     aid = await manager.spawn(name="alpha", prompt="say hi")
     await manager.wait_idle(aid)
 
     inbox = manager.get_inbox(aid)
+    # Coerce the session out of DONE (the canned script ended the stream
+    # already) so the inbox-driven WAITING transition is visible.
+    manager.get_session(aid).info.state = AgentState.RUNNING
     request_id = inbox.register()
     bus.publish(
         AgentRequestedUserInput(
@@ -75,5 +83,11 @@ async def test_ask_orchestrator_round_trip(tmp_path):
 
     answer = await waiter_task
     assert answer == "ship it"
+
+    pairs = [(e.old_state, e.info.state) for e in state_events if e.info.id == aid]
+    assert (AgentState.RUNNING, AgentState.WAITING) in pairs, \
+        f"expected RUNNING → WAITING, got {pairs}"
+    assert (AgentState.WAITING, AgentState.RUNNING) in pairs, \
+        f"expected WAITING → RUNNING, got {pairs}"
 
     await orchestrator.stop()

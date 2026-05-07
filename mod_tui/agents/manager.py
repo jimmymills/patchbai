@@ -87,13 +87,25 @@ class AgentManager:
     def _build_session(self, info: AgentInfo) -> AgentSession:
         adapter = self._adapter_factory()
         transcript = AgentTranscript(cwd=self._cwd, agent_id=info.id)
-        self._inboxes[info.id] = RequestInbox()
         session = AgentSession(
             info=info,
             adapter=adapter,
             transcript=transcript,
             bus=self._bus,
             on_session_id=lambda sid, _id=info.id: self._on_session_id(_id, sid),
+        )
+        # Inbox lifecycle drives session state: count > 0 → WAITING,
+        # count == 0 → restore prior state. _mark_unwaiting is defensively
+        # a no-op outside WAITING, so a `kill()` mid-wait that drains the
+        # future after the session is gone is safe.
+        def _on_pending_changed(count: int, _session=session) -> None:
+            if count > 0:
+                _session._mark_waiting()
+            else:
+                _session._mark_unwaiting()
+
+        self._inboxes[info.id] = RequestInbox(
+            on_pending_changed=_on_pending_changed,
         )
         self._sessions[info.id] = session
         return session

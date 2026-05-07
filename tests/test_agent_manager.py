@@ -307,3 +307,54 @@ async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
 
     # Unknown agent → None (don't raise).
     assert manager.get_inbox("nope") is None
+
+
+@pytest.mark.asyncio
+async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
+    from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
+    from mod_tui.agents.manager import AgentManager
+    from mod_tui.agents.state import AgentState
+    from mod_tui.events import AgentStateChanged, EventBus
+    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+
+    def _ok():
+        return [
+            AssistantMessage(content=[TextBlock(text="done")], model="fake-model"),
+            ResultMessage(
+                subtype="success", duration_ms=1, duration_api_ms=1,
+                is_error=False, num_turns=1, session_id="fake",
+                total_cost_usd=0.0,
+                usage={"input_tokens": 1, "output_tokens": 1}, result="done",
+            ),
+        ]
+
+    bus = EventBus()
+    transitions: list[AgentStateChanged] = []
+    bus.subscribe(AgentStateChanged, transitions.append)
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
+    )
+    aid = await manager.spawn(name="alpha", prompt="hi")
+    await manager.wait_idle(aid)
+
+    # Force the session out of DONE for the duration of this test by
+    # mutating its info state to RUNNING — we want to observe the
+    # WAITING/RUNNING flip from inbox events without a real stream.
+    session = manager.get_session(aid)
+    session.info.state = AgentState.RUNNING
+
+    inbox = manager.get_inbox(aid)
+    rid = inbox.register()
+    assert session.info.state == AgentState.WAITING
+
+    inbox.resolve(rid, "answer")
+    await inbox.wait(rid, timeout_s=1.0)
+    assert session.info.state == AgentState.RUNNING
+
+    # The transition history should contain the WAITING enter and exit.
+    pairs = [(t.old_state, t.info.state) for t in transitions]
+    assert (AgentState.RUNNING, AgentState.WAITING) in pairs
+    assert (AgentState.WAITING, AgentState.RUNNING) in pairs
