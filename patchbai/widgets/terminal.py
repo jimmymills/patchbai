@@ -20,10 +20,10 @@ class Terminal(Container):
     """Real PTY hosted in a Textual panel.
 
     Spawns a subprocess via ptyprocess.PtyProcessUnicode, feeds output
-    through pyte for ANSI emulation, and renders the screen on a 50ms
-    poll. Anything typed here is OPAQUE to the orchestrator (intentional
-    escape-hatch behavior — use this for an interactive `claude` CLI
-    session inside Patchbai).
+    through pyte for ANSI emulation, and re-renders whenever the PTY fd
+    becomes readable via asyncio.add_reader. Anything typed here is
+    OPAQUE to the orchestrator (intentional escape-hatch behavior — use
+    this for an interactive `claude` CLI session inside Patchbai).
 
     Props:
       command: argv list (default: [$SHELL])
@@ -49,6 +49,7 @@ class Terminal(Container):
     DEFAULT_COLS = 80
     DEFAULT_ROWS = 24
     HISTORY_LINES = 2000  # ~17 MB worst case at 80 cols × 112B per pyte Char
+    READ_BUDGET_BYTES = 64 * 1024  # cap per _tick to avoid starving the asyncio loop
 
     def __init__(
         self,
@@ -114,9 +115,11 @@ class Terminal(Container):
     def _tick(self) -> None:
         if self._pty is None:
             return
-        # Drain everything available without blocking. select-loop keeps us nonblocking.
+        # Drain everything available without blocking, but bounded so a flooding
+        # child can't starve the asyncio loop. add_reader will fire again next tick.
         any_data = False
-        while True:
+        bytes_read = 0
+        while bytes_read < self.READ_BUDGET_BYTES:
             try:
                 ready, _, _ = select.select([self._pty.fd], [], [], 0)
                 if not ready:
@@ -126,10 +129,12 @@ class Terminal(Container):
                 self._teardown()
                 break
             except Exception:
+                # TODO(phase 2): surface PTY read errors via _show_error
                 break
             if not chunk:
                 break
             self._stream.feed(chunk)
+            bytes_read += len(chunk)
             any_data = True
         if any_data:
             self._refresh()

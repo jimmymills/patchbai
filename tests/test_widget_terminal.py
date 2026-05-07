@@ -136,10 +136,34 @@ async def test_terminal_drains_via_add_reader():
     async with app.run_test() as pilot:
         await pilot.pause()
         term = app.query_one(Terminal)
+        assert term._timer is None, "expected timer-based polling to be gone after Task 3"
         # Give the loop time to drain stdout via add_reader, no _tick calls.
         for _ in range(20):
             await asyncio.sleep(0.02)
             await pilot.pause()
         text = "\n".join(term._screen.display)
         assert "hello-async" in text
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_drains_large_burst_within_one_tick():
+    """A multi-iteration drain loop must collect everything that's already buffered."""
+    import asyncio
+    # ~12 KiB of distinct lines so the drain loop iterates more than once on each
+    # add_reader fire (default read size is 4096 bytes per iteration).
+    payload_cmd = "i=0; while [ $i -lt 800 ]; do echo line-$i; i=$((i+1)); done"
+    app = _Host(command=["/bin/sh", "-c", payload_cmd])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Give the loop generous time to drain via add_reader (no manual _tick).
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+        # The latest line in the visible window should be at or near line-799,
+        # and earlier lines should have made it into scrollback.
+        text = "\n".join(term._screen.display)
+        assert "line-799" in text, f"missing tail of large burst; got {text[-200:]!r}"
+        assert len(term._screen.history.top) > 0, "expected scrollback rows"
         term._teardown()
