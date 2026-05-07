@@ -1,3 +1,4 @@
+import dataclasses
 import time
 import uuid
 from pathlib import Path
@@ -11,6 +12,7 @@ from mod_tui.agents.sdk_adapter import SDKAdapter
 from mod_tui.agents.session import AgentSession
 from mod_tui.agents.state import AgentInfo
 from mod_tui.events import (
+    AgentArchiveChanged,
     AgentSpawned,
     AgentStateChanged,
     DirectMessageToAgent,
@@ -131,6 +133,22 @@ class AgentManager:
 
     def get_inbox(self, agent_id: str) -> RequestInbox | None:
         return self._inboxes.get(agent_id)
+
+    def set_archived(self, agent_id: str, *, archived: bool) -> None:
+        """Toggle the archived flag for an agent. Persists to agents.json and
+        publishes AgentArchiveChanged so listeners (e.g., AgentTable) can
+        refresh. Raises KeyError if `agent_id` is unknown."""
+        session = self._sessions.get(agent_id)
+        if session is None:
+            raise KeyError(f"unknown agent_id: {agent_id}")
+        if session.info.archived == archived:
+            return
+        session.info.archived = archived
+        self._index.upsert(session.info)
+        # Publish a frozen snapshot so subscribers see a stable view.
+        self._bus.publish(
+            AgentArchiveChanged(info=dataclasses.replace(session.info))
+        )
 
     async def shutdown(self) -> None:
         for agent_id in list(self._sessions.keys()):

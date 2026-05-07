@@ -42,3 +42,31 @@ def test_agent_info_round_trip_dict():
     d = info.to_dict()
     again = AgentInfo.from_dict(d)
     assert again == info
+
+
+def test_agent_info_archived_defaults_to_false():
+    info = AgentInfo(id="abc", name="research", cwd="/tmp", started_at=100.0)
+    assert info.archived is False
+
+
+def test_agent_info_archived_round_trips_through_dict():
+    info = AgentInfo(
+        id="abc", name="research", cwd="/tmp", started_at=100.0,
+        archived=True,
+    )
+    again = AgentInfo.from_dict(info.to_dict())
+    assert again.archived is True
+    # And explicit False survives a round trip too.
+    info2 = AgentInfo(id="x", name="y", cwd="/tmp", started_at=1.0)
+    assert AgentInfo.from_dict(info2.to_dict()).archived is False
+
+
+def test_agent_info_archived_back_compat_when_missing_from_dict():
+    # Older agents.json files won't have the "archived" key — they should
+    # load as not-archived rather than blowing up.
+    legacy = {
+        "id": "abc", "name": "research", "cwd": "/tmp", "started_at": 1.0,
+        "state": "idle", "ended_at": None, "last_activity": 1.0,
+        "cost": 0.0, "tokens_in": 0, "tokens_out": 0,
+    }
+    assert AgentInfo.from_dict(legacy).archived is False

@@ -10,7 +10,8 @@ from claude_agent_sdk import (
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.state import AgentState
-from mod_tui.events import AgentSpawned, EventBus
+from mod_tui.events import AgentArchiveChanged, AgentSpawned, EventBus
+from mod_tui.persistence.agents_index import AgentsIndex
 
 
 def _ok_script() -> list:
@@ -132,6 +133,50 @@ async def test_send_to_unknown_agent_raises_keyerror(tmp_path: Path):
     )
     with pytest.raises(KeyError):
         await manager.send("does-not-exist", "hi")
+
+
+@pytest.mark.asyncio
+async def test_set_archived_flips_flag_persists_and_publishes(tmp_path: Path):
+    bus = EventBus()
+    events: list[AgentArchiveChanged] = []
+    bus.subscribe(AgentArchiveChanged, events.append)
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await manager.spawn(name="research", prompt="say done")
+    await manager.wait_idle(aid)
+
+    manager.set_archived(aid, archived=True)
+
+    # In-memory info reflects the change.
+    [info] = [i for i in manager.list_infos() if i.id == aid]
+    assert info.archived is True
+    # Persistence reflects the change too — survives a restart.
+    persisted = AgentsIndex(cwd=tmp_path).load()
+    assert any(p.id == aid and p.archived for p in persisted)
+    # An event was published so subscribers (e.g., AgentTable) can refresh.
+    assert events and events[-1].info.id == aid and events[-1].info.archived is True
+
+    # Toggling back un-archives.
+    manager.set_archived(aid, archived=False)
+    [info2] = [i for i in manager.list_infos() if i.id == aid]
+    assert info2.archived is False
+    persisted2 = AgentsIndex(cwd=tmp_path).load()
+    assert any(p.id == aid and not p.archived for p in persisted2)
+
+
+@pytest.mark.asyncio
+async def test_set_archived_unknown_id_raises_keyerror(tmp_path: Path):
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    with pytest.raises(KeyError):
+        manager.set_archived("nope", archived=True)
 
 
 @pytest.mark.asyncio

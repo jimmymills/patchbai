@@ -26,6 +26,7 @@ class AgentInfo:
     cost: float = 0.0
     tokens_in: int = 0
     tokens_out: int = 0
+    archived: bool = False
 
     def __post_init__(self) -> None:
         if self.last_activity == 0.0:
@@ -47,6 +48,7 @@ class AgentInfo:
             "cost": self.cost,
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
+            "archived": self.archived,
         }
 
     @classmethod
@@ -62,4 +64,5 @@ class AgentInfo:
             cost=d.get("cost", 0.0),
             tokens_in=d.get("tokens_in", 0),
             tokens_out=d.get("tokens_out", 0),
+            archived=d.get("archived", False),
         )
