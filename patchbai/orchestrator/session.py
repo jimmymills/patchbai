@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     TextBlock,
     query as sdk_query,
 )
+from claude_agent_sdk.types import SystemPromptPreset
 
 from patchbai.agents.manager import AgentManager
 from patchbai.agents.sdk_adapter import RealSDKAdapter, SDKAdapter
@@ -62,6 +63,38 @@ _TITLE_PROMPT = (
     "title. Respond with ONLY the title — no quotes, no punctuation, no "
     "preamble. Message:\n\n{message}"
 )
+
+# Appended to the default Claude Code system prompt for the orchestrator
+# session. It tells the model to reach for the patchbai MCP tools (the ones
+# registered on the `patchbai_orchestrator` MCP server, visible to the model
+# as `mcp__patchbai_orchestrator__<name>`) before falling back to generic
+# Bash/Edit/Write/Read/Grep when a patchbai tool already covers the job.
+_ORCHESTRATOR_SYSTEM_APPEND = """\
+## Tool Preference (patchbai)
+
+You are running inside the patchbai TUI. A `patchbai_orchestrator` MCP server
+exposes tools (visible as `mcp__patchbai_orchestrator__<name>`) that mutate
+the running app safely. **When a patchbai tool can accomplish the task, call
+it before falling back to Bash/Edit/Write/Read/Grep.** Editing the underlying
+files or shelling out usually requires a restart and can desync the live UI.
+
+- Layout / tabs: prefer `set_layout`, `get_layout`, `add_tab`, `close_tab`,
+  `switch_tab`, `rename_tab`, `reorder_tabs`, `save_layout`, `load_layout`,
+  `list_layouts`, `list_tabs`, `list_widgets` over editing workspace.json or
+  layout files by hand.
+- Agents: prefer `spawn_agent`, `kill_agent`, `interrupt_agent`,
+  `send_to_agent`, `read_agent_transcript`, `respond_to_agent_request`,
+  `list_agents` over restarting the app or grepping log files.
+- Workspace cwd: prefer `change_cwd` over editing config files or telling
+  the user to relaunch.
+- Theme / config / keys: prefer `set_theme`, `save_theme`, `load_theme`,
+  `set_config`, `bind_key`, `unbind_key` over editing config.toml or theme
+  files directly.
+
+Generic tools (Bash, Edit, Write, Read, Grep) remain appropriate for
+arbitrary source-code edits, running tests, git operations, and anything
+no patchbai tool covers.
+"""
 
 
 class OrchestratorSession:
@@ -211,6 +244,15 @@ class OrchestratorSession:
             # would hang waiting for one. Bypass for now; a Textual modal-
             # based can_use_tool callback is plan-3 work.
             "permission_mode": "bypassPermissions",
+            # Append a routing nudge to the default Claude Code system prompt
+            # so the model reaches for patchbai_orchestrator MCP tools before
+            # falling back to Bash/Edit/Write/Read/Grep when a patchbai tool
+            # already covers the task.
+            "system_prompt": SystemPromptPreset(
+                type="preset",
+                preset="claude_code",
+                append=_ORCHESTRATOR_SYSTEM_APPEND,
+            ),
         }
         if resume is not None:
             options_kwargs["resume"] = resume

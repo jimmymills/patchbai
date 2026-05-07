@@ -63,6 +63,49 @@ async def test_start_with_no_prior_sessions_passes_fresh_session_id(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_start_appends_patchbai_tool_preference_to_system_prompt(tmp_path):
+    """The orchestrator's system prompt must nudge the model to prefer the
+    patchbai_orchestrator MCP tools over generic Bash/Edit/Write/Read/Grep
+    when a patchbai tool already covers the task. The nudge is appended to
+    the default Claude Code preset so the rest of the CLI behavior stays
+    intact."""
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    orch, _ = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        sp = adapter.last_options.system_prompt
+        assert isinstance(sp, dict), f"expected SystemPromptPreset dict, got {sp!r}"
+        assert sp.get("type") == "preset"
+        assert sp.get("preset") == "claude_code"
+        append = sp.get("append") or ""
+        # Headline + priority statement.
+        assert "Tool Preference" in append
+        assert "patchbai" in append.lower()
+        assert "before falling back" in append.lower()
+        # All four tool categories are called out.
+        assert "Layout / tabs" in append
+        assert "Agents:" in append
+        assert "Workspace cwd" in append
+        assert "Theme / config / keys" in append
+        # A representative tool from each category is named.
+        for tool_name in (
+            "set_layout", "add_tab", "list_widgets",
+            "spawn_agent", "send_to_agent",
+            "change_cwd",
+            "set_theme", "bind_key",
+        ):
+            assert tool_name in append, f"missing tool reference: {tool_name}"
+        # Generic fallback is explicitly preserved.
+        assert "Bash" in append and "Edit" in append
+        assert (
+            "running tests" in append.lower()
+            or "git operations" in append.lower()
+        )
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
 async def test_start_with_prior_session_passes_resume(tmp_path):
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
