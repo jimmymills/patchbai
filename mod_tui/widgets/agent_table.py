@@ -12,6 +12,16 @@ from mod_tui.events import (
     EventBus,
 )
 
+from mod_tui.agents.state import AgentState as _AgentState
+
+_STATUS_STYLES: dict[_AgentState, str] = {
+    _AgentState.IDLE: "dim",
+    _AgentState.RUNNING: "green",
+    _AgentState.WAITING: "yellow",
+    _AgentState.DONE: "bold",
+    _AgentState.ERROR: "red",
+}
+
 
 class AgentTable(Container):
     """Sortable table of agents — name, status, elapsed, last action, cost."""
@@ -94,9 +104,10 @@ class AgentTable(Container):
         elapsed_str = f"{elapsed:5.1f}s"
         last = self._last_actions.get(info.id, "")
         cost_str = f"${info.cost:.4f}"
+        status_style = _STATUS_STYLES.get(info.state, "")
         return (
             Text(info.name),
-            Text(info.state.value),
+            Text(info.state.value, style=status_style),
             Text(elapsed_str),
             Text(last),
             Text(cost_str),
