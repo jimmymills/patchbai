@@ -142,6 +142,41 @@ class Terminal(Container):
                 pass
             self._pty = None
 
+    def _announce_exit(self) -> None:
+        # Capture status if available before teardown clears _pty.
+        status: object = "?"
+        if self._pty is not None:
+            try:
+                status = self._pty.exitstatus
+                if status is None:
+                    # PtyProcessUnicode caches exitstatus only after wait();
+                    # call it once with a tiny timeout to populate it.
+                    self._pty.wait()
+                    status = self._pty.exitstatus
+            except Exception:
+                status = "?"
+        if status is None:
+            status = "?"
+        banner = f"\r\n[process exited {status}]\r\n"
+        try:
+            self._stream.feed(banner)
+        except Exception:
+            pass
+        self._teardown()
+        self._refresh()
+
+    def action_restart(self) -> None:
+        """Respawn the subprocess in-place. Safe to call after exit."""
+        if self._pty is not None:
+            # Already running — nothing to do.
+            return
+        # Reset the screen so the old session's tail doesn't accumulate forever.
+        self._screen = pyte.HistoryScreen(
+            self._screen.columns, self._screen.lines, history=self.HISTORY_LINES
+        )
+        self._stream = pyte.Stream(self._screen)
+        self.on_mount()
+
     def _tick(self) -> None:
         if self._pty is None:
             return
@@ -149,6 +184,7 @@ class Terminal(Container):
         # child can't starve the asyncio loop. add_reader will fire again next tick.
         any_data = False
         bytes_read = 0
+        eof = False
         while bytes_read < self.READ_BUDGET_BYTES:
             try:
                 ready, _, _ = select.select([self._pty.fd], [], [], 0)
@@ -156,17 +192,20 @@ class Terminal(Container):
                     break
                 chunk = self._pty.read(4096)
             except EOFError:
-                self._teardown()
+                eof = True
                 break
             except Exception:
                 # TODO(phase 2): surface PTY read errors via _show_error
                 break
             if not chunk:
+                eof = True
                 break
             self._stream.feed(chunk)
             bytes_read += len(chunk)
             any_data = True
-        if any_data:
+        if eof:
+            self._announce_exit()
+        elif any_data:
             self._refresh()
 
     def _refresh(self) -> None:

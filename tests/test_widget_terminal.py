@@ -278,3 +278,44 @@ async def test_terminal_forwards_function_key():
         await pilot.pause()
         assert term._last_write == b"\x1b[15~"
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_announces_exit():
+    import asyncio
+    # `true` exits with status 0 immediately.
+    app = _Host(command=["/usr/bin/true"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Wait for the child to exit and add_reader to fire.
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+            if term._pty is None:
+                break
+        text = "\n".join(term._screen.display)
+        assert "[process exited" in text, f"exit banner missing; got:\n{text!r}"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_restart_respawns():
+    import asyncio
+    app = _Host(command=["/usr/bin/true"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        for _ in range(50):
+            await asyncio.sleep(0.02)
+            await pilot.pause()
+            if term._pty is None:
+                break
+        # Now restart. Capture the new PTY reference synchronously, since
+        # `/usr/bin/true` may exit again before pilot.pause() returns and the
+        # add_reader callback may already have torn it down.
+        term.action_restart()
+        respawned = term._pty
+        await pilot.pause()
+        assert respawned is not None
+        term._teardown()
