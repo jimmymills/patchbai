@@ -264,6 +264,8 @@ class ModTuiApp(App):
         # "" so save_theme can snapshot a clean state before any apply runs.
         self._active_theme_extra_css: str = ""
         self.cwd = Path(cwd) if cwd else Path.cwd()
+        import asyncio as _asyncio
+        self._cwd_swap_lock = _asyncio.Lock()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
         self._workspace: Workspace | None = None
@@ -830,6 +832,109 @@ class ModTuiApp(App):
         await apply_layout(area, spec, self.registry, layout_name=layout_name)
         self._current_layout_name = layout_name
         save_local_workspace(self.cwd, self._workspace)
+
+    async def change_cwd(self, new_cwd: "str | Path") -> dict:
+        """Re-root the running workspace at `new_cwd`. Stops the
+        orchestrator and manager, swaps `self.cwd`, rebuilds both, loads
+        (or seeds) the new cwd's workspace, re-applies the active theme,
+        and publishes WorkspaceCwdChanged.
+
+        Returns a result dict; never raises on user input.
+        """
+        from mod_tui.events import WorkspaceCwdChanged
+        from mod_tui.agents.sdk_adapter import RealSDKAdapter
+
+        async with self._cwd_swap_lock:
+            # Validate.
+            try:
+                resolved = Path(new_cwd).expanduser().resolve()
+            except Exception as e:
+                return {"error": "invalid_path", "detail": str(e)}
+            if not resolved.exists() or not resolved.is_dir():
+                return {"error": "invalid_path", "path": str(resolved)}
+            try:
+                current = Path(self.cwd).resolve()
+            except Exception:
+                current = self.cwd
+            if resolved == current:
+                return {"unchanged": True}
+
+            # Refuse with running children.
+            running = [
+                {"id": info.id, "name": info.name}
+                for info in self.manager.list_infos()
+                if not info.state.is_terminal
+            ]
+            if running:
+                return {"error": "agents_running", "agents": running}
+
+            # Save the OLD workspace one last time.
+            if self._workspace is not None:
+                try:
+                    save_local_workspace(self.cwd, self._workspace)
+                except Exception:
+                    pass
+
+            # Tear down current orchestrator + manager.
+            try:
+                await self.orchestrator.stop()
+            except Exception:
+                pass
+            try:
+                await self.manager.shutdown()
+            except Exception:
+                pass
+
+            # Swap cwd and reset workspace state.
+            self.cwd = resolved
+            self._workspace = None
+            self._active_tab_id = None
+            self._current_layout_name = None
+            self._tab_focus_snapshots.clear()
+
+            # Rebuild manager + orchestrator.
+            self.manager = AgentManager(
+                cwd=self.cwd, bus=self.event_bus,
+                adapter_factory=RealSDKAdapter,
+            )
+            self.orchestrator = OrchestratorSession(
+                cwd=self.cwd, bus=self.event_bus, manager=self.manager,
+                apply_layout=self._orchestrator_apply_layout,
+                layouts_store=self.layouts_store,
+                themes_store=self.themes_store,
+                config_store=self.config_store,
+                actions=self.actions_registry,
+                rebind_keys=self._rebind_keys,
+                widget_registry=self.registry,
+                current_layout=lambda: self._active_layout(),
+                app=self,
+            )
+            self.orchestrator._auto_title_enabled = True
+            await self.orchestrator.start()
+
+            # Load (or seed) the new workspace.
+            ws = self._load_or_seed_workspace()
+            self._workspace = ws
+            self._active_tab_id = ws.active
+            await self._mount_workspace(ws)
+            save_local_workspace(self.cwd, ws)
+
+            # Re-apply theme.
+            active_name = (
+                ws.active_theme
+                or self.config_store.load().ui.active_theme
+                or "default"
+            )
+            try:
+                await self._apply_theme_by_name(active_name, persist=False)
+            except Exception:
+                try:
+                    await self._apply_theme_by_name("default", persist=False)
+                except Exception:
+                    pass
+
+            self.event_bus.publish(WorkspaceCwdChanged(cwd=str(self.cwd)))
+            return {"changed": str(self.cwd)}
 
     # --- stats aggregation -------------------------------------------------
 
