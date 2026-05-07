@@ -33,6 +33,7 @@ from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.agent_transcript import AgentTranscript
 from mod_tui.widgets.chrome import CommandBar, StatusBar
 from mod_tui.widgets.diff_viewer import DiffViewer
+from mod_tui.widgets.file_editor import FileEditor
 from mod_tui.widgets.file_tree import FileTree
 from mod_tui.widgets.log_tail import LogTail
 from mod_tui.widgets.notebook import Notebook
@@ -77,6 +78,17 @@ def build_default_registry() -> WidgetRegistry:
             "Read-only syntax-highlighted file display. Pass `file_path` for "
             "an initial file. Pass `follow_selection: true` to subscribe to "
             "FileSelected events from a FileTree panel and reload on click."
+        ),
+        props_schema={"file_path": str, "follow_selection": bool},
+    )
+    reg.register(
+        "FileEditor", FileEditor,
+        description=(
+            "Editable syntax-highlighted file editor. Pass `file_path` for "
+            "an initial file. Pass `follow_selection: true` to subscribe to "
+            "FileSelected events from a FileTree panel. Ctrl+S saves; the "
+            "border title shows ' *' when there are unsaved changes. Prompts "
+            "before discarding edits or overwriting external changes."
         ),
         props_schema={"file_path": str, "follow_selection": bool},
     )
