@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from textual.binding import Binding
@@ -5,13 +6,13 @@ from textual.widgets import TextArea
 
 from mod_tui.widgets._file_lang import load_text as _load_text
 
+log = logging.getLogger(__name__)
+
 
 def _stat_or_none(path: Path) -> tuple[float, int] | None:
     try:
         st = path.stat()
-    except FileNotFoundError:
-        return None
-    except Exception:
+    except OSError:
         return None
     return st.st_mtime, st.st_size
 
@@ -91,9 +92,9 @@ class FileEditor(TextArea):
         try:
             self._current_path.parent.mkdir(parents=True, exist_ok=True)
             self._current_path.write_text(self.text, encoding="utf-8")
-        except Exception:
+        except OSError:
             self.border_title = f"Edit: {self._current_path.name} (save failed)"
-            self.app.log("FileEditor save failed", path=str(self._current_path))
+            log.warning("FileEditor save failed: %s", self._current_path)
             return False
         stat = _stat_or_none(self._current_path)
         if stat is not None:
