@@ -135,20 +135,32 @@ def _set_layout_handler(apply_layout, widget_registry=None):
                         }]
                     }
         try:
-            await apply_layout(spec)
+            await apply_layout(spec, tab_id=args.get("tab_id"))
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
         return {"content": [{"type": "text", "text": "Layout applied."}]}
     return set_layout_tool
 
 
-def _save_layout_handler(layouts_store: NamedLayoutsStore):
+def _save_layout_handler(layouts_store: NamedLayoutsStore, app=None):
     async def save_layout_tool(args: dict) -> dict:
         name = args["name"]
-        try:
-            spec = LayoutSpec.model_validate(args["spec"])
-        except Exception as e:
-            return {"content": [{"type": "text", "text": f"Invalid LayoutSpec: {e}"}]}
+        if "spec" in args:
+            try:
+                spec = LayoutSpec.model_validate(args["spec"])
+            except Exception as e:
+                return {"content": [{"type": "text", "text": f"Invalid LayoutSpec: {e}"}]}
+        elif app is not None:
+            tid = args.get("tab_id") or app._active_tab_id
+            ws = app._workspace
+            if ws is None or tid is None:
+                return {"content": [{"type": "text", "text": "No tab to save."}]}
+            tab = next((t for t in ws.tabs if t.id == tid), None)
+            if tab is None:
+                return {"content": [{"type": "text", "text": f"Unknown tab_id: {tid}"}]}
+            spec = tab.layout
+        else:
+            return {"content": [{"type": "text", "text": "Provide `spec` or call from an app."}]}
         try:
             layouts_store.save(name, spec)
         except ValueError as e:
@@ -157,14 +169,22 @@ def _save_layout_handler(layouts_store: NamedLayoutsStore):
     return save_layout_tool
 
 
-def _load_layout_handler(apply_layout, layouts_store: NamedLayoutsStore):
+def _load_layout_handler(apply_layout, layouts_store: NamedLayoutsStore, app=None):
     async def load_layout_tool(args: dict) -> dict:
         name = args["name"]
         spec = layouts_store.load(name)
         if spec is None:
             return {"content": [{"type": "text", "text": f"Layout not found: {name}"}]}
+        as_new_tab = bool(args.get("as_new_tab"))
+        if as_new_tab and app is not None:
+            try:
+                tab_id = await app.add_tab(args.get("title", name), spec, activate=True)
+            except Exception as e:
+                return {"content": [{"type": "text", "text": f"add_tab failed: {e}"}]}
+            return {"content": [{"type": "text",
+                                 "text": f"Loaded {name!r} into new tab {tab_id}."}]}
         try:
-            await apply_layout(spec, layout_name=name)
+            await apply_layout(spec, layout_name=name, tab_id=args.get("tab_id"))
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
         return {"content": [{"type": "text", "text": f"Loaded layout {name!r}."}]}
@@ -272,11 +292,25 @@ def _list_widgets_handler(registry: WidgetRegistry):
     return list_widgets_tool
 
 
-def _get_layout_handler(current_layout, widget_registry: WidgetRegistry):
+def _get_layout_handler(current_layout, widget_registry: WidgetRegistry, app=None):
     from mod_tui.layout.titles import populate_effective_titles
 
-    async def get_layout_tool(_args: dict) -> dict:
-        spec = current_layout() if current_layout is not None else None
+    async def get_layout_tool(args: dict) -> dict:
+        target_tab_id = (args or {}).get("tab_id")
+        spec = None
+        tab_title = None
+        tab_id = None
+        if app is not None:
+            ws = getattr(app, "_workspace", None)
+            tid = target_tab_id or getattr(app, "_active_tab_id", None)
+            if ws is not None and tid is not None:
+                tab = next((t for t in ws.tabs if t.id == tid), None)
+                if tab is not None:
+                    spec = tab.layout
+                    tab_id = tab.id
+                    tab_title = tab.title
+        if spec is None:
+            spec = current_layout() if current_layout is not None else None
         if spec is None:
             return {"content": [{"type": "text", "text": "No layout applied yet."}]}
         dumped = spec.model_dump(mode="json")
@@ -284,7 +318,8 @@ def _get_layout_handler(current_layout, widget_registry: WidgetRegistry):
             populate_effective_titles(dumped["layout"], widget_registry)
         except Exception:
             pass  # Titles are advisory; never block the dump.
-        return {"content": [{"type": "text", "text": json.dumps(dumped, indent=2)}]}
+        out = {"tab_id": tab_id, "tab_title": tab_title, "spec": dumped}
+        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
 
     return get_layout_tool
 
@@ -392,8 +427,8 @@ def build_orchestrator_tools(
         handlers[spec.name] = spec.build(manager)
     if apply_layout is not None and layouts_store is not None:
         handlers["set_layout"] = _set_layout_handler(apply_layout, widget_registry)
-        handlers["save_layout"] = _save_layout_handler(layouts_store)
-        handlers["load_layout"] = _load_layout_handler(apply_layout, layouts_store)
+        handlers["save_layout"] = _save_layout_handler(layouts_store, app=app)
+        handlers["load_layout"] = _load_layout_handler(apply_layout, layouts_store, app=app)
         handlers["list_layouts"] = _list_layouts_handler(layouts_store)
     if config_store is not None and actions is not None:
         handlers["bind_key"] = _bind_key_handler(config_store, actions, rebind_keys)
@@ -405,7 +440,7 @@ def build_orchestrator_tools(
     if widget_registry is not None:
         handlers["list_widgets"] = _list_widgets_handler(widget_registry)
     if widget_registry is not None and current_layout is not None:
-        handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry)
+        handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry, app=app)
     if app is not None:
         handlers["add_tab"] = add_tab_handler(app)
         handlers["close_tab"] = close_tab_handler(app)
@@ -435,11 +470,15 @@ def build_orchestrator_mcp_server(
         layout_specs = [
             (
                 "set_layout",
-                "Replace the current UI layout with the given LayoutSpec dict. "
-                "Each panel may set an optional `title` field that overrides the widget's "
-                "default border title; titles are how the user refers to panels in chat "
-                "(e.g., 'make the Activity Panel 2x its size'). Call `get_layout` first "
-                "to discover effective titles before mutating. "
+                "Edit the **active** tab's layout (or pass `tab_id` to "
+                "target a specific tab). Use add_tab to create new tabs "
+                "instead of inserting OrchestratorChat panels. Each panel "
+                "may set an optional `title` field; the user references "
+                "panels by title in chat. Call get_layout first to "
+                "discover effective titles. Spec format supports a new "
+                "node type `{type: 'tabs', children: [Panel, ...], "
+                "active: '<panel_id>'}` for panel-level tabs (each tab "
+                "holds exactly one widget). "
                 "If `spec.custom_widgets` is present, each entry's `source` "
                 "string is **exec'd in-process with full Python privileges** "
                 "to register a new Widget class before the layout is applied. "
@@ -447,20 +486,26 @@ def build_orchestrator_mcp_server(
                 "authored — anything you exec here can read files, hit the "
                 "network, and execute arbitrary code with the user's "
                 "permissions. The built-in widgets (list_widgets) are safer.",
-                {"spec": dict},
+                {"spec": dict, "tab_id": str},
                 _set_layout_handler(apply_layout, widget_registry),
             ),
             (
                 "save_layout",
-                "Save the given LayoutSpec under a name in ~/.config/mod_tui/layouts/.",
-                {"name": str, "spec": dict},
-                _save_layout_handler(layouts_store),
+                "Save a LayoutSpec under a name in ~/.config/mod_tui/layouts/. "
+                "If `spec` is omitted, saves the active tab's current layout "
+                "(or the tab named by `tab_id`).",
+                {"name": str, "spec": dict, "tab_id": str},
+                _save_layout_handler(layouts_store, app=app),
             ),
             (
                 "load_layout",
-                "Load and apply a previously-saved layout by name.",
-                {"name": str},
-                _load_layout_handler(apply_layout, layouts_store),
+                "Load a saved layout by name and apply it. By default it "
+                "replaces the active tab's spec. Pass `tab_id` to target a "
+                "specific tab. Pass `as_new_tab: true` to create a new tab "
+                "seeded from the named layout instead (use `title` to label "
+                "the new tab; defaults to the layout name).",
+                {"name": str, "tab_id": str, "as_new_tab": bool, "title": str},
+                _load_layout_handler(apply_layout, layouts_store, app=app),
             ),
             (
                 "list_layouts",
@@ -524,17 +569,13 @@ def build_orchestrator_mcp_server(
     if widget_registry is not None and current_layout is not None:
         sdk_tools.append(tool(
             "get_layout",
-            "Returns the currently applied LayoutSpec as JSON. Each panel's "
-            "`title` field is populated to its effective on-screen value, so "
-            "you can match a user reference like 'the Activity Panel' against "
-            "`title` to find the panel `id` you want to edit. Pass the "
-            "modified spec back through `set_layout`. Note: the returned "
-            "`title` is the resolved value (defaults if no override was set). "
-            "If you only want to change a panel's size or props, set its "
-            "`title` field back to null in the spec you pass to `set_layout` "
-            "to avoid freezing the resolved title as an explicit override.",
-            {},
-        )(_get_layout_handler(current_layout, widget_registry)))
+            "Returns the active tab's LayoutSpec as JSON, alongside `tab_id` "
+            "and `tab_title`. Each panel's `title` field is populated to its "
+            "effective on-screen value. Pass `tab_id` to inspect a specific "
+            "tab. Pass the `spec` field's value back through `set_layout` to "
+            "edit the tab.",
+            {"tab_id": str},
+        )(_get_layout_handler(current_layout, widget_registry, app=app)))
     if app is not None:
         sdk_tools.append(tool(
             "add_tab",

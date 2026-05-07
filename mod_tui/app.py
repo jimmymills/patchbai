@@ -535,9 +535,11 @@ class ModTuiApp(App):
         save_local_workspace(self.cwd, ws)
 
     async def _orchestrator_apply_layout(
-        self, spec: LayoutSpec, *, layout_name: str | None = None,
+        self, spec: LayoutSpec,
+        *, layout_name: str | None = None, tab_id: str | None = None,
     ) -> None:
-        await self._apply_to_tab(self._active_tab_id, spec, layout_name=layout_name)
+        target = tab_id or self._active_tab_id
+        await self._apply_to_tab(target, spec, layout_name=layout_name)
 
     async def on_unmount(self) -> None:
         await self.orchestrator.stop()
