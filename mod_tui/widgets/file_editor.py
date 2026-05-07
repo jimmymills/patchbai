@@ -144,15 +144,14 @@ class ConfirmOverwriteScreen(ModalScreen[str]):
 
     def __init__(self, *, name: str) -> None:
         super().__init__()
-        self._name = name
+        self._filename = name
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Static(
-                f"{self._name} was changed on disk since you opened it. "
+                f"{self._filename} was changed on disk since you opened it. "
                 f"Overwrite anyway?"
             )
-            yield Static(" ")
             yield Button("Overwrite", id="overwrite", variant="warning")
             yield Button("Cancel", id="cancel")
 

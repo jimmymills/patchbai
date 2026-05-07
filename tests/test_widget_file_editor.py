@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 from textual.app import App
-from textual.screen import ModalScreen
 
 from mod_tui.widgets.file_editor import ConfirmOverwriteScreen, FileEditor
 
@@ -302,6 +301,8 @@ async def test_file_editor_save_recreates_file_deleted_under_us(tmp_path: Path):
         await pilot.pause()
         p.unlink()
 
+        # Direct await (no worker) — if the deleted-file path ever pushed the
+        # overwrite modal, this would hang. The absence of a hang is the assertion.
         result = await editor.action_save()
         await pilot.pause()
 
