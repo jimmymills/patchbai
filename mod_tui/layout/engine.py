@@ -2,7 +2,7 @@ import weakref
 from dataclasses import dataclass
 
 from mod_tui.events import LayoutApplied, LayoutFailed
-from mod_tui.layout.spec import Container, LayoutSpec, Panel
+from mod_tui.layout.spec import Container, LayoutSpec, Panel, Tabs
 from mod_tui.layout.titles import resolve_title
 
 
@@ -73,6 +73,8 @@ def diff(old: LayoutSpec | None, new: LayoutSpec) -> list[Operation]:
 
 from textual.containers import Container as TxContainer
 from textual.containers import Horizontal, Vertical
+from textual.widget import Widget
+from textual.widgets import TabbedContent, TabPane
 
 
 def _has_border_in_default_css(cls) -> bool:
@@ -91,7 +93,7 @@ def _has_border_in_default_css(cls) -> bool:
     return False
 
 
-def _build(node, registry) -> "TxContainer":
+def _build(node, registry) -> Widget:
     if isinstance(node, Panel):
         cls = registry.get(node.widget)
         widget = cls(**node.props) if node.props else cls()
@@ -113,11 +115,40 @@ def _build(node, registry) -> "TxContainer":
         except Exception:
             widget.border_title = cls.__name__
         return widget
+    if isinstance(node, Tabs):
+        panes = []
+        for child in node.children:
+            inner = _build(child, registry)            # reuses Panel branch
+            label = child.title or _default_pane_label(child, registry)
+            panes.append(TabPane(label, inner, id=f"tabpane-{child.id}"))
+        initial_id = f"tabpane-{node.active or node.children[0].id}"
+        # TabbedContent.__init__ takes *titles as strings; passing TabPane
+        # objects there triggers render_str and fails pre-mount. Instead,
+        # construct with no positional args and load panes via _tab_content
+        # (the same slot that compose_add_child fills when using the context
+        # manager syntax), then set _initial for the active tab.
+        tc = TabbedContent(initial=initial_id)
+        tc._tab_content = list(panes)
+        if node.size:
+            tc.styles.width = node.size
+        return tc
+    # Container
     box_cls = Horizontal if node.type == "horizontal" else Vertical
     box = box_cls(*[_build(c, registry) for c in node.children])
     if node.size:
         box.styles.width = node.size
     return box
+
+
+def _default_pane_label(panel: Panel, registry) -> str:
+    """Best-effort label for a TabPane when the panel has no explicit title.
+    Reuses resolve_title against the widget class so widgets that publish a
+    DEFAULT_BORDER_TITLE feed the tab label too."""
+    try:
+        cls = registry.get(panel.widget)
+        return resolve_title(panel, cls)
+    except Exception:
+        return panel.widget
 
 
 # Track the most recent applied spec per container, keyed by the container
