@@ -1,4 +1,4 @@
-from typing import Callable
+from typing import Callable, Literal
 
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from textual.app import ComposeResult
@@ -113,11 +113,7 @@ class PermissionModal(ModalScreen[None]):
         self.query_one("#prompt", Label).update(
             req.title or f"Allow {req.tool_name}?"
         )
-        agent_label = (
-            "agent: orchestrator" if req.agent_name == _ORCHESTRATOR
-            else f"agent: {req.agent_name}"
-        )
-        self.query_one("#agent", Label).update(agent_label)
+        self.query_one("#agent", Label).update(f"agent: {req.agent_name}")
         self.query_one("#tool-args", Label).update(
             f"{req.tool_name}({_short_repr(req.tool_input)})"
         )
@@ -135,6 +131,8 @@ class PermissionModal(ModalScreen[None]):
         else:
             self._current_request = None
             self.query_one("#prompt", Label).update("(no pending request)")
+            self.query_one("#agent", Label).update("")
+            self.query_one("#tool-args", Label).update("")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._current_request is None:
@@ -157,7 +155,7 @@ class PermissionModal(ModalScreen[None]):
             return
         self._resolve("deny", scope=None)
 
-    def _resolve(self, behavior: str, *, scope: str | None) -> None:
+    def _resolve(self, behavior: Literal["allow", "deny"], *, scope: Literal["persistent", "session"] | None) -> None:
         req = self._current_request
         if req is None:
             return
