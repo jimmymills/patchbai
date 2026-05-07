@@ -121,3 +121,33 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
         await pilot.pause()
         result = await asyncio.wait_for(cb_task, timeout=2.0)
         assert isinstance(result, PermissionResultAllow)
+
+
+@pytest.mark.asyncio
+async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
+    import asyncio
+    from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
+    from patchbai.app import PatchbaiApp
+    from patchbai.widgets.permission_modal import PermissionModal
+
+    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        callback = app.orchestrator._can_use_tool_callback
+        assert callback is not None  # grants are wired
+        ctx = ToolPermissionContext(tool_use_id="t1")
+
+        cb_task = asyncio.create_task(
+            callback("mcp__patchbai_orchestrator__list_widgets", {}, ctx)
+        )
+        for _ in range(20):
+            await pilot.pause()
+            if isinstance(app.screen, PermissionModal):
+                break
+        # The modal should advertise "the orchestrator" on the always-allow button.
+        button = app.screen.query_one("#allow-always")
+        assert "orchestrator" in str(button.label).lower()
+        await pilot.click("#allow-once")
+        await pilot.pause()
+        result = await asyncio.wait_for(cb_task, timeout=2.0)
+        assert isinstance(result, PermissionResultAllow)
