@@ -533,7 +533,7 @@ def build_orchestrator_mcp_server(
             ),
             (
                 "set_config",
-                "Set a config value by dotted path (e.g., 'ui.theme').",
+                "Set a config value by dotted path (e.g., 'ui.active_theme').",
                 {"path": str, "value": str},
                 _set_config_handler(config_store),
             ),

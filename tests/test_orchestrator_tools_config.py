@@ -83,9 +83,9 @@ async def test_set_config_dotted_path(tmp_path, ok_script):
     set_config = tools["set_config"]
     get_config = tools["get_config"]
 
-    await set_config({"path": "ui.theme", "value": "light"})
-    out = await get_config({"path": "ui.theme"})
-    assert "light" in out["content"][0]["text"]
+    await set_config({"path": "ui.active_theme", "value": "nord"})
+    out = await get_config({"path": "ui.active_theme"})
+    assert "nord" in out["content"][0]["text"]
 
 
 @pytest.mark.asyncio
