@@ -20,7 +20,10 @@ from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
 from mod_tui.orchestrator.session import OrchestratorSession
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
+from mod_tui.persistence.themes_store import NamedThemesStore
 from mod_tui.persistence.paths import global_config_dir
+from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
+from mod_tui.theme.spec import ThemeSpec
 from mod_tui.persistence.workspace_store import (
     load_workspace as load_local_workspace,
     save_workspace as save_local_workspace,
@@ -39,6 +42,7 @@ from mod_tui.persistence.orchestrator_sessions import OrchestratorSessionsIndex
 from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
 from mod_tui.widgets.resume_screen import ResumeScreen
+from mod_tui.widgets.theme_switcher import ThemeSwitcherScreen
 from mod_tui.widgets.new_tab_screen import NewTabScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
@@ -136,6 +140,7 @@ class ModTuiApp(App):
         Binding("ctrl+q", "quit", "quit"),
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
+        Binding("ctrl+shift+l", "open_theme_switcher", "themes"),
         Binding("?", "show_help", "help"),
         Binding("ctrl+t", "new_tab", "new tab", priority=True),
         Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
@@ -160,6 +165,9 @@ class ModTuiApp(App):
         global_dir: Path | None = None,
     ) -> None:
         super().__init__()
+        # Cache for the currently-applied theme's extra_css. Initialized to
+        # "" so save_theme can snapshot a clean state before any apply runs.
+        self._active_theme_extra_css: str = ""
         self.cwd = Path(cwd) if cwd else Path.cwd()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
@@ -170,6 +178,7 @@ class ModTuiApp(App):
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
+        self.themes_store = NamedThemesStore(global_dir=self._global_dir)
         self.actions_registry = ActionRegistry()
         self._register_actions()
         self.manager = manager or AgentManager(
@@ -183,6 +192,7 @@ class ModTuiApp(App):
             manager=self.manager,
             apply_layout=self._orchestrator_apply_layout,
             layouts_store=self.layouts_store,
+            themes_store=self.themes_store,
             config_store=self.config_store,
             actions=self.actions_registry,
             rebind_keys=self._rebind_keys,
@@ -229,6 +239,10 @@ class ModTuiApp(App):
         self.actions_registry.register(
             "open_layout_switcher", self.action_open_layout_switcher,
             description="Open the saved-layouts switcher modal.", args_schema={},
+        )
+        self.actions_registry.register(
+            "open_theme_switcher", self.action_open_theme_switcher,
+            description="Open the saved-themes switcher modal.", args_schema={},
         )
 
     def _focus_panel(self, panel_id: str) -> None:
@@ -400,6 +414,7 @@ class ModTuiApp(App):
     def action_show_help(self) -> None:
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
+            "ctrl-shift-l themes · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
             "ctrl-w close tab · /reset new · /resume past · /rename title · ? help",
             title="keybindings",
@@ -440,6 +455,67 @@ class ModTuiApp(App):
             _asyncio.create_task(self._orchestrator_apply_layout(spec, layout_name=name))
 
         self.push_screen(LayoutSwitcherScreen(store=self.layouts_store), _on_picked)
+
+    def action_open_theme_switcher(self) -> None:
+        import asyncio as _asyncio
+
+        try:
+            builtins = sorted(
+                n for n in self.available_themes.keys()
+                if not n.startswith("mod_tui:")
+            )
+        except Exception:
+            builtins = []
+        active = self.theme or ""
+        if active.startswith("mod_tui:"):
+            active = active[len("mod_tui:"):]
+
+        def _on_picked(name: str | None) -> None:
+            if not name:
+                return
+            _asyncio.create_task(self._apply_theme_by_name(name, persist=True))
+
+        self.push_screen(
+            ThemeSwitcherScreen(
+                store=self.themes_store,
+                available_builtins=builtins,
+                active=active,
+            ),
+            _on_picked,
+        )
+
+    async def _apply_theme_by_name(
+        self, name: str, *, persist: bool = False, scope: str = "global",
+    ) -> None:
+        """Single seam used by boot, the modal, and the load_theme tool path."""
+        spec = self.themes_store.load(name)
+        if spec is not None:
+            await apply_theme(self, spec, theme_name=name)
+        else:
+            try:
+                if name not in self.available_themes:
+                    return
+            except Exception:
+                return
+            if _EXTRA_CSS_KEY in self.stylesheet.source:
+                del self.stylesheet.source[_EXTRA_CSS_KEY]
+            self._active_theme_extra_css = ""
+            self.theme = name
+            try:
+                self.refresh_css()
+            except Exception:
+                pass
+        if not persist:
+            return
+        if scope == "global":
+            cfg = self.config_store.load()
+            cfg.ui.active_theme = name
+            self.config_store.save(cfg)
+        elif scope == "project" and self._workspace is not None:
+            ws = self._workspace.model_copy(update={"active_theme": name})
+            self._workspace = ws
+            from mod_tui.persistence.workspace_store import save_workspace
+            save_workspace(self.cwd, ws)
 
     def action_new_tab(self) -> None:
         import asyncio as _asyncio
@@ -608,6 +684,33 @@ class ModTuiApp(App):
         self._active_tab_id = ws.active
         await self._mount_workspace(ws)
         save_local_workspace(self.cwd, ws)
+
+        # Theme seed: snapshot the current Textual theme as "default" if not present.
+        if self.themes_store.load("default") is None:
+            try:
+                pal = palette_from_textual_theme(self.current_theme)
+                self.themes_store.save(
+                    "default", ThemeSpec(palette=pal, extra_css=""),
+                )
+            except Exception:
+                # Snapshot may fail if Textual's theme objects shape ever
+                # changes — boot must not abort.
+                pass
+
+        # Resolve active theme: workspace.active_theme → config.ui.active_theme → "default".
+        active_name = (
+            ws.active_theme
+            or self.config_store.load().ui.active_theme
+            or "default"
+        )
+        try:
+            await self._apply_theme_by_name(active_name, persist=False)
+        except Exception:
+            # Bad active theme must not brick boot. Fall back to default.
+            try:
+                await self._apply_theme_by_name("default", persist=False)
+            except Exception:
+                pass  # last-resort: leave Textual default in place.
 
     async def _orchestrator_apply_layout(
         self, spec: LayoutSpec,

@@ -146,3 +146,27 @@ def test_workspace_chat_inside_container_wrapping_tabs_counts():
         "active": "t1",
     })
     assert len(ws.tabs) == 1
+
+
+def test_workspace_active_theme_defaults_to_none():
+    ws = Workspace.model_validate({
+        "version": 1,
+        "tabs": [
+            {"id": "t1", "title": "Main", "layout": _layout_with_chat()},
+        ],
+        "active": "t1",
+    })
+    assert ws.active_theme is None
+
+
+def test_workspace_active_theme_round_trips():
+    ws = Workspace.model_validate({
+        "version": 1,
+        "tabs": [
+            {"id": "t1", "title": "Main", "layout": _layout_with_chat()},
+        ],
+        "active": "t1",
+        "active_theme": "nord",
+    })
+    assert ws.active_theme == "nord"
+    assert ws.model_dump(mode="json")["active_theme"] == "nord"

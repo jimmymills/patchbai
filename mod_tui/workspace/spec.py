@@ -29,6 +29,7 @@ class Workspace(BaseModel):
     version: int = 1
     tabs: list[Tab] = Field(min_length=1)
     active: str
+    active_theme: str | None = None
 
     @model_validator(mode="after")
     def _validate(self) -> "Workspace":

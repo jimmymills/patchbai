@@ -16,6 +16,10 @@ from mod_tui.orchestrator.tabs_tools import (
     switch_tab_handler,
 )
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
+from mod_tui.persistence.themes_store import NamedThemesStore
+from mod_tui.persistence.workspace_store import save_workspace
+from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
+from mod_tui.theme.spec import ThemeSpec
 
 
 @dataclass(frozen=True)
@@ -324,6 +328,147 @@ def _get_layout_handler(current_layout, widget_registry: WidgetRegistry, app=Non
     return get_layout_tool
 
 
+def _set_theme_handler(app):
+    async def set_theme_tool(args: dict) -> dict:
+        try:
+            spec = ThemeSpec.model_validate(args["spec"])
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Invalid ThemeSpec: {e}"}]}
+        try:
+            await apply_theme(app, spec, theme_name="<inline>")
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
+        return {"content": [{"type": "text", "text": "Theme applied."}]}
+    return set_theme_tool
+
+
+def _save_theme_handler(themes_store: NamedThemesStore, app):
+    async def save_theme_tool(args: dict) -> dict:
+        name = args["name"]
+        if "spec" in args:
+            try:
+                spec = ThemeSpec.model_validate(args["spec"])
+            except Exception as e:
+                return {"content": [{"type": "text", "text": f"Invalid ThemeSpec: {e}"}]}
+        else:
+            try:
+                palette = palette_from_textual_theme(app.current_theme)
+            except Exception as e:
+                return {"content": [{"type": "text",
+                                     "text": f"Could not snapshot active theme: {e}"}]}
+            extra = getattr(app, "_active_theme_extra_css", "") or ""
+            spec = ThemeSpec(palette=palette, extra_css=extra)
+        try:
+            themes_store.save(name, spec)
+        except ValueError as e:
+            return {"content": [{"type": "text", "text": f"Invalid theme name: {e}"}]}
+        return {"content": [{"type": "text", "text": f"Saved theme {name!r}."}]}
+    return save_theme_tool
+
+
+def _load_theme_handler(themes_store: NamedThemesStore, app, config_store=None):
+    async def load_theme_tool(args: dict) -> dict:
+        name = args["name"]
+        persist = bool(args.get("persist", True))
+        scope = args.get("scope", "global")
+        if scope not in ("global", "project"):
+            return {"content": [{"type": "text",
+                                 "text": f"Invalid scope: {scope!r} (use 'global' or 'project')"}]}
+        # 1. Try saved store.
+        spec = themes_store.load(name)
+        if spec is not None:
+            try:
+                await apply_theme(app, spec, theme_name=name)
+            except Exception as e:
+                return {"content": [{"type": "text", "text": f"Apply error: {e}"}]}
+        else:
+            # 2. Fall through to Textual built-ins.
+            try:
+                available = app.available_themes
+            except Exception:
+                available = {}
+            if name not in available:
+                return {"content": [{"type": "text", "text": f"Theme not found: {name}"}]}
+            # Built-in pass-through: clear our extra_css source, set theme directly.
+            if _EXTRA_CSS_KEY in app.stylesheet.source:
+                del app.stylesheet.source[_EXTRA_CSS_KEY]
+            app._active_theme_extra_css = ""
+            app.theme = name
+            try:
+                app.refresh_css()
+            except Exception:
+                pass
+
+        # 3. Persist active-theme pointer if asked.
+        warnings: list[str] = []
+        if persist:
+            if scope == "global":
+                if config_store is not None:
+                    cfg = config_store.load()
+                    cfg.ui.active_theme = name
+                    config_store.save(cfg)
+                else:
+                    warnings.append("persist requested but no config_store available")
+            elif scope == "project":
+                ws = getattr(app, "_workspace", None)
+                if ws is not None:
+                    ws = ws.model_copy(update={"active_theme": name})
+                    app._workspace = ws
+                    save_workspace(app.cwd, ws)
+                else:
+                    warnings.append("persist requested but no workspace available")
+
+        msg = f"Loaded theme {name!r}."
+        if warnings:
+            msg += " Warning: " + "; ".join(warnings) + "."
+        return {"content": [{"type": "text", "text": msg}]}
+    return load_theme_tool
+
+
+def _list_themes_handler(themes_store: NamedThemesStore, app):
+    async def list_themes_tool(_args: dict) -> dict:
+        saved = themes_store.list()
+        try:
+            builtin = sorted(
+                n for n in app.available_themes.keys()
+                if not n.startswith("mod_tui:")
+            )
+        except Exception:
+            builtin = []
+        active = getattr(app, "theme", None) or ""
+        # Strip the "mod_tui:" prefix from active for user-facing display
+        # so a saved theme named "alpha" reads back as "alpha".
+        if active.startswith("mod_tui:"):
+            active_display = active[len("mod_tui:"):]
+        else:
+            active_display = active
+        payload = {"saved": saved, "builtin": builtin, "active": active_display}
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+    return list_themes_tool
+
+
+def _get_theme_handler(themes_store: NamedThemesStore, app):
+    async def get_theme_tool(args: dict) -> dict:
+        name = (args or {}).get("name")
+        if name:
+            spec = themes_store.load(name)
+            if spec is None:
+                return {"content": [{"type": "text", "text": f"Theme not found: {name}"}]}
+            return {"content": [{"type": "text", "text": json.dumps(spec.model_dump(mode="json"))}]}
+        # No name → snapshot the active theme.
+        try:
+            palette = palette_from_textual_theme(app.current_theme).model_dump(mode="json")
+        except Exception as e:
+            return {"content": [{"type": "text", "text": f"Cannot read active theme: {e}"}]}
+        active = getattr(app, "theme", "") or ""
+        if active.startswith("mod_tui:"):
+            active = active[len("mod_tui:"):]
+        extra = getattr(app, "_active_theme_extra_css", "") or ""
+        payload = {"name": active, "palette": palette, "extra_css": extra}
+        return {"content": [{"type": "text", "text": json.dumps(payload)}]}
+    return get_theme_tool
+
+
 _SPECS: list[_ToolSpec] = [
     _ToolSpec(
         name="spawn_agent",
@@ -403,6 +548,7 @@ def build_orchestrator_tools(
     *,
     apply_layout=None,
     layouts_store: NamedLayoutsStore | None = None,
+    themes_store: NamedThemesStore | None = None,
     config_store: ConfigStore | None = None,
     actions: ActionRegistry | None = None,
     rebind_keys=None,
@@ -441,6 +587,14 @@ def build_orchestrator_tools(
         handlers["list_widgets"] = _list_widgets_handler(widget_registry)
     if widget_registry is not None and current_layout is not None:
         handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry, app=app)
+    if themes_store is not None and app is not None:
+        handlers["set_theme"] = _set_theme_handler(app)
+        handlers["save_theme"] = _save_theme_handler(themes_store, app)
+        handlers["load_theme"] = _load_theme_handler(
+            themes_store, app, config_store=config_store,
+        )
+        handlers["list_themes"] = _list_themes_handler(themes_store, app)
+        handlers["get_theme"] = _get_theme_handler(themes_store, app)
     if app is not None:
         handlers["add_tab"] = add_tab_handler(app)
         handlers["close_tab"] = close_tab_handler(app)
@@ -454,6 +608,7 @@ def build_orchestrator_mcp_server(
     *,
     apply_layout=None,
     layouts_store: NamedLayoutsStore | None = None,
+    themes_store: NamedThemesStore | None = None,
     config_store: ConfigStore | None = None,
     actions: ActionRegistry | None = None,
     rebind_keys=None,
@@ -516,6 +671,65 @@ def build_orchestrator_mcp_server(
         ]
         for name, desc, schema, handler in layout_specs:
             sdk_tools.append(tool(name, desc, schema)(handler))
+    if themes_store is not None and app is not None:
+        theme_specs = [
+            (
+                "set_theme",
+                "Apply a ThemeSpec to the live app. The spec is "
+                "{ palette: {primary, secondary, warning, error, success, accent, "
+                "foreground, background, surface, panel, boost, dark, "
+                "luminosity_spread, text_alpha, variables}, extra_css: str }. "
+                "Color strings follow Textual's syntax (#rrggbb or named). "
+                "If `extra_css` is present, it is parsed at app scope; bad "
+                "CSS is rejected before the palette change. Only ship "
+                "`extra_css` you have personally authored — CSS can hide "
+                "chrome, fake widgets, or break input visibility. Does NOT "
+                "persist; use save_theme + load_theme for that.",
+                {"spec": dict},
+                _set_theme_handler(app),
+            ),
+            (
+                "save_theme",
+                "Save a ThemeSpec to ~/.config/mod_tui/themes/<name>.json. "
+                "If `spec` is omitted, snapshots the currently-active palette "
+                "and the last applied extra_css. Use this to capture the "
+                "live look as a named theme.",
+                {"name": str, "spec": dict},
+                _save_theme_handler(themes_store, app),
+            ),
+            (
+                "load_theme",
+                "Load a saved theme by name and apply it. Falls through to "
+                "Textual built-ins (textual-dark, nord, gruvbox, dracula, "
+                "catppuccin-*, …) if the name is not in the saved store. "
+                "When `persist` (default true) the active-theme pointer is "
+                "written: `scope='global'` writes ~/.config/mod_tui/config.toml "
+                "ui.active_theme; `scope='project'` writes workspace.json's "
+                "active_theme. Default scope is 'global'.",
+                {"name": str, "persist": bool, "scope": str},
+                _load_theme_handler(themes_store, app, config_store=config_store),
+            ),
+            (
+                "list_themes",
+                "Return {saved, builtin, active}. `saved` is the user's "
+                "named themes; `builtin` is Textual's built-in themes "
+                "(read-only); `active` is the current theme name (without "
+                "the internal mod_tui: prefix).",
+                {},
+                _list_themes_handler(themes_store, app),
+            ),
+            (
+                "get_theme",
+                "Return a saved theme's full spec when `name` is given. "
+                "Without `name`, returns the active theme as "
+                "{name, palette, extra_css}. Pass the result back through "
+                "set_theme to apply edits.",
+                {"name": str},
+                _get_theme_handler(themes_store, app),
+            ),
+        ]
+        for name, desc, schema, handler in theme_specs:
+            sdk_tools.append(tool(name, desc, schema)(handler))
     if config_store is not None and actions is not None:
         config_specs = [
             (
@@ -533,7 +747,7 @@ def build_orchestrator_mcp_server(
             ),
             (
                 "set_config",
-                "Set a config value by dotted path (e.g., 'ui.theme').",
+                "Set a config value by dotted path (e.g., 'ui.active_theme').",
                 {"path": str, "value": str},
                 _set_config_handler(config_store),
             ),

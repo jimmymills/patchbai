@@ -67,6 +67,7 @@ class OrchestratorSession:
         model: str | None = None,
         apply_layout=None,
         layouts_store=None,
+        themes_store=None,
         config_store=None,
         actions=None,
         rebind_keys=None,
@@ -81,6 +82,7 @@ class OrchestratorSession:
         self._adapter = adapter or RealSDKAdapter()
         self._apply_layout = apply_layout
         self._layouts_store = layouts_store
+        self._themes_store = themes_store
         self._config_store = config_store
         self._actions = actions
         self._rebind_keys = rebind_keys
@@ -170,6 +172,7 @@ class OrchestratorSession:
             self._manager,
             apply_layout=self._apply_layout,
             layouts_store=self._layouts_store,
+            themes_store=self._themes_store,
             config_store=self._config_store,
             actions=self._actions,
             rebind_keys=self._rebind_keys,

@@ -26,7 +26,7 @@ class KeyBinding:
 
 @dataclass
 class UISection:
-    theme: str = "dark"
+    active_theme: str = "default"
     default_model: str = ""
 
 
@@ -90,10 +90,11 @@ class ConfigStore:
 
         ui_raw = raw.get("ui", {})
         if isinstance(ui_raw, dict):
-            if "theme" in ui_raw and isinstance(ui_raw["theme"], str):
-                cfg.ui.theme = ui_raw["theme"]
+            if "active_theme" in ui_raw and isinstance(ui_raw["active_theme"], str):
+                cfg.ui.active_theme = ui_raw["active_theme"]
             if "default_model" in ui_raw and isinstance(ui_raw["default_model"], str):
                 cfg.ui.default_model = ui_raw["default_model"]
+            # Legacy `ui.theme` key (now removed) is silently ignored.
         return cfg
 
     def save(self, cfg: Config) -> None:
@@ -103,6 +104,9 @@ class ConfigStore:
                 key: {"action": b.action, "args": b.args}
                 for key, b in cfg.bindings.items()
             },
-            "ui": {"theme": cfg.ui.theme, "default_model": cfg.ui.default_model},
+            "ui": {
+                "active_theme": cfg.ui.active_theme,
+                "default_model": cfg.ui.default_model,
+            },
         }
         self._path.write_text(tomli_w.dumps(out), encoding="utf-8")
