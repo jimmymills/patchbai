@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Callable
 
 from claude_agent_sdk import (
+    CanUseTool,
     ClaudeAgentOptions,
     PermissionResultAllow,
     PermissionResultDeny,
@@ -168,7 +169,7 @@ class AgentManager:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)
 
-    def _make_can_use_tool(self, *, agent_id: str, agent_name: str):
+    def _make_can_use_tool(self, *, agent_id: str, agent_name: str) -> CanUseTool:
         bus = self._bus
         grants = self._grants
         get_perm_inbox = self._perm_inboxes.get
@@ -206,6 +207,9 @@ class AgentManager:
             try:
                 result = await inbox.wait(request_id, timeout_s=TIMEOUT_S)
             except asyncio.CancelledError:
+                task = asyncio.current_task()
+                if task is not None and task.cancelling() > 0:
+                    raise  # real task cancellation — must propagate
                 bus.publish(PermissionResolved(
                     agent_id=agent_id, request_id=request_id,
                     behavior="cancelled",

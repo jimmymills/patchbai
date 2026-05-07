@@ -9,7 +9,7 @@ from claude_agent_sdk import (
 from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
 from patchbai.agents.manager import AgentManager
 from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.events import EventBus, PermissionRequested
+from patchbai.events import EventBus, PermissionRequested, PermissionResolved
 
 
 def _ok_script():
@@ -81,6 +81,8 @@ async def test_callback_publishes_permission_requested_when_no_grant(tmp_path: P
     bus = EventBus()
     requests: list[PermissionRequested] = []
     bus.subscribe(PermissionRequested, requests.append)
+    resolved: list[PermissionResolved] = []
+    bus.subscribe(PermissionResolved, resolved.append)
     grants = PermissionGrants(cwd=tmp_path)
 
     manager = AgentManager(
@@ -108,11 +110,17 @@ async def test_callback_publishes_permission_requested_when_no_grant(tmp_path: P
     assert requests and requests[0].tool_name == "Read"
     assert requests[0].agent_id == aid
     assert requests[0].agent_name == "r"
+    assert len(resolved) == 1
+    assert resolved[0].agent_id == aid
+    assert resolved[0].request_id == requests[0].request_id
+    assert resolved[0].behavior == "allow"
 
 
 @pytest.mark.asyncio
 async def test_callback_returns_deny_when_inbox_cancelled(tmp_path: Path):
     bus = EventBus()
+    resolved: list[PermissionResolved] = []
+    bus.subscribe(PermissionResolved, resolved.append)
     grants = PermissionGrants(cwd=tmp_path)
     manager = AgentManager(
         cwd=tmp_path, bus=bus,
@@ -131,3 +139,6 @@ async def test_callback_returns_deny_when_inbox_cancelled(tmp_path: Path):
     asyncio.create_task(killer())
     result = await callback("Read", {"path": "x"}, ctx)
     assert isinstance(result, PermissionResultDeny)
+    assert len(resolved) == 1
+    assert resolved[0].agent_id == aid
+    assert resolved[0].behavior == "cancelled"
