@@ -417,9 +417,12 @@ async def test_reorder_tabs_rearranges_workspace_and_strip(tmp_path):
         # Workspace tabs match the new order.
         assert [t.id for t in app._workspace.tabs] == new_order  # type: ignore[union-attr]
 
-        # The strip's TabPanes appear in the new order.
+        # The strip's TabPanes appear in the new order. Filter to the
+        # app-level tabs (id prefix `tab-`); panel-level Tabs containers
+        # nested inside the layout render their own TabPanes (prefix
+        # `tabpane-`) which would otherwise pollute this assertion.
         tc = app.query_one("#app-tabs", TabbedContent)
-        pane_ids = [p.id for p in tc.query(TabPane)]
+        pane_ids = [p.id for p in tc.query(TabPane) if p.id and p.id.startswith("tab-")]
         assert pane_ids == [f"tab-{tid}" for tid in new_order]
 
 

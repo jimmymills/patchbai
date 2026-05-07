@@ -1,9 +1,9 @@
 from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.spec import Container, Panel
+from patchbai.layout.spec import Container, Panel, Tabs
 
 
 def test_dashboard_validates():
-    spec = dashboard_layout()  # raises if invalid
+    dashboard_layout()  # raises if invalid
 
 
 def test_dashboard_has_three_panels_in_correct_arrangement():
@@ -17,11 +17,14 @@ def test_dashboard_has_three_panels_in_correct_arrangement():
     assert left.id == "orch"
 
     right = root.children[1]
-    assert isinstance(right, Container) and right.type == "vertical"
+    assert isinstance(right, Tabs)
     assert len(right.children) == 2
     a, b = right.children
     assert isinstance(a, Panel) and a.widget == "AgentTable" and a.id == "agents"
     assert isinstance(b, Panel) and b.widget == "ActivityFeed" and b.id == "feed"
+    # Agents is the active tab so the user lands on the agent table, not the
+    # activity feed, when seeding a fresh workspace.
+    assert right.active == "agents"
 
 
 def test_dashboard_focus_is_orchestrator():

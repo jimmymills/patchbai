@@ -49,8 +49,12 @@ async def test_app_starts_with_one_tab_when_no_workspace_exists(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         tc = app.query_one("#app-tabs", TabbedContent)
-        panes = tc.query(TabPane)
-        assert len(panes) == 1
+        # Filter to app-level tab panes (id prefix `tab-`); panel-level
+        # Tabs containers inside the dashboard layout render their own
+        # TabPanes (prefix `tabpane-`) which `tc.query(TabPane)` also
+        # picks up.
+        app_panes = [p for p in tc.query(TabPane) if p.id and p.id.startswith("tab-")]
+        assert len(app_panes) == 1
         # The default tab's panel-area container is seeded with id "default".
         area = app.query_one("#panel-area-default", TxContainer)
         assert area.id is not None and area.id.startswith("panel-area-")
