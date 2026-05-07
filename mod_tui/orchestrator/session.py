@@ -258,14 +258,16 @@ class OrchestratorSession:
         # synthetic messages from child agents are wrapped in "[from agent ...]"
         # and so cannot match.
         if _RESET_RE.match(text):
-            asyncio.create_task(self.reset())
+            self._send_tasks = [t for t in self._send_tasks if not t.done()]
+            self._send_tasks.append(asyncio.create_task(self.reset()))
             return
         if _RESUME_BARE_RE.match(text):
             self._bus.publish(OpenResumePicker())
             return
         m = _RESUME_ID_RE.match(text)
         if m:
-            asyncio.create_task(self.resume(m.group(1)))
+            self._send_tasks = [t for t in self._send_tasks if not t.done()]
+            self._send_tasks.append(asyncio.create_task(self.resume(m.group(1))))
             return
         # Fall through: ordinary prompt.
         self._send_tasks = [t for t in self._send_tasks if not t.done()]

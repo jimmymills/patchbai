@@ -211,3 +211,87 @@ async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
         assert adapter._next_query_index == 1
     finally:
         await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_reset_preserves_old_transcript_creates_new(tmp_path):
+    from mod_tui.events import (
+        OrchestratorSessionSwitched, UserMessageToOrchestrator,
+    )
+
+    adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="first")])
+    adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="second")])
+
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=adapter1)
+    orch._next_adapter_factory = lambda: adapter2
+
+    switched: list[OrchestratorSessionSwitched] = []
+    bus.subscribe(OrchestratorSessionSwitched, switched.append)
+
+    await orch.start()
+    try:
+        # First turn so the transcript file exists.
+        bus.publish(UserMessageToOrchestrator("hello"))
+        await orch.wait_idle()
+        old_path = orch.active_transcript_path
+        assert old_path is not None
+        assert old_path.exists()
+
+        bus.publish(UserMessageToOrchestrator("/reset"))
+        await orch.wait_idle()
+        new_path = orch.active_transcript_path
+
+        assert old_path != new_path
+        assert old_path.exists(), "old transcript must remain on disk"
+        assert len(switched) == 1
+        assert switched[0].session_id == orch._sdk_session_id
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_resets_serialize(tmp_path):
+    """Two /reset calls fired back-to-back must both complete cleanly."""
+    from mod_tui.events import UserMessageToOrchestrator
+
+    adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="first")])
+    adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="second")])
+    adapter3 = _RecordingAdapter(scripts=[_ok_script(session_id="third")])
+
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(cwd=tmp_path, bus=bus, manager=manager, adapter=adapter1)
+    # Both factories are available for the two consecutive resets.
+    factories = iter([lambda: adapter2, lambda: adapter3])
+
+    # Hook so each swap pulls the next factory before delegating.
+    original_swap = orch._swap_inner
+    async def _swap(*, resume):
+        try:
+            orch._next_adapter_factory = next(factories)
+        except StopIteration:
+            pass
+        await original_swap(resume=resume)
+    orch._swap_inner = _swap
+
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("/reset"))
+        bus.publish(UserMessageToOrchestrator("/reset"))
+        await orch.wait_idle()
+        # Send a probe so the active adapter streams its ResultMessage, which
+        # causes _on_session_id_observed to fire and confirm the third session.
+        bus.publish(UserMessageToOrchestrator("probe"))
+        await orch.wait_idle()
+        # After two resets the active session is the third.
+        assert orch._sdk_session_id == "third"
+    finally:
+        await orch.stop()
