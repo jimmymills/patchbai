@@ -154,3 +154,26 @@ async def test_slash_cd_changes_cwd(tmp_path):
         await pilot.pause()
         await pilot.pause()  # second pause: change_cwd creates async tasks
         assert app.cwd == proj_b.resolve()
+
+
+@pytest.mark.asyncio
+async def test_change_cwd_updates_footer(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    proj_a = tmp_path / "a"
+    proj_b = tmp_path / "b" / "deeper"
+    proj_a.mkdir()
+    proj_b.mkdir(parents=True)
+    app, _ = _build_app(proj_a)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from mod_tui.widgets.chrome import StatusBar
+        from textual.widgets import Static
+        bar = app.query_one(StatusBar)
+        assert "~/a" in str(bar.query_one("#sb-cwd", Static).content)
+        app.orchestrator._next_adapter_factory = (
+            lambda: FakeSDKAdapter(scripts=[_ok()])
+        )
+        await app.change_cwd(proj_b)
+        await pilot.pause()
+        text = str(bar.query_one("#sb-cwd", Static).content)
+        assert "~/b/deeper" in text
