@@ -198,3 +198,63 @@ async def test_get_theme_no_name_returns_active(tmp_path, ok_script):
         assert "name" in payload
         assert "palette" in payload
         assert payload["extra_css"] == "X { color: red; }"
+
+
+@pytest.mark.asyncio
+async def test_load_theme_persist_global_writes_config(tmp_path, ok_script):
+    """persist=True, scope=global writes the active theme to config_store."""
+    from mod_tui.config import ConfigStore
+
+    manager = _make_manager(tmp_path, ok_script)
+    store = NamedThemesStore(global_dir=tmp_path)
+    config_store = ConfigStore(global_dir=tmp_path)
+    store.save("alpha", ThemeSpec(palette=ThemePalette(primary="#aabbcc")))
+
+    host = _StubApp()
+    async with host.run_test():
+        host._active_theme_extra_css = ""
+        tools = build_orchestrator_tools(
+            manager, themes_store=store, config_store=config_store, app=host,
+        )
+        out = await tools["load_theme"]({"name": "alpha"})  # default persist=True, scope=global
+        assert "loaded" in out["content"][0]["text"].lower()
+        assert "warning" not in out["content"][0]["text"].lower()
+        assert config_store.load().ui.active_theme == "alpha"
+
+
+@pytest.mark.asyncio
+async def test_load_theme_persist_global_warns_when_no_config_store(tmp_path, ok_script):
+    """persist=True, scope=global without config_store returns a warning."""
+    manager = _make_manager(tmp_path, ok_script)
+    store = NamedThemesStore(global_dir=tmp_path)
+    store.save("alpha", ThemeSpec(palette=ThemePalette(primary="#aabbcc")))
+
+    host = _StubApp()
+    async with host.run_test():
+        host._active_theme_extra_css = ""
+        tools = build_orchestrator_tools(
+            manager, themes_store=store, app=host,  # no config_store
+        )
+        out = await tools["load_theme"]({"name": "alpha"})
+        text = out["content"][0]["text"].lower()
+        assert "loaded" in text
+        assert "warning" in text
+
+
+@pytest.mark.asyncio
+async def test_load_theme_invalid_scope_returns_error(tmp_path, ok_script):
+    manager = _make_manager(tmp_path, ok_script)
+    store = NamedThemesStore(global_dir=tmp_path)
+    store.save("alpha", ThemeSpec(palette=ThemePalette(primary="#aabbcc")))
+
+    host = _StubApp()
+    async with host.run_test():
+        host._active_theme_extra_css = ""
+        tools = build_orchestrator_tools(
+            manager, themes_store=store, app=host,
+        )
+        out = await tools["load_theme"](
+            {"name": "alpha", "persist": True, "scope": "workspace"}
+        )
+        text = out["content"][0]["text"].lower()
+        assert "invalid scope" in text or "scope" in text

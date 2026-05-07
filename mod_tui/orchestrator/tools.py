@@ -17,7 +17,8 @@ from mod_tui.orchestrator.tabs_tools import (
 )
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.themes_store import NamedThemesStore
-from mod_tui.theme.engine import apply_theme
+from mod_tui.persistence.workspace_store import save_workspace
+from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme
 from mod_tui.theme.spec import ThemePalette, ThemeSpec
 
 
@@ -348,7 +349,7 @@ def _palette_from_textual_theme(textual_theme) -> ThemePalette:
     )
 
 
-def _set_theme_handler(themes_store: NamedThemesStore, app):
+def _set_theme_handler(app):
     async def set_theme_tool(args: dict) -> dict:
         try:
             spec = ThemeSpec.model_validate(args["spec"])
@@ -410,7 +411,6 @@ def _load_theme_handler(themes_store: NamedThemesStore, app, config_store=None):
             if name not in available:
                 return {"content": [{"type": "text", "text": f"Theme not found: {name}"}]}
             # Built-in pass-through: clear our extra_css source, set theme directly.
-            from mod_tui.theme.engine import _EXTRA_CSS_KEY
             if _EXTRA_CSS_KEY in app.stylesheet.source:
                 del app.stylesheet.source[_EXTRA_CSS_KEY]
             app._active_theme_extra_css = ""
@@ -421,18 +421,28 @@ def _load_theme_handler(themes_store: NamedThemesStore, app, config_store=None):
                 pass
 
         # 3. Persist active-theme pointer if asked.
+        warnings: list[str] = []
         if persist:
-            if scope == "global" and config_store is not None:
-                cfg = config_store.load()
-                cfg.ui.active_theme = name
-                config_store.save(cfg)
-            elif scope == "project" and getattr(app, "_workspace", None) is not None:
-                from mod_tui.persistence.workspace_store import save_workspace
-                ws = app._workspace.model_copy(update={"active_theme": name})
-                app._workspace = ws
-                save_workspace(app.cwd, ws)
+            if scope == "global":
+                if config_store is not None:
+                    cfg = config_store.load()
+                    cfg.ui.active_theme = name
+                    config_store.save(cfg)
+                else:
+                    warnings.append("persist requested but no config_store available")
+            elif scope == "project":
+                ws = getattr(app, "_workspace", None)
+                if ws is not None:
+                    ws = ws.model_copy(update={"active_theme": name})
+                    app._workspace = ws
+                    save_workspace(app.cwd, ws)
+                else:
+                    warnings.append("persist requested but no workspace available")
 
-        return {"content": [{"type": "text", "text": f"Loaded theme {name!r}."}]}
+        msg = f"Loaded theme {name!r}."
+        if warnings:
+            msg += " Warning: " + "; ".join(warnings) + "."
+        return {"content": [{"type": "text", "text": msg}]}
     return load_theme_tool
 
 
@@ -599,7 +609,7 @@ def build_orchestrator_tools(
     if widget_registry is not None and current_layout is not None:
         handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry, app=app)
     if themes_store is not None and app is not None:
-        handlers["set_theme"] = _set_theme_handler(themes_store, app)
+        handlers["set_theme"] = _set_theme_handler(app)
         handlers["save_theme"] = _save_theme_handler(themes_store, app)
         handlers["load_theme"] = _load_theme_handler(
             themes_store, app, config_store=config_store,
@@ -697,7 +707,7 @@ def build_orchestrator_mcp_server(
                 "chrome, fake widgets, or break input visibility. Does NOT "
                 "persist; use save_theme + load_theme for that.",
                 {"spec": dict},
-                _set_theme_handler(themes_store, app),
+                _set_theme_handler(app),
             ),
             (
                 "save_theme",
