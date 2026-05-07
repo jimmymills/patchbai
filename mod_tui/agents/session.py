@@ -48,6 +48,7 @@ class AgentSession:
         self._idle_event = asyncio.Event()
         self._idle_event.set()
         self._send_lock = asyncio.Lock()
+        self._pre_wait_state: AgentState | None = None
 
     @property
     def session_id(self) -> str | None:
@@ -173,6 +174,36 @@ class AgentSession:
             )
         )
         self.info.last_activity = time.time()
+
+    def _mark_waiting(self) -> None:
+        """Enter WAITING state, snapshotting the prior state for restore.
+
+        Idempotent: a second call while already WAITING is a no-op (the
+        snapshot is preserved). Skipped if the session is already in a
+        terminal state.
+        """
+        if self.info.state.is_terminal:
+            return
+        if self.info.state == AgentState.WAITING:
+            return
+        self._pre_wait_state = self.info.state
+        self._set_state(AgentState.WAITING)
+
+    def _mark_unwaiting(self) -> None:
+        """Exit WAITING state, restoring the pre-wait state.
+
+        No-op when not in WAITING. If the session is somehow terminal,
+        the snapshot is dropped without a transition.
+        """
+        if self.info.state != AgentState.WAITING:
+            self._pre_wait_state = None
+            return
+        target = self._pre_wait_state or AgentState.RUNNING
+        self._pre_wait_state = None
+        if target.is_terminal:
+            # Defensive: never resurrect a terminal state.
+            return
+        self._set_state(target)
 
     def _set_state(self, new_state: AgentState) -> None:
         old = self.info.state

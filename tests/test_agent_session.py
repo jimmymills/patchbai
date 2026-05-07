@@ -221,3 +221,102 @@ async def test_session_id_is_none_before_first_result(tmp_path):
     )
     await session.start(options=ClaudeAgentOptions())
     assert session.session_id is None
+
+
+@pytest.mark.asyncio
+async def test_mark_waiting_transitions_running_to_waiting(tmp_path):
+    bus = EventBus()
+    transitions: list[AgentStateChanged] = []
+    bus.subscribe(AgentStateChanged, transitions.append)
+
+    session = AgentSession(
+        info=AgentInfo(
+            id="a1", name="a1", cwd=str(tmp_path),
+            started_at=0.0, state=AgentState.RUNNING,
+        ),
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+
+    session._mark_waiting()
+    assert session.info.state == AgentState.WAITING
+    assert transitions[-1].old_state == AgentState.RUNNING
+    assert transitions[-1].info.state == AgentState.WAITING
+
+
+@pytest.mark.asyncio
+async def test_mark_unwaiting_restores_pre_wait_state(tmp_path):
+    bus = EventBus()
+    session = AgentSession(
+        info=AgentInfo(
+            id="a1", name="a1", cwd=str(tmp_path),
+            started_at=0.0, state=AgentState.RUNNING,
+        ),
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+
+    session._mark_waiting()
+    session._mark_unwaiting()
+    assert session.info.state == AgentState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_mark_waiting_is_idempotent_for_stacked_calls(tmp_path):
+    """Two enters then two exits round-trip cleanly."""
+    bus = EventBus()
+    session = AgentSession(
+        info=AgentInfo(
+            id="a1", name="a1", cwd=str(tmp_path),
+            started_at=0.0, state=AgentState.RUNNING,
+        ),
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+
+    session._mark_waiting()
+    session._mark_waiting()  # second enter is a no-op
+    assert session.info.state == AgentState.WAITING
+    session._mark_unwaiting()
+    assert session.info.state == AgentState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_mark_unwaiting_when_not_waiting_is_noop(tmp_path):
+    bus = EventBus()
+    session = AgentSession(
+        info=AgentInfo(
+            id="a1", name="a1", cwd=str(tmp_path),
+            started_at=0.0, state=AgentState.RUNNING,
+        ),
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+
+    session._mark_unwaiting()
+    assert session.info.state == AgentState.RUNNING
+
+
+@pytest.mark.asyncio
+async def test_mark_unwaiting_does_not_resurrect_terminal_state(tmp_path):
+    bus = EventBus()
+    session = AgentSession(
+        info=AgentInfo(
+            id="a1", name="a1", cwd=str(tmp_path),
+            started_at=0.0, state=AgentState.RUNNING,
+        ),
+        adapter=FakeSDKAdapter(scripts=[]),
+        transcript=AgentTranscript(cwd=tmp_path, agent_id="a1"),
+        bus=bus,
+    )
+
+    session._mark_waiting()
+    # Simulate the stream ending while waiting — defensive only; the real
+    # SDK would never do this because the tool result is still pending.
+    session.info.state = AgentState.DONE
+    session._mark_unwaiting()
+    assert session.info.state == AgentState.DONE
