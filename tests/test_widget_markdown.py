@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.widgets.markdown import Markdown
+from patchbai.widgets.markdown import Markdown
 
 
 class _Host(App):

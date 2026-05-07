@@ -2,9 +2,9 @@ import pytest
 from textual.app import App
 from textual.widgets import Static
 
-from mod_tui.events import AgentMessageAppended, EventBus
-from mod_tui.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
-from mod_tui.widgets.rich_transcript import RichTranscript
+from patchbai.events import AgentMessageAppended, EventBus
+from patchbai.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
+from patchbai.widgets.rich_transcript import RichTranscript
 
 
 class _HostApp(App):
@@ -62,7 +62,7 @@ async def test_rich_transcript_ignores_other_agents(tmp_path):
 
 @pytest.mark.asyncio
 async def test_each_user_message_opens_a_new_turn(tmp_path):
-    from mod_tui.widgets.rich_transcript import _TurnContainer
+    from patchbai.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -87,7 +87,7 @@ async def test_each_user_message_opens_a_new_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_assistant_text_routes_to_current_turn(tmp_path):
-    from mod_tui.widgets.rich_transcript import _TurnContainer
+    from patchbai.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -119,7 +119,7 @@ async def test_assistant_text_routes_to_current_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ToolCall
+    from patchbai.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -146,7 +146,7 @@ async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tool_result_pairs_by_tool_id_and_collapses(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ToolCall
+    from patchbai.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -193,7 +193,7 @@ async def test_tool_result_pairs_by_tool_id_and_collapses(tmp_path):
 @pytest.mark.asyncio
 async def test_tool_args_with_brackets_render_literally(tmp_path):
     """[type=int_parsing] in args must NOT trip Rich markup parsing."""
-    from mod_tui.widgets.rich_transcript import _ToolCall
+    from patchbai.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -216,7 +216,7 @@ async def test_tool_args_with_brackets_render_literally(tmp_path):
 
 @pytest.mark.asyncio
 async def test_consecutive_thinking_blocks_merge_into_one_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+    from patchbai.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -238,7 +238,7 @@ async def test_consecutive_thinking_blocks_merge_into_one_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_thinking_after_tool_opens_new_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+    from patchbai.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -261,7 +261,7 @@ async def test_thinking_after_tool_opens_new_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_thinking_group_starts_expanded(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ThinkingGroup
+    from patchbai.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -279,9 +279,9 @@ async def test_thinking_group_starts_expanded(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_state_done_collapses_current_turn(tmp_path):
-    from mod_tui.agents.state import AgentInfo, AgentState
-    from mod_tui.events import AgentStateChanged
-    from mod_tui.widgets.rich_transcript import (
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.events import AgentStateChanged
+    from patchbai.widgets.rich_transcript import (
         _ThinkingGroup, _TurnContainer,
     )
 
@@ -311,9 +311,9 @@ async def test_agent_state_done_collapses_current_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_state_error_marks_turn_error(tmp_path):
-    from mod_tui.agents.state import AgentInfo, AgentState
-    from mod_tui.events import AgentStateChanged
-    from mod_tui.widgets.rich_transcript import _TurnContainer
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.events import AgentStateChanged
+    from patchbai.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -334,9 +334,9 @@ async def test_agent_state_error_marks_turn_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_state_change_for_other_agent_is_ignored(tmp_path):
-    from mod_tui.agents.state import AgentInfo, AgentState
-    from mod_tui.events import AgentStateChanged
-    from mod_tui.widgets.rich_transcript import _TurnContainer
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.events import AgentStateChanged
+    from patchbai.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -358,7 +358,7 @@ async def test_state_change_for_other_agent_is_ignored(tmp_path):
 
 @pytest.mark.asyncio
 async def test_thinking_and_tools_wrap_in_process_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import (
+    from patchbai.widgets.rich_transcript import (
         _ProcessGroup, _ThinkingGroup, _ToolCall,
     )
 
@@ -389,7 +389,7 @@ async def test_thinking_and_tools_wrap_in_process_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_assistant_text_closes_process_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ProcessGroup
+    from patchbai.widgets.rich_transcript import _ProcessGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -416,7 +416,7 @@ async def test_assistant_text_closes_process_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_second_round_opens_new_process_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ProcessGroup
+    from patchbai.widgets.rich_transcript import _ProcessGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -453,7 +453,7 @@ async def test_second_round_opens_new_process_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_text_only_turn_has_no_process_group(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ProcessGroup
+    from patchbai.widgets.rich_transcript import _ProcessGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -471,7 +471,7 @@ async def test_text_only_turn_has_no_process_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_running_tool_call_spinner_advances(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+    from patchbai.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -497,7 +497,7 @@ async def test_running_tool_call_spinner_advances(tmp_path):
 
 @pytest.mark.asyncio
 async def test_spinner_stops_after_result(tmp_path):
-    from mod_tui.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+    from patchbai.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 
     bus = EventBus()
     app = _HostApp(bus, "a1")

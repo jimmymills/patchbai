@@ -1,5 +1,5 @@
-from mod_tui.layout.defaults import dashboard_layout
-from mod_tui.layout.spec import Container, Panel
+from patchbai.layout.defaults import dashboard_layout
+from patchbai.layout.spec import Container, Panel
 
 
 def test_dashboard_validates():

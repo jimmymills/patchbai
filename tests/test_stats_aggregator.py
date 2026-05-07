@@ -3,11 +3,11 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.app import ModTuiApp
-from mod_tui.events import AgentTokensTouched, EventBus, StatsUpdated
-from mod_tui.orchestrator.session import OrchestratorSession
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.app import PatchbaiApp
+from patchbai.events import AgentTokensTouched, EventBus, StatsUpdated
+from patchbai.orchestrator.session import OrchestratorSession
 
 
 def _ok_with_usage(tokens_in: int, tokens_out: int, cost: float = 0.0) -> list:
@@ -23,7 +23,7 @@ def _ok_with_usage(tokens_in: int, tokens_out: int, cost: float = 0.0) -> list:
     ]
 
 
-def _build_test_app(tmp_path: Path, *, orch_script: list | None = None) -> ModTuiApp:
+def _build_test_app(tmp_path: Path, *, orch_script: list | None = None) -> PatchbaiApp:
     bus = EventBus()
     manager = AgentManager(
         cwd=tmp_path,
@@ -36,7 +36,7 @@ def _build_test_app(tmp_path: Path, *, orch_script: list | None = None) -> ModTu
         manager=manager,
         adapter=FakeSDKAdapter(scripts=[orch_script or _ok_with_usage(0, 0)]),
     )
-    app = ModTuiApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
+    app = PatchbaiApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
     app.event_bus = bus
     return app
 
@@ -57,7 +57,7 @@ async def test_orchestrator_token_increment_fires_stats_updated(tmp_path: Path):
         # Drive a message through the orchestrator. The fake adapter then
         # replays the scripted ResultMessage, AgentSession increments info,
         # publishes AgentTokensTouched, the app aggregator publishes StatsUpdated.
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         app.event_bus.publish(UserMessageToOrchestrator(text="hi"))
         # Give the orchestrator's send task time to drain the script.
         await app.orchestrator.wait_idle()

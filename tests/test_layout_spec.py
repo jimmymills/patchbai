@@ -1,6 +1,6 @@
 import pytest
 
-from mod_tui.layout.spec import Container, LayoutSpec, Panel, Tabs
+from patchbai.layout.spec import Container, LayoutSpec, Panel, Tabs
 
 
 def _minimal() -> dict:

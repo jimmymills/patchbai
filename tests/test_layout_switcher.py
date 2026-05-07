@@ -2,9 +2,9 @@ import pytest
 from textual.app import App
 from textual.widgets import ListView
 
-from mod_tui.layout.defaults import dashboard_layout
-from mod_tui.persistence.layouts_store import NamedLayoutsStore
-from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
+from patchbai.layout.defaults import dashboard_layout
+from patchbai.persistence.layouts_store import NamedLayoutsStore
+from patchbai.widgets.layout_switcher import LayoutSwitcherScreen
 
 
 @pytest.mark.asyncio

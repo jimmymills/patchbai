@@ -1,7 +1,7 @@
 import pytest
 from textual.widget import Widget
 
-from mod_tui.layout.registry import UnknownWidgetError, WidgetRegistry
+from patchbai.layout.registry import UnknownWidgetError, WidgetRegistry
 
 
 class _W(Widget):

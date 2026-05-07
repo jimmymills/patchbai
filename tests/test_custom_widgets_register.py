@@ -1,11 +1,11 @@
 import pytest
 from textual.widget import Widget
 
-from mod_tui.layout.custom_widgets import (
+from patchbai.layout.custom_widgets import (
     CustomWidgetError,
     register_custom_widget,
 )
-from mod_tui.layout.registry import WidgetRegistry
+from patchbai.layout.registry import WidgetRegistry
 
 
 def test_register_with_widget_class_sentinel():

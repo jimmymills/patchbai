@@ -5,15 +5,15 @@ import pytest
 from textual.app import App
 from textual.widgets import DataTable
 
-from mod_tui.agents.state import AgentInfo, AgentState
-from mod_tui.events import (
+from patchbai.agents.state import AgentInfo, AgentState
+from patchbai.events import (
     AgentArchiveChanged,
     AgentSpawned,
     AgentStateChanged,
     EventBus,
 )
-from mod_tui.persistence.agents_index import AgentsIndex
-from mod_tui.widgets.agent_table import AgentTable
+from patchbai.persistence.agents_index import AgentsIndex
+from patchbai.widgets.agent_table import AgentTable
 
 
 class _StubManager:

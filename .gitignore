@@ -5,6 +5,6 @@ __pycache__/
 dist/
 *.egg-info/
 .pytest_cache/
-.mod_tui/
+.patchbai/
 .superpowers/
 .DS_Store

@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from mod_tui.persistence.themes_store import NamedThemesStore
-from mod_tui.theme.spec import ThemePalette, ThemeSpec
+from patchbai.persistence.themes_store import NamedThemesStore
+from patchbai.theme.spec import ThemePalette, ThemeSpec
 
 
 def _spec() -> ThemeSpec:

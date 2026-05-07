@@ -1,6 +1,6 @@
 import pytest
 
-from mod_tui.config import Config, ConfigStore
+from patchbai.config import Config, ConfigStore
 
 
 def test_get_path_works_for_unknown_section_after_extension(tmp_path, monkeypatch):
@@ -11,7 +11,7 @@ def test_get_path_works_for_unknown_section_after_extension(tmp_path, monkeypatc
 
     class _LogsSection:
         level = "info"
-        path = "/var/log/mod_tui.log"
+        path = "/var/log/patchbai.log"
 
     cfg.logs = _LogsSection()  # type: ignore[attr-defined]
 

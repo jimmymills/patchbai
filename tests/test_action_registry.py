@@ -1,6 +1,6 @@
 import pytest
 
-from mod_tui.actions import ActionRegistry, ActionSpec
+from patchbai.actions import ActionRegistry, ActionSpec
 
 
 def test_register_then_lookup():

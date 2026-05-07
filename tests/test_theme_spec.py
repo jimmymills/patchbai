@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from mod_tui.theme.spec import ThemePalette, ThemeSpec
+from patchbai.theme.spec import ThemePalette, ThemeSpec
 
 
 def test_theme_palette_requires_primary():

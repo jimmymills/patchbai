@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.widgets.file_tree import FileTree
+from patchbai.widgets.file_tree import FileTree
 
 
 class _Host(App):

@@ -1,16 +1,16 @@
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.app import ModTuiApp
-from mod_tui.events import EventBus, OpenResumePicker
-from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.persistence.orchestrator_sessions import (
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.app import PatchbaiApp
+from patchbai.events import EventBus, OpenResumePicker
+from patchbai.orchestrator.session import OrchestratorSession
+from patchbai.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
-from mod_tui.widgets.resume_screen import ResumeScreen
+from patchbai.widgets.resume_screen import ResumeScreen
 
 
 def _ok():
@@ -37,7 +37,7 @@ async def test_open_resume_picker_pushes_resume_screen(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
     )
-    app = ModTuiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,

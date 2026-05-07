@@ -4,15 +4,15 @@ import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.app import App
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.app import ModTuiApp
-from mod_tui.events import EventBus
-from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.widgets.agent_table import AgentTable
-from mod_tui.widgets.chrome import CommandBar, StatusBar
-from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-from mod_tui.widgets.placeholders import ActivityFeed
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.app import PatchbaiApp
+from patchbai.events import EventBus
+from patchbai.orchestrator.session import OrchestratorSession
+from patchbai.widgets.agent_table import AgentTable
+from patchbai.widgets.chrome import CommandBar, StatusBar
+from patchbai.widgets.orchestrator_chat import OrchestratorChat
+from patchbai.widgets.placeholders import ActivityFeed
 
 
 def _ok_script() -> list:
@@ -28,7 +28,7 @@ def _ok_script() -> list:
     ]
 
 
-def _build_test_app(tmp_path: Path) -> ModTuiApp:
+def _build_test_app(tmp_path: Path) -> PatchbaiApp:
     bus = EventBus()
     manager = AgentManager(
         cwd=tmp_path,
@@ -41,7 +41,7 @@ def _build_test_app(tmp_path: Path) -> ModTuiApp:
         manager=manager,
         adapter=FakeSDKAdapter(scripts=[_ok_script()]),
     )
-    app = ModTuiApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
+    app = PatchbaiApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
     app.event_bus = bus  # share
     return app
 
@@ -126,7 +126,7 @@ async def test_layout_persists_across_app_runs(tmp_path: Path):
     async with app1.run_test() as pilot:
         await pilot.pause()
         # The new persistence format is workspace.json (not the legacy layout.json).
-        assert (tmp_path / ".mod_tui" / "workspace.json").exists()
+        assert (tmp_path / ".patchbai" / "workspace.json").exists()
 
     # Second run: same cwd, verify layout restored.
     app2 = _build_test_app(tmp_path)
@@ -147,7 +147,7 @@ async def test_command_bar_message_round_trips_through_real_orchestrator(tmp_pat
         await pilot.pause()
         await app.orchestrator.wait_idle()
 
-        from mod_tui.persistence.transcript_store import AgentTranscript
+        from patchbai.persistence.transcript_store import AgentTranscript
         transcript_path = app.orchestrator._active_transcript_path
         entries = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).read_all()
         roles = [e.role for e in entries]
@@ -160,9 +160,9 @@ async def test_command_bar_message_round_trips_through_real_orchestrator(tmp_pat
 @pytest.mark.asyncio
 async def test_orchestrator_chat_uses_rich_transcript(tmp_path):
     """OrchestratorChat composes a RichTranscript for the 'orchestrator' agent."""
-    from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-    from mod_tui.widgets.rich_transcript import RichTranscript
-    from mod_tui.events import EventBus
+    from patchbai.widgets.orchestrator_chat import OrchestratorChat
+    from patchbai.widgets.rich_transcript import RichTranscript
+    from patchbai.events import EventBus
 
     class _Host(App):
         event_bus = EventBus()

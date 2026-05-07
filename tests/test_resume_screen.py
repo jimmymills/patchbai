@@ -1,11 +1,11 @@
 import pytest
 from textual.app import App
 
-from mod_tui.persistence.orchestrator_sessions import (
+from patchbai.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
-from mod_tui.widgets.resume_screen import ResumeScreen
+from patchbai.widgets.resume_screen import ResumeScreen
 
 
 def _seed(tmp_path):

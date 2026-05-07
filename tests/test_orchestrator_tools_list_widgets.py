@@ -3,11 +3,11 @@ import json
 import pytest
 from textual.widget import Widget
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.events import EventBus
-from mod_tui.layout.registry import WidgetRegistry
-from mod_tui.orchestrator.tools import build_orchestrator_tools
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.events import EventBus
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.orchestrator.tools import build_orchestrator_tools
 
 
 class _W(Widget):

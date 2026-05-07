@@ -2,8 +2,8 @@ import pytest
 from textual.app import App
 from textual.containers import VerticalScroll
 
-from mod_tui.events import AgentMessageAppended, EventBus
-from mod_tui.widgets.rich_transcript import RichTranscript
+from patchbai.events import AgentMessageAppended, EventBus
+from patchbai.widgets.rich_transcript import RichTranscript
 
 
 class _HostApp(App):

@@ -1,12 +1,12 @@
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.app import ModTuiApp
-from mod_tui.events import EventBus
-from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.orchestrator.tools import build_orchestrator_tools
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.app import PatchbaiApp
+from patchbai.events import EventBus
+from patchbai.orchestrator.session import OrchestratorSession
+from patchbai.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok():
@@ -27,7 +27,7 @@ async def test_orchestrator_can_declare_and_use_custom_widget(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = ModTuiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,

@@ -1,9 +1,9 @@
-from mod_tui.layout.spec import Panel
-from mod_tui.layout.titles import resolve_title
-from mod_tui.widgets.agent_table import AgentTable
-from mod_tui.widgets.diff_viewer import DiffViewer
-from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-from mod_tui.widgets.placeholders import ActivityFeed
+from patchbai.layout.spec import Panel
+from patchbai.layout.titles import resolve_title
+from patchbai.widgets.agent_table import AgentTable
+from patchbai.widgets.diff_viewer import DiffViewer
+from patchbai.widgets.orchestrator_chat import OrchestratorChat
+from patchbai.widgets.placeholders import ActivityFeed
 
 
 class _Bare:
@@ -34,14 +34,14 @@ def test_resolver_swallows_classmethod_exceptions():
     assert resolve_title(Panel(id="x", widget="Boom"), Boom) == "Boom"
 
 
-from mod_tui.widgets.agent_transcript import AgentTranscript
-from mod_tui.widgets.file_tree import FileTree
-from mod_tui.widgets.file_viewer import FileViewer
-from mod_tui.widgets.log_tail import LogTail
-from mod_tui.widgets.markdown import Markdown
-from mod_tui.widgets.notebook import Notebook
-from mod_tui.widgets.rich_transcript import RichTranscript
-from mod_tui.widgets.terminal import Terminal
+from patchbai.widgets.agent_transcript import AgentTranscript
+from patchbai.widgets.file_tree import FileTree
+from patchbai.widgets.file_viewer import FileViewer
+from patchbai.widgets.log_tail import LogTail
+from patchbai.widgets.markdown import Markdown
+from patchbai.widgets.notebook import Notebook
+from patchbai.widgets.rich_transcript import RichTranscript
+from patchbai.widgets.terminal import Terminal
 
 
 def test_file_tree_default_title_uses_path():

@@ -2,9 +2,9 @@ import pytest
 from textual.app import App
 from textual.widgets import ListView
 
-from mod_tui.persistence.themes_store import NamedThemesStore
-from mod_tui.theme.spec import ThemePalette, ThemeSpec
-from mod_tui.widgets.theme_switcher import ThemeSwitcherScreen
+from patchbai.persistence.themes_store import NamedThemesStore
+from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchbai.widgets.theme_switcher import ThemeSwitcherScreen
 
 
 def _spec() -> ThemeSpec:

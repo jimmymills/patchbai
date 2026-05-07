@@ -3,12 +3,12 @@ import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.widgets import TabbedContent, TabPane
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.app import ModTuiApp
-from mod_tui.events import EventBus
-from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.orchestrator.tabs_tools import (
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.app import PatchbaiApp
+from patchbai.events import EventBus
+from patchbai.orchestrator.session import OrchestratorSession
+from patchbai.orchestrator.tabs_tools import (
     add_tab_handler,
     close_tab_handler,
     list_tabs_handler,
@@ -35,7 +35,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = ModTuiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -102,7 +102,7 @@ async def test_add_tab_with_named_layout_resolves(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         # Save a named layout, then ask add_tab to seed from it by name.
-        from mod_tui.layout.spec import LayoutSpec
+        from patchbai.layout.spec import LayoutSpec
         named = LayoutSpec.model_validate({
             "version": 1,
             "layout": {"id": "feed", "widget": "ActivityFeed"},
@@ -133,7 +133,7 @@ async def test_add_tab_does_not_activate_when_activate_false(tmp_path):
 async def test_add_tab_publishes_tab_added_event(tmp_path):
     app = _build_app(tmp_path)
     seen: list = []
-    from mod_tui.events import TabAdded
+    from patchbai.events import TabAdded
     app.event_bus.subscribe(TabAdded, lambda e: seen.append(e))
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -193,8 +193,8 @@ async def test_close_tab_refuses_when_no_chat_remains(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".mod_tui").mkdir()
-    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -221,7 +221,7 @@ async def test_close_tab_unknown_id_returns_error(tmp_path):
 async def test_close_tab_publishes_tab_closed_event(tmp_path):
     app = _build_app(tmp_path)
     seen: list = []
-    from mod_tui.events import TabClosed
+    from patchbai.events import TabClosed
     app.event_bus.subscribe(TabClosed, lambda e: seen.append(e))
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -380,7 +380,7 @@ async def test_rename_tab_empty_title_returns_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_rename_tab_persists_to_disk(tmp_path):
-    from mod_tui.persistence.paths import project_workspace_path
+    from patchbai.persistence.paths import project_workspace_path
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -462,7 +462,7 @@ async def test_reorder_tabs_rejects_non_permutation(tmp_path):
 
 @pytest.mark.asyncio
 async def test_reorder_tabs_persists_to_disk(tmp_path):
-    from mod_tui.persistence.paths import project_workspace_path
+    from patchbai.persistence.paths import project_workspace_path
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()

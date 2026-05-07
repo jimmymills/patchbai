@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from mod_tui.agents.request_inbox import RequestInbox
+from patchbai.agents.request_inbox import RequestInbox
 
 
 @pytest.mark.asyncio

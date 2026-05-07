@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from mod_tui.layout.spec import LayoutSpec
-from mod_tui.persistence.layout_store import load_layout, save_layout
+from patchbai.layout.spec import LayoutSpec
+from patchbai.persistence.layout_store import load_layout, save_layout
 
 
 def _spec() -> LayoutSpec:
@@ -23,18 +23,18 @@ def test_save_then_load_round_trips(tmp_path: Path):
 
 def test_save_creates_state_dir(tmp_path: Path):
     save_layout(tmp_path, _spec())
-    assert (tmp_path / ".mod_tui" / "layout.json").exists()
+    assert (tmp_path / ".patchbai" / "layout.json").exists()
 
 
 def test_load_corrupted_file_returns_none(tmp_path: Path):
-    state = tmp_path / ".mod_tui"
+    state = tmp_path / ".patchbai"
     state.mkdir()
     (state / "layout.json").write_text("not json {{")
     assert load_layout(tmp_path) is None
 
 
 def test_load_invalid_spec_returns_none(tmp_path: Path):
-    state = tmp_path / ".mod_tui"
+    state = tmp_path / ".patchbai"
     state.mkdir()
     (state / "layout.json").write_text(
         '{"version": 1, "layout": {"type": "horizontal", "children": ['

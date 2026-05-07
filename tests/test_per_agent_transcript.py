@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from mod_tui.persistence.transcript_store import (
+from patchbai.persistence.transcript_store import (
     AgentTranscript,
     OrchestratorTranscript,
     TranscriptEntry,
@@ -10,7 +10,7 @@ from mod_tui.persistence.transcript_store import (
 def test_per_agent_transcript_writes_to_agent_id_path(tmp_path: Path):
     t = AgentTranscript(cwd=tmp_path, agent_id="abc123")
     t.append(TranscriptEntry(role="user", text="hi"))
-    expected = tmp_path / ".mod_tui" / "transcripts" / "abc123.jsonl"
+    expected = tmp_path / ".patchbai" / "transcripts" / "abc123.jsonl"
     assert expected.exists()
 
 
@@ -40,11 +40,11 @@ def test_orchestrator_transcript_still_works_unchanged(tmp_path: Path):
     o.append(TranscriptEntry(role="user", text="legacy"))
     assert o.read_all() == [TranscriptEntry(role="user", text="legacy")]
     # And the file path is the canonical orchestrator file.
-    assert (tmp_path / ".mod_tui" / "transcripts" / "orchestrator.jsonl").exists()
+    assert (tmp_path / ".patchbai" / "transcripts" / "orchestrator.jsonl").exists()
 
 
 def test_transcript_entry_round_trips_tool_fields(tmp_path):
-    from mod_tui.persistence.transcript_store import AgentTranscript, TranscriptEntry
+    from patchbai.persistence.transcript_store import AgentTranscript, TranscriptEntry
 
     t = AgentTranscript(cwd=tmp_path, agent_id="x")
     t.append(TranscriptEntry(role="tool_use", text="ls /tmp",
@@ -64,10 +64,10 @@ def test_transcript_entry_round_trips_tool_fields(tmp_path):
 def test_transcript_entry_reads_old_records_without_tool_fields(tmp_path):
     """Records written before tool_id/tool_name existed must still load."""
     import json
-    from mod_tui.persistence.paths import (
+    from patchbai.persistence.paths import (
         project_transcript_path, project_transcripts_dir,
     )
-    from mod_tui.persistence.transcript_store import AgentTranscript
+    from patchbai.persistence.transcript_store import AgentTranscript
 
     project_transcripts_dir(tmp_path).mkdir(parents=True, exist_ok=True)
     path = project_transcript_path(tmp_path, "old")

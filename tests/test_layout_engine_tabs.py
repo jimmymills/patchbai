@@ -3,12 +3,12 @@ from textual.app import App, ComposeResult
 from textual.containers import Container as TxContainer
 from textual.widgets import TabbedContent, TabPane
 
-from mod_tui.layout.engine import apply
-from mod_tui.layout.registry import WidgetRegistry
-from mod_tui.layout.spec import LayoutSpec
-from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-from mod_tui.widgets.placeholders import ActivityFeed
-from mod_tui.widgets.log_tail import LogTail
+from patchbai.layout.engine import apply
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.layout.spec import LayoutSpec
+from patchbai.widgets.orchestrator_chat import OrchestratorChat
+from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.log_tail import LogTail
 
 
 def _registry() -> WidgetRegistry:

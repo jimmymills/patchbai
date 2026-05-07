@@ -4,13 +4,13 @@ import pytest
 from textual.app import App
 from textual.containers import Container
 
-from mod_tui.layout.defaults import dashboard_layout
-from mod_tui.layout.engine import apply as apply_layout
-from mod_tui.layout.registry import WidgetRegistry
-from mod_tui.layout.spec import LayoutSpec
-from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-from mod_tui.widgets.placeholders import ActivityFeed
-from mod_tui.widgets.agent_table import AgentTable
+from patchbai.layout.defaults import dashboard_layout
+from patchbai.layout.engine import apply as apply_layout
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.layout.spec import LayoutSpec
+from patchbai.widgets.orchestrator_chat import OrchestratorChat
+from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.agent_table import AgentTable
 
 
 def _registry() -> WidgetRegistry:

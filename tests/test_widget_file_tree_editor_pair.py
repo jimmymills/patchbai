@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.events import EventBus, FileSelected
-from mod_tui.widgets.file_editor import ConfirmDirtySwitchScreen, FileEditor
-from mod_tui.widgets.file_tree import FileTree
+from patchbai.events import EventBus, FileSelected
+from patchbai.widgets.file_editor import ConfirmDirtySwitchScreen, FileEditor
+from patchbai.widgets.file_tree import FileTree
 
 
 class _Pair(App):

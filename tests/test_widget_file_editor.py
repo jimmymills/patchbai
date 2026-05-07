@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.widgets.file_editor import ConfirmOverwriteScreen, FileEditor
+from patchbai.widgets.file_editor import ConfirmOverwriteScreen, FileEditor
 
 
 class _Host(App):
@@ -395,8 +395,8 @@ async def test_file_editor_load_file_missing_path(tmp_path: Path):
 
 
 def test_file_editor_is_registered_in_default_registry():
-    from mod_tui.app import build_default_registry
-    from mod_tui.widgets.file_editor import FileEditor
+    from patchbai.app import build_default_registry
+    from patchbai.widgets.file_editor import FileEditor
 
     reg = build_default_registry()
     assert "FileEditor" in reg.known()

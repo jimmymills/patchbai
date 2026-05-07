@@ -2,8 +2,8 @@ import pytest
 from textual.app import App
 from textual.widgets import Input
 
-from mod_tui.events import DirectMessageToAgent, EventBus
-from mod_tui.widgets.agent_transcript import AgentTranscript
+from patchbai.events import DirectMessageToAgent, EventBus
+from patchbai.widgets.agent_transcript import AgentTranscript
 
 
 class _HostApp(App):

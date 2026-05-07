@@ -7,11 +7,11 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.agents.state import AgentState
-from mod_tui.events import AgentArchiveChanged, AgentSpawned, EventBus
-from mod_tui.persistence.agents_index import AgentsIndex
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.agents.state import AgentState
+from patchbai.events import AgentArchiveChanged, AgentSpawned, EventBus
+from patchbai.persistence.agents_index import AgentsIndex
 
 
 def _ok_script() -> list:
@@ -58,7 +58,7 @@ async def test_spawn_persists_to_agents_index(tmp_path: Path):
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
     )
     await manager.spawn(name="research", prompt="say done")
-    assert (tmp_path / ".mod_tui" / "agents.json").exists()
+    assert (tmp_path / ".patchbai" / "agents.json").exists()
 
 
 @pytest.mark.asyncio
@@ -223,7 +223,7 @@ async def test_spawn_captures_session_id_and_spawn_options(tmp_path: Path):
     # Resume across restarts depends on (a) spawn_options being persisted
     # at spawn time and (b) the SDK session_id being captured from the first
     # ResultMessage. Verify both land on disk.
-    from mod_tui.persistence.agents_index import AgentsIndex
+    from patchbai.persistence.agents_index import AgentsIndex
 
     manager = AgentManager(
         cwd=tmp_path,
@@ -277,8 +277,8 @@ async def test_resume_revives_session_for_persisted_agent(tmp_path: Path):
 async def test_resume_returns_none_for_legacy_record(tmp_path: Path):
     # Records written before the resume feature have no session_id /
     # spawn_options. resume() must report this and not throw.
-    from mod_tui.agents.state import AgentInfo, AgentState
-    from mod_tui.persistence.agents_index import AgentsIndex
+    from patchbai.agents.state import AgentInfo, AgentState
+    from patchbai.persistence.agents_index import AgentsIndex
 
     AgentsIndex(cwd=tmp_path).save([
         AgentInfo(id="legacy", name="old", cwd=str(tmp_path),
@@ -295,7 +295,7 @@ async def test_resume_returns_none_for_legacy_record(tmp_path: Path):
 async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
     import asyncio
 
-    from mod_tui.events import DirectMessageToAgent
+    from patchbai.events import DirectMessageToAgent
 
     bus = EventBus()
     m1 = AgentManager(
@@ -328,7 +328,7 @@ async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
-    from mod_tui.agents.request_inbox import RequestInbox
+    from patchbai.agents.request_inbox import RequestInbox
 
     manager = AgentManager(
         cwd=tmp_path,
@@ -350,10 +350,10 @@ async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
-    from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-    from mod_tui.agents.manager import AgentManager
-    from mod_tui.agents.state import AgentState
-    from mod_tui.events import AgentStateChanged, EventBus
+    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchbai.agents.manager import AgentManager
+    from patchbai.agents.state import AgentState
+    from patchbai.events import AgentStateChanged, EventBus
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
     def _ok():

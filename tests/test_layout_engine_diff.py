@@ -1,11 +1,11 @@
-from mod_tui.layout.defaults import dashboard_layout
-from mod_tui.layout.engine import (
+from patchbai.layout.defaults import dashboard_layout
+from patchbai.layout.engine import (
     MountPanel,
     UnmountPanel,
     UpdateProps,
     diff,
 )
-from mod_tui.layout.spec import LayoutSpec
+from patchbai.layout.spec import LayoutSpec
 
 
 def _spec(panels: list[dict]) -> LayoutSpec:

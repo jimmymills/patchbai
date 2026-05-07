@@ -7,7 +7,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
 
 
 def _hello_response() -> list:

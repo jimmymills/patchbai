@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.widgets.log_tail import LogTail
+from patchbai.widgets.log_tail import LogTail
 
 
 class _Host(App):

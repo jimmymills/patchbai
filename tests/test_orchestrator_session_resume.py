@@ -5,11 +5,11 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.events import EventBus, UserMessageToOrchestrator
-from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.persistence.orchestrator_sessions import (
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.events import EventBus, UserMessageToOrchestrator
+from patchbai.orchestrator.session import OrchestratorSession
+from patchbai.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
@@ -83,7 +83,7 @@ async def test_start_seeds_counters_from_resumed_entry(tmp_path):
     """When start() resumes a prior session, the orchestrator's _info
     counters should be seeded from the persisted entry so the StatusBar
     immediately reflects the running per-session totals."""
-    from mod_tui.events import AgentTokensTouched, StatsUpdated
+    from patchbai.events import AgentTokensTouched, StatsUpdated
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
         session_id="prev-id", transcript_path="x.jsonl",
@@ -147,7 +147,7 @@ async def test_start_skips_legacy_entries_for_resume(tmp_path):
 
 @pytest.mark.asyncio
 async def test_start_runs_legacy_migration(tmp_path):
-    transcripts = tmp_path / ".mod_tui" / "transcripts"
+    transcripts = tmp_path / ".patchbai" / "transcripts"
     transcripts.mkdir(parents=True)
     legacy = transcripts / "orchestrator.jsonl"
     legacy.write_text('{"role": "user", "text": "old"}\n', encoding="utf-8")
@@ -184,7 +184,7 @@ async def test_first_result_message_upserts_index(tmp_path):
     await orch.start()
     try:
         # Send one message so a ResultMessage flows.
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         orch._bus.publish(UserMessageToOrchestrator("hi"))
         await orch.wait_idle()
 
@@ -219,7 +219,7 @@ async def test_reset_does_not_send_literal_to_sdk(tmp_path):
 
     await orch.start()
     try:
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/reset"))
         await orch.wait_idle()
 
@@ -233,7 +233,7 @@ async def test_reset_does_not_send_literal_to_sdk(tmp_path):
 
 @pytest.mark.asyncio
 async def test_open_resume_picker_published_on_bare_resume(tmp_path):
-    from mod_tui.events import OpenResumePicker, UserMessageToOrchestrator
+    from patchbai.events import OpenResumePicker, UserMessageToOrchestrator
 
     adapter = _RecordingAdapter(scripts=[_ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
@@ -255,7 +255,7 @@ async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
     orch, bus = _build_orch(tmp_path, adapter=adapter)
     await orch.start()
     try:
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/notacommand"))
         await orch.wait_idle()
         # Adapter saw the prompt as a query.
@@ -268,7 +268,7 @@ async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
 async def test_help_command_lists_commands_without_hitting_sdk(tmp_path):
     """`/help` must be intercepted (not forwarded to the SDK) and must
     publish an OrchestratorReply listing the available slash commands."""
-    from mod_tui.events import OrchestratorReply, UserMessageToOrchestrator
+    from patchbai.events import OrchestratorReply, UserMessageToOrchestrator
 
     adapter = _RecordingAdapter(scripts=[_ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
@@ -294,7 +294,7 @@ async def test_help_command_lists_commands_without_hitting_sdk(tmp_path):
 
 @pytest.mark.asyncio
 async def test_reset_preserves_old_transcript_creates_new(tmp_path):
-    from mod_tui.events import (
+    from patchbai.events import (
         OrchestratorSessionSwitched, UserMessageToOrchestrator,
     )
 
@@ -336,7 +336,7 @@ async def test_reset_preserves_old_transcript_creates_new(tmp_path):
 @pytest.mark.asyncio
 async def test_concurrent_resets_serialize(tmp_path):
     """Two /reset calls fired back-to-back must both complete cleanly."""
-    from mod_tui.events import UserMessageToOrchestrator
+    from patchbai.events import UserMessageToOrchestrator
 
     adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="first")])
     adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="second")])
@@ -378,12 +378,12 @@ async def test_concurrent_resets_serialize(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_known_session_passes_resume_to_sdk(tmp_path):
-    from mod_tui.events import OrchestratorSessionSwitched
+    from patchbai.events import OrchestratorSessionSwitched
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
         session_id="target",
-        transcript_path=str(tmp_path / ".mod_tui" / "transcripts" / "orchestrator.target.jsonl"),
+        transcript_path=str(tmp_path / ".patchbai" / "transcripts" / "orchestrator.target.jsonl"),
         started_at=100.0, last_activity=200.0,
     ))
 
@@ -410,7 +410,7 @@ async def test_resume_known_session_passes_resume_to_sdk(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_unknown_session_is_noop_with_notice(tmp_path):
-    from mod_tui.events import OrchestratorReply
+    from patchbai.events import OrchestratorReply
 
     adapter = _RecordingAdapter(scripts=[_ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
@@ -429,7 +429,7 @@ async def test_resume_unknown_session_is_noop_with_notice(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_legacy_falls_back_to_reset(tmp_path):
-    from mod_tui.events import OrchestratorReply
+    from patchbai.events import OrchestratorReply
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
@@ -474,16 +474,16 @@ async def test_orchestrator_chat_uses_active_transcript_path(tmp_path):
     """Smoke: the chat panel renders with the per-session transcript path."""
     from textual.app import App
 
-    from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-    from mod_tui.widgets.rich_transcript import RichTranscript
-    from mod_tui.persistence.transcript_store import (
+    from patchbai.widgets.orchestrator_chat import OrchestratorChat
+    from patchbai.widgets.rich_transcript import RichTranscript
+    from patchbai.persistence.transcript_store import (
         AgentTranscript, TranscriptEntry,
     )
 
     # Pre-seed an index entry + transcript file so start() resumes.
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     sid = "preseeded"
-    transcript_path = tmp_path / ".mod_tui" / "transcripts" / f"orchestrator.{sid}.jsonl"
+    transcript_path = tmp_path / ".patchbai" / "transcripts" / f"orchestrator.{sid}.jsonl"
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).append(
         TranscriptEntry(role="user", text="from-preseed"),
@@ -519,7 +519,7 @@ async def test_orchestrator_chat_uses_active_transcript_path(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_falls_back_when_sdk_rejects(tmp_path):
-    from mod_tui.events import OrchestratorReply
+    from patchbai.events import OrchestratorReply
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
@@ -553,7 +553,7 @@ async def test_resume_falls_back_when_sdk_rejects(tmp_path):
     try:
         await orch.resume("bad")
         # Send a probe to flush the ResultMessage from the fresh adapter.
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("probe"))
         await orch.wait_idle()
         # Index entry for "bad" preserved.
@@ -609,7 +609,7 @@ async def test_first_user_message_and_num_turns_populated(tmp_path):
     orch, bus = _build_orch(tmp_path, adapter=adapter)
     await orch.start()
     try:
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("what is 2+2?"))
         await orch.wait_idle()
 
@@ -628,7 +628,7 @@ async def test_first_user_message_does_not_change_on_later_turns(tmp_path):
     orch, bus = _build_orch(tmp_path, adapter=adapter)
     await orch.start()
     try:
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("first prompt"))
         await orch.wait_idle()
         bus.publish(UserMessageToOrchestrator("second prompt"))
@@ -656,7 +656,7 @@ async def test_slash_commands_do_not_count_as_first_user_message(tmp_path):
 
     await orch.start()
     try:
-        from mod_tui.events import UserMessageToOrchestrator
+        from patchbai.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/reset"))
         await orch.wait_idle()
         bus.publish(UserMessageToOrchestrator("first real prompt"))

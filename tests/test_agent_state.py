@@ -1,4 +1,4 @@
-from mod_tui.agents.state import AgentInfo, AgentState
+from patchbai.agents.state import AgentInfo, AgentState
 
 
 def test_agent_state_values():

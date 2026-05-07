@@ -3,16 +3,16 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from mod_tui.events import (
+from patchbai.events import (
     AgentMessageAppended,
     EventBus,
     OrchestratorSessionSwitched,
 )
-from mod_tui.persistence.transcript_store import (
+from patchbai.persistence.transcript_store import (
     AgentTranscript as Store,
     TranscriptEntry,
 )
-from mod_tui.widgets.rich_transcript import RichTranscript
+from patchbai.widgets.rich_transcript import RichTranscript
 
 
 class _HostApp(App):

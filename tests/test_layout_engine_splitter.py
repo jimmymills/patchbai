@@ -2,14 +2,14 @@ import pytest
 from textual.app import App
 from textual.containers import Container, Horizontal
 
-from mod_tui.events import EventBus
-from mod_tui.layout.engine import apply as apply_layout
-from mod_tui.layout.registry import WidgetRegistry
-from mod_tui.layout.spec import LayoutSpec
-from mod_tui.layout.splitter import Splitter
-from mod_tui.widgets.agent_table import AgentTable
-from mod_tui.widgets.orchestrator_chat import OrchestratorChat
-from mod_tui.widgets.placeholders import ActivityFeed
+from patchbai.events import EventBus
+from patchbai.layout.engine import apply as apply_layout
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.layout.spec import LayoutSpec
+from patchbai.layout.splitter import Splitter
+from patchbai.widgets.agent_table import AgentTable
+from patchbai.widgets.orchestrator_chat import OrchestratorChat
+from patchbai.widgets.placeholders import ActivityFeed
 
 
 class _HostApp(App):
@@ -93,7 +93,7 @@ async def test_splitter_records_spec_path_on_built_widgets():
 
         box = host.children[0]
         # Spec children at indices (0,), (1,), (2,) — splitters between them.
-        spec_paths = [getattr(c, "_mod_tui_spec_path", None) for c in box.children]
+        spec_paths = [getattr(c, "_patchbai_spec_path", None) for c in box.children]
         assert spec_paths[0] == (0,)
         assert spec_paths[2] == (1,)
         assert spec_paths[4] == (2,)

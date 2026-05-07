@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mod_tui.config import ConfigStore, KeyBinding
+from patchbai.config import ConfigStore, KeyBinding
 
 
 def test_load_returns_defaults_when_no_file(tmp_path: Path):

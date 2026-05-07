@@ -1,7 +1,7 @@
 import pytest
 
-from mod_tui.layout.spec import LayoutSpec, Tabs
-from mod_tui.workspace.spec import Workspace
+from patchbai.layout.spec import LayoutSpec, Tabs
+from patchbai.workspace.spec import Workspace
 
 
 def _layout_with_chat(panel_id: str = "orch") -> dict:

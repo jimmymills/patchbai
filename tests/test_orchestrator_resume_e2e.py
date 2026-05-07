@@ -1,10 +1,10 @@
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.events import EventBus, UserMessageToOrchestrator
-from mod_tui.orchestrator.session import OrchestratorSession
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.events import EventBus, UserMessageToOrchestrator
+from patchbai.orchestrator.session import OrchestratorSession
 
 
 class _RecordingAdapter(FakeSDKAdapter):

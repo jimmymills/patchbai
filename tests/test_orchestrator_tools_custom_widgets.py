@@ -1,12 +1,12 @@
 import pytest
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.manager import AgentManager
-from mod_tui.events import EventBus
-from mod_tui.layout.registry import WidgetRegistry
-from mod_tui.layout.spec import LayoutSpec
-from mod_tui.orchestrator.tools import build_orchestrator_tools
-from mod_tui.persistence.layouts_store import NamedLayoutsStore
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.events import EventBus
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.layout.spec import LayoutSpec
+from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchbai.persistence.layouts_store import NamedLayoutsStore
 
 
 def _make(tmp_path, ok_script):

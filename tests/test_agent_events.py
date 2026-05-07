@@ -1,5 +1,5 @@
-from mod_tui.agents.state import AgentInfo, AgentState
-from mod_tui.events import (
+from patchbai.agents.state import AgentInfo, AgentState
+from patchbai.events import (
     AgentMessageAppended,
     AgentNotifiedOrchestrator,
     AgentSpawned,

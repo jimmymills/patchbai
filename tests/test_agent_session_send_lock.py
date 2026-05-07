@@ -9,11 +9,11 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
-from mod_tui.agents.session import AgentSession
-from mod_tui.agents.state import AgentInfo
-from mod_tui.events import AgentMessageAppended, EventBus
-from mod_tui.persistence.transcript_store import AgentTranscript
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.session import AgentSession
+from patchbai.agents.state import AgentInfo
+from patchbai.events import AgentMessageAppended, EventBus
+from patchbai.persistence.transcript_store import AgentTranscript
 
 
 def _info() -> AgentInfo:
