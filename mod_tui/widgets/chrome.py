@@ -2,7 +2,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Input, Static
 
-from mod_tui.events import EventBus, UserMessageToOrchestrator
+from mod_tui.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
 
 
 class CommandBar(Horizontal):
@@ -12,24 +12,31 @@ class CommandBar(Horizontal):
     CommandBar {
         height: 3;
     }
-    CommandBar Static#cmd-prompt {
-        width: 7;
-        content-align: left middle;
-        color: $text-muted;
-    }
     """
 
     def __init__(self, *, event_bus: EventBus | None = None) -> None:
         super().__init__()
         self._bus = event_bus
+        # True between a command-bar submit and the next OrchestratorReply.
+        # Gates the toast so replies from other input surfaces (the
+        # orchestrator chat panel) don't pop a toast as well.
+        self._awaiting_reply = False
+        self._unsub_reply = lambda: None
 
     def compose(self) -> ComposeResult:
-        yield Static("mt :> ", id="cmd-prompt")
         # Plain Textual Input with no styling overrides — default 3-row
         # height, default colors, default focus behavior. Earlier attempts
         # to compress this to 1-row (custom CSS, -textual-compact) clashed
         # with Textual's color/cursor internals and produced invisible text.
         yield Input(placeholder="message orchestrator", id="cmd-input")
+
+    def on_mount(self) -> None:
+        bus = self._bus or getattr(self.app, "event_bus", None)
+        if bus is not None:
+            self._unsub_reply = bus.subscribe(OrchestratorReply, self._on_reply)
+
+    def on_unmount(self) -> None:
+        self._unsub_reply()
 
     def focus_input(self) -> None:
         self.query_one("#cmd-input", Input).focus()
@@ -39,8 +46,21 @@ class CommandBar(Horizontal):
             return
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
+            self._awaiting_reply = True
             bus.publish(UserMessageToOrchestrator(event.value))
         event.input.value = ""
+
+    def _on_reply(self, event: OrchestratorReply) -> None:
+        if not self._awaiting_reply:
+            return
+        self._awaiting_reply = False
+        text = (event.text or "").strip()
+        if not text:
+            return
+        try:
+            self.app.notify(text, title="orchestrator")
+        except Exception:
+            pass
 
 
 class StatusBar(Horizontal):
