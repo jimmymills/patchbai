@@ -3,9 +3,12 @@ import time
 from textual.binding import Binding
 from textual.containers import Container
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, Label
+from textual.widgets import DataTable, Footer, Input, Label
 
-from mod_tui.persistence.orchestrator_sessions import OrchestratorSessionsIndex
+from mod_tui.persistence.orchestrator_sessions import (
+    OrchestratorSessionEntry,
+    OrchestratorSessionsIndex,
+)
 
 
 class ResumeScreen(ModalScreen[str | None]):
@@ -31,6 +34,7 @@ class ResumeScreen(ModalScreen[str | None]):
     BINDINGS = [
         Binding("escape", "dismiss_none", "cancel"),
         Binding("enter", "select", "resume"),
+        Binding("e", "rename_row", "rename"),
     ]
 
     def __init__(self, *, index: OrchestratorSessionsIndex) -> None:
@@ -40,19 +44,25 @@ class ResumeScreen(ModalScreen[str | None]):
 
     def compose(self):
         with Container():
-            yield Label("Resume orchestrator session:")
+            yield Label("Resume orchestrator session  ·  e: rename"
+                        "  ·  enter: resume  ·  esc: cancel")
             yield DataTable(cursor_type="row")
             yield Footer()
 
     def on_mount(self) -> None:
+        self._refresh_table()
+
+    def _refresh_table(self) -> None:
         table = self.query_one(DataTable)
-        table.add_columns("when", "first message", "turns", "tokens", "id")
+        table.clear(columns=True)
+        table.add_columns("when", "title", "turns", "tokens", "id")
         entries = sorted(self._index.list(), key=lambda e: e.last_activity, reverse=True)
         now = time.time()
+        self._ordered_ids = []
         for e in entries:
             table.add_row(
                 _relative_time(now - e.last_activity),
-                _truncate(e.first_user_message or "(no first message)", 60),
+                _display_title(e),
                 str(e.num_turns),
                 f"{e.tokens_in}/{e.tokens_out}",
                 e.session_id,
@@ -82,6 +92,66 @@ class ResumeScreen(ModalScreen[str | None]):
         event.stop()
         self.dismiss(str(event.row_key.value))
 
+    def action_rename_row(self) -> None:
+        table = self.query_one(DataTable)
+        if table.row_count == 0:
+            return
+        row_key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
+        sid = str(row_key.value)
+        entry = self._index.get(sid)
+        if entry is None:
+            return
+        current = entry.title or ""
+
+        def _on_renamed(new_title: str | None) -> None:
+            if new_title is None:
+                return  # cancelled
+            cleaned = new_title.strip()
+            self._index.set_title(sid, cleaned if cleaned else None)
+            self._refresh_table()
+
+        self.app.push_screen(_RenameTitleScreen(initial=current), _on_renamed)
+
+
+class _RenameTitleScreen(ModalScreen[str | None]):
+    """Tiny single-input modal for renaming a session title.
+
+    Returns the entered string (possibly empty) or None on cancel.
+    """
+
+    DEFAULT_CSS = """
+    _RenameTitleScreen {
+        align: center middle;
+    }
+    _RenameTitleScreen > Container {
+        width: 60%;
+        height: 7;
+        border: thick $primary;
+        background: $surface;
+        padding: 1 2;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "cancel")]
+
+    def __init__(self, *, initial: str = "") -> None:
+        super().__init__()
+        self._initial = initial
+
+    def compose(self):
+        with Container():
+            yield Label("Rename session title (enter to save, esc to cancel):")
+            yield Input(value=self._initial, id="rename-input")
+
+    def on_mount(self) -> None:
+        self.query_one("#rename-input", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
 
 def _relative_time(seconds: float) -> str:
     if seconds < 60:
@@ -97,5 +167,13 @@ def _truncate(s: str, n: int) -> str:
     if len(s) <= n:
         return s
     return s[: n - 1] + "…"
+
+
+def _display_title(entry: OrchestratorSessionEntry) -> str:
+    if entry.title:
+        return _truncate(entry.title, 80)
+    if entry.first_user_message:
+        return _truncate(entry.first_user_message, 80)
+    return "(no title)"
 
 
