@@ -23,9 +23,6 @@ from mod_tui.events import (
     UserMessageToOrchestrator,
 )
 
-_RESET_RE = re.compile(r"^/reset(?:\s|$)")
-_RESUME_BARE_RE = re.compile(r"^/resume\s*$")
-_RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 from mod_tui.orchestrator.tools import build_orchestrator_mcp_server
 from mod_tui.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
@@ -35,6 +32,10 @@ from mod_tui.persistence.paths import orchestrator_session_transcript_path
 from mod_tui.persistence.transcript_store import AgentTranscript
 
 log = logging.getLogger(__name__)
+
+_RESET_RE = re.compile(r"^/reset(?:\s|$)")
+_RESUME_BARE_RE = re.compile(r"^/resume\s*$")
+_RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 
 
 class OrchestratorSession:
