@@ -1,7 +1,7 @@
 import asyncio
 
 import pytest
-from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+from claude_agent_sdk import PermissionResultAllow
 
 from patchbai.agents.permission_inbox import PermissionInbox
 
