@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 import uuid
 from pathlib import Path
@@ -15,9 +16,15 @@ from mod_tui.events import (
     AgentNotifiedOrchestrator,
     AgentRequestedUserInput,
     EventBus,
+    OpenResumePicker,
     OrchestratorReply,
+    OrchestratorSessionSwitched,
     UserMessageToOrchestrator,
 )
+
+_RESET_RE = re.compile(r"^/reset(?:\s|$)")
+_RESUME_BARE_RE = re.compile(r"^/resume\s*$")
+_RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 from mod_tui.orchestrator.tools import build_orchestrator_mcp_server
 from mod_tui.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
@@ -79,6 +86,9 @@ class OrchestratorSession:
         self._unsub_msg: callable = lambda: None
         self._unsub_notify: callable = lambda: None
         self._unsub_ask: callable = lambda: None
+        # Test-only seam: when set, used as the adapter factory for the next
+        # swap (during /reset or /resume). Production wiring uses RealSDKAdapter.
+        self._next_adapter_factory = None
         self._send_tasks: list[asyncio.Task] = []
 
     @property
@@ -242,12 +252,70 @@ class OrchestratorSession:
     def _on_user_message(self, event: UserMessageToOrchestrator) -> None:
         if self._inner is None:
             return
-        # Prune any tasks that have already completed before adding a new one.
+        text = event.text
+        # Slash-command interception. Only triggers on bare-prefix matches —
+        # synthetic messages from child agents are wrapped in "[from agent ...]"
+        # and so cannot match.
+        if _RESET_RE.match(text):
+            asyncio.create_task(self.reset())
+            return
+        if _RESUME_BARE_RE.match(text):
+            self._bus.publish(OpenResumePicker())
+            return
+        m = _RESUME_ID_RE.match(text)
+        if m:
+            asyncio.create_task(self.resume(m.group(1)))
+            return
+        # Fall through: ordinary prompt.
         self._send_tasks = [t for t in self._send_tasks if not t.done()]
-        # Use the inner session's queue_send: it eagerly clears _idle_event so
-        # wait_idle correctly blocks even before the create_task starts running.
-        task = self._inner.queue_send(event.text)
+        task = self._inner.queue_send(text)
         self._send_tasks.append(task)
+
+    async def reset(self) -> None:
+        async with self._switching_lock:
+            await self._swap_inner(resume=None)
+
+    async def resume(self, session_id: str) -> None:
+        # Full implementation lands in Task 11.
+        raise NotImplementedError
+
+    async def _swap_inner(self, *, resume: str | None) -> None:
+        # Stop current, start a new inner with either resume=<id> or a fresh id.
+        if self._inner is not None:
+            try:
+                await self._inner.interrupt()
+            except Exception:
+                pass
+            await self._inner.stop()
+
+        if resume is not None:
+            new_session_id = None
+            transcript_path = orchestrator_session_transcript_path(self._cwd, resume)
+            self._sdk_session_id = resume
+        else:
+            new_id = uuid.uuid4().hex
+            new_session_id = new_id
+            transcript_path = orchestrator_session_transcript_path(self._cwd, new_id)
+            self._sdk_session_id = new_id
+        self._active_transcript_path = transcript_path
+
+        # Pull a fresh adapter. In production this comes from the
+        # RealSDKAdapter factory; tests can inject _next_adapter_factory.
+        if self._next_adapter_factory is not None:
+            self._adapter = self._next_adapter_factory()
+            self._next_adapter_factory = None
+        else:
+            self._adapter = RealSDKAdapter()
+
+        await self._build_and_start_inner(
+            resume=resume, new_session_id=new_session_id,
+            transcript_path=transcript_path,
+        )
+
+        self._bus.publish(OrchestratorSessionSwitched(
+            session_id=self._sdk_session_id,
+            transcript_path=str(self._active_transcript_path),
+        ))
 
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
         if event.agent_id != self.AGENT_ID:

@@ -146,3 +146,68 @@ async def test_first_result_message_upserts_index(tmp_path):
         assert entry.legacy is False
     finally:
         await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_reset_does_not_send_literal_to_sdk(tmp_path):
+    """Sending '/reset' must not appear as a prompt to the SDK."""
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    # Second adapter for the new session after /reset.
+    new_adapter = _RecordingAdapter(scripts=[_ok_script(session_id="post-reset")])
+
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
+    )
+    orch = OrchestratorSession(
+        cwd=tmp_path, bus=bus, manager=manager, adapter=adapter,
+    )
+    # Inject the next adapter the orchestrator should use after reset.
+    orch._next_adapter_factory = lambda: new_adapter
+
+    await orch.start()
+    try:
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("/reset"))
+        await orch.wait_idle()
+
+        # The first adapter must not have been queried with "/reset".
+        assert adapter._next_query_index == 0
+        # The orchestrator's active session changed.
+        assert orch._sdk_session_id != "s-fake"
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_open_resume_picker_published_on_bare_resume(tmp_path):
+    from mod_tui.events import OpenResumePicker, UserMessageToOrchestrator
+
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    seen: list[OpenResumePicker] = []
+    bus.subscribe(OpenResumePicker, seen.append)
+
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("/resume"))
+        await orch.wait_idle()
+        assert len(seen) == 1
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(), _ok_script()])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator("/help"))
+        await orch.wait_idle()
+        # Adapter saw the prompt as a query.
+        assert adapter._next_query_index == 1
+    finally:
+        await orch.stop()
