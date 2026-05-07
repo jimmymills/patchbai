@@ -135,3 +135,22 @@ async def test_ctrl_shift_d_opens_change_cwd_modal(tmp_path):
         await pilot.pause()
         from mod_tui.widgets.change_cwd_screen import ChangeCwdScreen
         assert isinstance(app.screen, ChangeCwdScreen)
+
+
+@pytest.mark.asyncio
+async def test_slash_cd_changes_cwd(tmp_path):
+    proj_a = tmp_path / "a"
+    proj_b = tmp_path / "b"
+    proj_a.mkdir()
+    proj_b.mkdir()
+    app, bus = _build_app(proj_a)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.orchestrator._next_adapter_factory = (
+            lambda: FakeSDKAdapter(scripts=[_ok()])
+        )
+        from mod_tui.events import UserMessageToOrchestrator
+        bus.publish(UserMessageToOrchestrator(f"/cd {proj_b}"))
+        await pilot.pause()
+        await pilot.pause()  # second pause: change_cwd creates async tasks
+        assert app.cwd == proj_b.resolve()
