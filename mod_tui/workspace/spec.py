@@ -54,3 +54,15 @@ def _contains_chat(node: Node) -> bool:
         return any(c.widget == "OrchestratorChat" for c in node.children)
     # node is Container — exhausted by the discriminated Node union.
     return any(_contains_chat(c) for c in node.children)
+
+
+def workspace_from_layout(spec: LayoutSpec, *, tab_id: str = "default",
+                          title: str = "default") -> Workspace:
+    """Build a single-tab Workspace wrapping a LayoutSpec — used by app
+    launch to seed the workspace from the built-in dashboard or migrate
+    a legacy layout.json."""
+    return Workspace(
+        version=1,
+        tabs=[Tab(id=tab_id, title=title, layout=spec)],
+        active=tab_id,
+    )

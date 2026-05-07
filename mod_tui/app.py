@@ -4,7 +4,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingsMap
 from textual.containers import Container
 from textual.keys import _character_to_key
-from textual.widgets import DataTable
+from textual.widgets import DataTable, TabbedContent, TabPane
 
 from mod_tui.actions import ActionRegistry
 from mod_tui.agents.manager import AgentManager
@@ -16,10 +16,12 @@ from mod_tui.layout.engine import apply as apply_layout
 from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
 from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.persistence.layout_store import load_layout as load_local_layout
-from mod_tui.persistence.layout_store import save_layout as save_local_layout
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.paths import global_config_dir
+from mod_tui.persistence.workspace_store import (
+    load_workspace as load_local_workspace,
+    save_workspace as save_local_workspace,
+)
 from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.agent_transcript import AgentTranscript
@@ -36,6 +38,7 @@ from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
 from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
+from mod_tui.workspace.spec import Workspace, workspace_from_layout
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -116,7 +119,7 @@ class ModTuiApp(App):
     """Plan-4 App: layout + config mutability via orchestrator MCP tools."""
 
     CSS = """
-    #panel-area {
+    #app-tabs {
         height: 1fr;
     }
     """
@@ -143,8 +146,10 @@ class ModTuiApp(App):
         self.cwd = Path(cwd) if cwd else Path.cwd()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
-        self._current_spec: LayoutSpec | None = None
-        self._current_layout_name: str | None = None
+        self._workspace: Workspace | None = None
+        self._active_tab_id: str | None = None
+        self._current_layout_name: str | None = None  # last `load_layout` name
+        self._tab_focus_snapshots: dict[str, str] = {}  # tab_id -> last focused panel id
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
@@ -165,7 +170,7 @@ class ModTuiApp(App):
             actions=self.actions_registry,
             rebind_keys=self._rebind_keys,
             widget_registry=self.registry,
-            current_layout=lambda: self._current_spec,
+            current_layout=lambda: self._active_layout(),
         )
 
     # --- action registration -----------------------------------------------
@@ -299,11 +304,82 @@ class ModTuiApp(App):
 
         self.push_screen(LayoutSwitcherScreen(store=self.layouts_store), _on_picked)
 
+    # --- helpers -----------------------------------------------------------
+
+    def _active_layout(self) -> LayoutSpec | None:
+        if self._workspace is None or self._active_tab_id is None:
+            return None
+        for t in self._workspace.tabs:
+            if t.id == self._active_tab_id:
+                return t.layout
+        return None
+
+    def _load_or_seed_workspace(self) -> Workspace:
+        """Load workspace.json, fall back to migrating layout.json, fall back
+        to seeding from the built-in dashboard."""
+        ws = load_local_workspace(self.cwd)
+        if ws is not None:
+            return ws
+        # Migration: legacy layout.json -> single-tab workspace.
+        from mod_tui.persistence.layout_store import load_layout as _load_legacy
+        legacy = _load_legacy(self.cwd)
+        if legacy is not None:
+            return workspace_from_layout(legacy, tab_id="default", title="default")
+        return workspace_from_layout(dashboard_layout(), tab_id="default", title="default")
+
+    async def _mount_workspace(self, ws: Workspace) -> None:
+        tc = self.query_one("#app-tabs", TabbedContent)
+        # Build one TabPane per Tab, each containing a panel-area-<id> Container.
+        new_panes = []
+        for t in ws.tabs:
+            new_panes.append(
+                TabPane(t.title, Container(id=f"panel-area-{t.id}"), id=f"tab-{t.id}")
+            )
+        await tc.clear_panes()
+        for pane in new_panes:
+            await tc.add_pane(pane)
+        # Apply each tab's layout to its container, eagerly (persistent semantics).
+        for t in ws.tabs:
+            area = self.query_one(f"#panel-area-{t.id}", Container)
+            try:
+                await apply_layout(area, t.layout, self.registry, layout_name=None)
+            except Exception:
+                # Apply errors already publish LayoutFailed; swallow here so one
+                # bad tab doesn't block the rest of the workspace from booting.
+                pass
+        tc.active = f"tab-{ws.active}"
+
+    async def _apply_to_tab(
+        self, tab_id: str | None, spec: LayoutSpec,
+        *, layout_name: str | None = None,
+    ) -> None:
+        if tab_id is None or self._workspace is None:
+            return
+        # Build candidate workspace and validate FIRST (atomic). model_copy
+        # bypasses the model_validator, so we round-trip through model_validate
+        # to catch invariant breaks (e.g., user removed the only chat) before
+        # touching the live UI or persistence.
+        candidate = Workspace.model_validate({
+            "version": self._workspace.version,
+            "tabs": [
+                {**t.model_dump(mode="json"), "layout": spec.model_dump(mode="json")}
+                if t.id == tab_id else t.model_dump(mode="json")
+                for t in self._workspace.tabs
+            ],
+            "active": self._workspace.active,
+        })
+        # Validation passed → commit memory, then UI, then disk.
+        self._workspace = candidate
+        area = self.query_one(f"#panel-area-{tab_id}", Container)
+        await apply_layout(area, spec, self.registry, layout_name=layout_name)
+        self._current_layout_name = layout_name
+        save_local_workspace(self.cwd, self._workspace)
+
     # --- composition & lifecycle -------------------------------------------
 
     def compose(self) -> ComposeResult:
         yield CommandBar(event_bus=self.event_bus)
-        yield Container(id="panel-area")
+        yield TabbedContent(id="app-tabs")
         yield StatusBar(event_bus=self.event_bus)
 
     async def on_mount(self) -> None:
@@ -316,20 +392,16 @@ class ModTuiApp(App):
         if self.layouts_store.load("default") is None:
             self.layouts_store.save("default", dashboard_layout())
         await self.orchestrator.start()
-        spec = load_local_layout(self.cwd) or dashboard_layout()
-        await self._apply(spec)
+        ws = self._load_or_seed_workspace()
+        self._workspace = ws
+        self._active_tab_id = ws.active
+        await self._mount_workspace(ws)
+        save_local_workspace(self.cwd, ws)
 
     async def _orchestrator_apply_layout(
-        self, spec: LayoutSpec, *, layout_name: str | None = None
+        self, spec: LayoutSpec, *, layout_name: str | None = None,
     ) -> None:
-        await self._apply(spec, layout_name=layout_name)
-
-    async def _apply(self, spec: LayoutSpec, *, layout_name: str | None = None) -> None:
-        area = self.query_one("#panel-area", Container)
-        await apply_layout(area, spec, self.registry, layout_name=layout_name)
-        self._current_spec = spec
-        self._current_layout_name = layout_name
-        save_local_layout(self.cwd, spec)
+        await self._apply_to_tab(self._active_tab_id, spec, layout_name=layout_name)
 
     async def on_unmount(self) -> None:
         await self.orchestrator.stop()

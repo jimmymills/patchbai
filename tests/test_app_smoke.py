@@ -74,13 +74,14 @@ async def test_layout_persists_across_app_runs(tmp_path: Path):
     app1 = _build_test_app(tmp_path)
     async with app1.run_test() as pilot:
         await pilot.pause()
-        assert (tmp_path / ".mod_tui" / "layout.json").exists()
+        # The new persistence format is workspace.json (not the legacy layout.json).
+        assert (tmp_path / ".mod_tui" / "workspace.json").exists()
 
     # Second run: same cwd, verify layout restored.
     app2 = _build_test_app(tmp_path)
     async with app2.run_test() as pilot:
         await pilot.pause()
-        assert app2._current_spec is not None
+        assert app2._active_layout() is not None
         assert app2.query_one(OrchestratorChat) is not None
 
 
