@@ -1,12 +1,19 @@
+import asyncio
 import dataclasses
 import time
 import uuid
 from pathlib import Path
 from typing import Callable
 
-from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk import (
+    ClaudeAgentOptions,
+    PermissionResultAllow,
+    PermissionResultDeny,
+    ToolPermissionContext,
+)
 
 from patchbai.agents.child_tools import build_child_mcp_server
+from patchbai.agents.permission_grants import PermissionGrants
 from patchbai.agents.permission_inbox import PermissionInbox
 from patchbai.agents.request_inbox import RequestInbox
 from patchbai.agents.sdk_adapter import SDKAdapter
@@ -18,6 +25,8 @@ from patchbai.events import (
     AgentStateChanged,
     DirectMessageToAgent,
     EventBus,
+    PermissionRequested,
+    PermissionResolved,
 )
 from patchbai.persistence.agents_index import AgentsIndex
 from patchbai.persistence.transcript_store import AgentTranscript, TranscriptEntry
@@ -32,10 +41,12 @@ class AgentManager:
         cwd: Path,
         bus: EventBus,
         adapter_factory: Callable[[], SDKAdapter],
+        permission_grants: PermissionGrants | None = None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
         self._adapter_factory = adapter_factory
+        self._grants = permission_grants
         self._sessions: dict[str, AgentSession] = {}
         self._inboxes: dict[str, RequestInbox] = {}
         self._perm_inboxes: dict[str, PermissionInbox] = {}
@@ -125,21 +136,26 @@ class AgentManager:
     def _build_options(
         self, info: AgentInfo, *, resume_session_id: str | None = None,
     ) -> ClaudeAgentOptions:
-        # Bypass permissions for now: there's no Textual modal to render
-        # the SDK's permission prompts in plan 2, so the child would hang.
-        # The orchestrator can still narrow what a child may do via the
-        # allowed_tools / disallowed_tools args on the spawn_agent MCP tool.
-        # A proper can_use_tool callback that pops a Textual approval modal
-        # is plan-3 work.
+        # Permission posture: presence of self._grants is the gate.
+        #   - None  → permission_mode="bypassPermissions" (today's behavior;
+        #     equivalent to launching with --bypass-permissions).
+        #   - obj   → drop bypass, attach can_use_tool that consults the
+        #     grants store first and falls back to the modal flow.
+        # This applies symmetrically to OrchestratorSession (see §1.1/§1.2).
         child_mcp = build_child_mcp_server(
             agent_id=info.id, bus=self._bus, inbox=self._inboxes[info.id],
         )
         opts = info.spawn_options or {}
         kwargs: dict = {
             "cwd": opts.get("cwd") or info.cwd,
-            "permission_mode": "bypassPermissions",
             "mcp_servers": {"patchbai_child": child_mcp},
         }
+        if self._grants is None:
+            kwargs["permission_mode"] = "bypassPermissions"
+        else:
+            kwargs["can_use_tool"] = self._make_can_use_tool(
+                agent_id=info.id, agent_name=info.name,
+            )
         if opts.get("allowed_tools") is not None:
             kwargs["allowed_tools"] = opts["allowed_tools"]
         if opts.get("disallowed_tools") is not None:
@@ -151,6 +167,62 @@ class AgentManager:
         if resume_session_id is not None:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)
+
+    def _make_can_use_tool(self, *, agent_id: str, agent_name: str):
+        bus = self._bus
+        grants = self._grants
+        get_perm_inbox = self._perm_inboxes.get
+        # 30 minutes — long enough to step away briefly, short enough that a
+        # forgotten prompt doesn't strand the session forever.
+        TIMEOUT_S = 30 * 60
+
+        async def callback(
+            tool_name: str,
+            tool_input: dict,
+            ctx: ToolPermissionContext,
+        ):
+            assert grants is not None  # invariant when callback is wired
+            decision = grants.lookup(agent_name=agent_name, tool_name=tool_name)
+            if decision == "allow":
+                return PermissionResultAllow()
+            if decision == "deny":
+                return PermissionResultDeny(message="denied by saved rule")
+
+            inbox = get_perm_inbox(agent_id)
+            if inbox is None:
+                return PermissionResultDeny(message="agent gone", interrupt=True)
+            request_id = inbox.register(
+                tool_name=tool_name, tool_input=tool_input,
+                title=getattr(ctx, "title", None),
+                description=getattr(ctx, "description", None),
+            )
+            bus.publish(PermissionRequested(
+                agent_id=agent_id, agent_name=agent_name,
+                request_id=request_id, tool_name=tool_name,
+                tool_input=tool_input,
+                title=getattr(ctx, "title", None),
+                description=getattr(ctx, "description", None),
+            ))
+            try:
+                result = await inbox.wait(request_id, timeout_s=TIMEOUT_S)
+            except asyncio.CancelledError:
+                bus.publish(PermissionResolved(
+                    agent_id=agent_id, request_id=request_id,
+                    behavior="cancelled",
+                ))
+                return PermissionResultDeny(message="cancelled", interrupt=True)
+            except asyncio.TimeoutError:
+                bus.publish(PermissionResolved(
+                    agent_id=agent_id, request_id=request_id, behavior="deny",
+                ))
+                return PermissionResultDeny(message="timed out")
+            bus.publish(PermissionResolved(
+                agent_id=agent_id, request_id=request_id,
+                behavior="allow" if isinstance(result, PermissionResultAllow) else "deny",
+            ))
+            return result
+
+        return callback
 
     def _on_session_id(self, agent_id: str, session_id: str) -> None:
         # The first ResultMessage carries the SDK session id. Capture it on
@@ -276,7 +348,6 @@ class AgentManager:
         # resurrect it via SDK resume so the user's message lands on a real
         # conversation. Schedule on the running loop because EventBus
         # handlers must be sync.
-        import asyncio
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
