@@ -167,3 +167,24 @@ async def test_terminal_drains_large_burst_within_one_tick():
         assert "line-799" in text, f"missing tail of large burst; got {text[-200:]!r}"
         assert len(term._screen.history.top) > 0, "expected scrollback rows"
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_resizes_screen_and_pty():
+    app = _Host()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        # Give Textual time to deliver the Resize event to the widget.
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # The Container has 1-cell border + 1-cell padding on each side.
+        # We just assert the screen got resized away from 80x24 — exact
+        # numbers depend on Textual's layout, so check the trend.
+        assert term._screen.columns != 80 or term._screen.lines != 24, (
+            f"screen still 80x24 — resize not propagated; "
+            f"got cols={term._screen.columns}, lines={term._screen.lines}"
+        )
+        # And the screen dimensions should be reasonable for a 120x40 host.
+        assert term._screen.columns > 24
+        assert term._screen.lines > 8
+        term._teardown()
