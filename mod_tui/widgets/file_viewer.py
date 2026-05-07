@@ -3,7 +3,7 @@ from pathlib import Path
 from textual.widgets import TextArea
 
 from mod_tui.events import FileSelected
-from mod_tui.widgets._file_lang import detect_language as _detect_language, load_text as _load_text
+from mod_tui.widgets._file_lang import load_text as _load_text
 
 
 class FileViewer(TextArea):
