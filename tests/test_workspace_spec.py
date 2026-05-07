@@ -1,6 +1,6 @@
 import pytest
 
-from mod_tui.layout.spec import LayoutSpec
+from mod_tui.layout.spec import LayoutSpec, Tabs
 from mod_tui.workspace.spec import Workspace
 
 
@@ -115,7 +115,34 @@ def test_workspace_chat_in_panel_tabs_node_counts():
         }],
         "active": "t1",
     })
-    from mod_tui.layout.spec import Tabs
     tabs_node = ws.tabs[0].layout.layout
     assert isinstance(tabs_node, Tabs)
     assert tabs_node.children[0].widget == "OrchestratorChat"
+
+
+def test_workspace_chat_inside_container_wrapping_tabs_counts():
+    # Path Container → Tabs → Panel(OrchestratorChat). _contains_chat must
+    # recurse through Container and into Tabs.children.
+    ws = Workspace.model_validate({
+        "version": 1,
+        "tabs": [{
+            "id": "t1",
+            "title": "Main",
+            "layout": {
+                "version": 1,
+                "layout": {
+                    "type": "horizontal",
+                    "children": [
+                        {
+                            "type": "tabs",
+                            "children": [
+                                {"id": "orch", "widget": "OrchestratorChat"},
+                            ],
+                        },
+                    ],
+                },
+            },
+        }],
+        "active": "t1",
+    })
+    assert len(ws.tabs) == 1
