@@ -391,6 +391,54 @@ class _RejectingAdapter(_RecordingAdapter):
 
 
 @pytest.mark.asyncio
+async def test_orchestrator_chat_uses_active_transcript_path(tmp_path):
+    """Smoke: the chat panel renders with the per-session transcript path."""
+    from textual.app import App
+
+    from mod_tui.widgets.orchestrator_chat import OrchestratorChat
+    from mod_tui.widgets.rich_transcript import RichTranscript
+    from mod_tui.persistence.transcript_store import (
+        AgentTranscript, TranscriptEntry,
+    )
+
+    # Pre-seed an index entry + transcript file so start() resumes.
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    sid = "preseeded"
+    transcript_path = tmp_path / ".mod_tui" / "transcripts" / f"orchestrator.{sid}.jsonl"
+    transcript_path.parent.mkdir(parents=True, exist_ok=True)
+    AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).append(
+        TranscriptEntry(role="user", text="from-preseed"),
+    )
+    idx.upsert(OrchestratorSessionEntry(
+        session_id=sid, transcript_path=str(transcript_path),
+        started_at=100.0, last_activity=200.0,
+    ))
+
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id=sid)])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+
+    class _Host(App):
+        def __init__(self, _orch):
+            super().__init__()
+            self.event_bus = bus
+            self.orchestrator = _orch
+            self.cwd = tmp_path
+
+        def compose(self):
+            yield OrchestratorChat(event_bus=self.event_bus)
+
+    host = _Host(orch)
+    try:
+        async with host.run_test() as pilot:
+            await pilot.pause()
+            rich = host.query_one(RichTranscript)
+            assert "from-preseed" in rich.rendered_text()
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
 async def test_resume_falls_back_when_sdk_rejects(tmp_path):
     from mod_tui.events import OrchestratorReply
 
