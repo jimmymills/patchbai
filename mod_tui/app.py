@@ -23,7 +23,7 @@ from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.themes_store import NamedThemesStore
 from mod_tui.persistence.paths import global_config_dir
 from mod_tui.theme.engine import _EXTRA_CSS_KEY, apply_theme
-from mod_tui.theme.spec import ThemePalette, ThemeSpec
+from mod_tui.theme.spec import ThemeSpec
 from mod_tui.persistence.workspace_store import (
     load_workspace as load_local_workspace,
     save_workspace as save_local_workspace,
