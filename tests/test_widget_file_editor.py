@@ -392,3 +392,15 @@ async def test_file_editor_load_file_missing_path(tmp_path: Path):
         await pilot.pause()
         assert result is False
         assert not missing.exists()
+
+
+def test_file_editor_is_registered_in_default_registry():
+    from mod_tui.app import build_default_registry
+    from mod_tui.widgets.file_editor import FileEditor
+
+    reg = build_default_registry()
+    assert "FileEditor" in reg.known()
+    assert reg.get("FileEditor") is FileEditor
+    info = reg.describe("FileEditor")
+    assert "Ctrl+S" in info.description
+    assert info.props_schema == {"file_path": str, "follow_selection": bool}
