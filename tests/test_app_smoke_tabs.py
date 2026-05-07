@@ -201,3 +201,36 @@ async def test_tab_widgets_persist_across_switches(tmp_path):
         tc.active = "tab-main"
         await pilot.pause()
         assert app.query_one("#panel-note") is notebook
+
+
+@pytest.mark.asyncio
+async def test_ctrl_2_switches_to_second_tab(tmp_path):
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {"id": "orch", "widget": "OrchestratorChat"}}},
+            {"id": "logs", "title": "Logs",
+             "layout": {"version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"}}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".mod_tui").mkdir()
+    (tmp_path / ".mod_tui" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("ctrl+2")
+        await pilot.pause()
+        assert app._active_tab_id == "logs"
+
+
+@pytest.mark.asyncio
+async def test_ctrl_5_with_only_two_tabs_is_noop(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        original = app._active_tab_id
+        await pilot.press("ctrl+5")
+        await pilot.pause()
+        assert app._active_tab_id == original

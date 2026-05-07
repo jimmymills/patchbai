@@ -132,6 +132,15 @@ class ModTuiApp(App):
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("?", "show_help", "help"),
+        Binding("ctrl+1", "switch_tab_index(0)", "tab 1"),
+        Binding("ctrl+2", "switch_tab_index(1)", "tab 2"),
+        Binding("ctrl+3", "switch_tab_index(2)", "tab 3"),
+        Binding("ctrl+4", "switch_tab_index(3)", "tab 4"),
+        Binding("ctrl+5", "switch_tab_index(4)", "tab 5"),
+        Binding("ctrl+6", "switch_tab_index(5)", "tab 6"),
+        Binding("ctrl+7", "switch_tab_index(6)", "tab 7"),
+        Binding("ctrl+8", "switch_tab_index(7)", "tab 8"),
+        Binding("ctrl+9", "switch_tab_index(8)", "tab 9"),
     ]
 
     def __init__(
@@ -367,9 +376,20 @@ class ModTuiApp(App):
 
     def action_show_help(self) -> None:
         self.notify(
-            "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · ? help",
+            "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
+            "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
+            "ctrl-w close tab · ? help",
             title="keybindings",
         )
+
+    def action_switch_tab_index(self, idx: int) -> None:
+        if self._workspace is None:
+            return
+        if idx < 0 or idx >= len(self._workspace.tabs):
+            return  # quietly no-op
+        target = self._workspace.tabs[idx].id
+        tc = self.query_one("#app-tabs", TabbedContent)
+        tc.active = f"tab-{target}"
 
     def action_open_history(self) -> None:
         # push_screen with a callback avoids the worker requirement that
