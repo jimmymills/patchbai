@@ -10,7 +10,7 @@ from mod_tui.agents.child_tools import build_child_mcp_server
 from mod_tui.agents.request_inbox import RequestInbox
 from mod_tui.agents.sdk_adapter import SDKAdapter
 from mod_tui.agents.session import AgentSession
-from mod_tui.agents.state import AgentInfo
+from mod_tui.agents.state import AgentInfo, AgentState
 from mod_tui.events import (
     AgentArchiveChanged,
     AgentSpawned,
@@ -38,6 +38,10 @@ class AgentManager:
         self._sessions: dict[str, AgentSession] = {}
         self._inboxes: dict[str, RequestInbox] = {}
         self._index = AgentsIndex(cwd=cwd)
+        # Any agent persisted as still-running belongs to a previous (dead)
+        # process. Flip those rows to ERROR so the AgentTable seed doesn't
+        # show ghosts as live.
+        self._index.reconcile_orphans()
         self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
         self._unsub_direct = bus.subscribe(DirectMessageToAgent, self._on_direct_message)
 
@@ -54,25 +58,49 @@ class AgentManager:
     ) -> str:
         agent_id = uuid.uuid4().hex[:12]
         now = time.time()
+        # Snapshot the JSON-serializable subset of options needed to rebuild
+        # ClaudeAgentOptions on resume. mcp_servers can't be persisted (it
+        # contains live server objects); we rebuild it from agent_id+bus+inbox
+        # in _build_options instead.
+        spawn_options = {
+            "cwd": cwd or str(self._cwd),
+            "allowed_tools": allowed_tools,
+            "disallowed_tools": disallowed_tools,
+            "model": model,
+            "system_prompt": system_prompt,
+        }
         info = AgentInfo(
             id=agent_id,
             name=name,
             cwd=cwd or str(self._cwd),
             started_at=now,
+            spawn_options=spawn_options,
         )
+        session = self._build_session(info)
+        self._index.upsert(info)
+        self._bus.publish(AgentSpawned(info=info))
+
+        await session.start(options=self._build_options(info))
+        await session.send(prompt)
+        return agent_id
+
+    def _build_session(self, info: AgentInfo) -> AgentSession:
         adapter = self._adapter_factory()
-        transcript = AgentTranscript(cwd=self._cwd, agent_id=agent_id)
+        transcript = AgentTranscript(cwd=self._cwd, agent_id=info.id)
+        self._inboxes[info.id] = RequestInbox()
         session = AgentSession(
             info=info,
             adapter=adapter,
             transcript=transcript,
             bus=self._bus,
+            on_session_id=lambda sid, _id=info.id: self._on_session_id(_id, sid),
         )
-        self._sessions[agent_id] = session
-        self._inboxes[agent_id] = RequestInbox()
-        self._index.upsert(info)
-        self._bus.publish(AgentSpawned(info=info))
+        self._sessions[info.id] = session
+        return session
 
+    def _build_options(
+        self, info: AgentInfo, *, resume_session_id: str | None = None,
+    ) -> ClaudeAgentOptions:
         # Bypass permissions for now: there's no Textual modal to render
         # the SDK's permission prompts in plan 2, so the child would hang.
         # The orchestrator can still narrow what a child may do via the
@@ -80,24 +108,63 @@ class AgentManager:
         # A proper can_use_tool callback that pops a Textual approval modal
         # is plan-3 work.
         child_mcp = build_child_mcp_server(
-            agent_id=agent_id, bus=self._bus, inbox=self._inboxes[agent_id]
+            agent_id=info.id, bus=self._bus, inbox=self._inboxes[info.id],
         )
-        options_kwargs: dict = {
-            "cwd": info.cwd,
+        opts = info.spawn_options or {}
+        kwargs: dict = {
+            "cwd": opts.get("cwd") or info.cwd,
             "permission_mode": "bypassPermissions",
             "mcp_servers": {"mod_tui_child": child_mcp},
         }
-        if allowed_tools is not None:
-            options_kwargs["allowed_tools"] = allowed_tools
-        if disallowed_tools is not None:
-            options_kwargs["disallowed_tools"] = disallowed_tools
-        if model is not None:
-            options_kwargs["model"] = model
-        if system_prompt is not None:
-            options_kwargs["system_prompt"] = system_prompt
-        await session.start(options=ClaudeAgentOptions(**options_kwargs))
-        await session.send(prompt)
-        return agent_id
+        if opts.get("allowed_tools") is not None:
+            kwargs["allowed_tools"] = opts["allowed_tools"]
+        if opts.get("disallowed_tools") is not None:
+            kwargs["disallowed_tools"] = opts["disallowed_tools"]
+        if opts.get("model") is not None:
+            kwargs["model"] = opts["model"]
+        if opts.get("system_prompt") is not None:
+            kwargs["system_prompt"] = opts["system_prompt"]
+        if resume_session_id is not None:
+            kwargs["resume"] = resume_session_id
+        return ClaudeAgentOptions(**kwargs)
+
+    def _on_session_id(self, agent_id: str, session_id: str) -> None:
+        # The first ResultMessage carries the SDK session id. Capture it on
+        # the persisted info so a fresh process can pass it back as resume=
+        # to keep the conversation alive.
+        session = self._sessions.get(agent_id)
+        if session is None:
+            return
+        session.info.session_id = session_id
+        self._index.upsert(session.info)
+
+    async def resume(self, agent_id: str) -> AgentSession | None:
+        # If the agent already has a live session, just hand it back.
+        existing = self._sessions.get(agent_id)
+        if existing is not None:
+            return existing
+        # Find the persisted record. If it's missing, or it predates the
+        # resume feature (no session_id / no spawn_options), we can't bring
+        # it back to life — caller must spawn fresh.
+        for info in self._index.load():
+            if info.id == agent_id:
+                target = info
+                break
+        else:
+            return None
+        if target.session_id is None or target.spawn_options is None:
+            return None
+        # Resurrect: fresh adapter, AgentSession, and SDK process pointed at
+        # the same session_id so the conversation continues.
+        target.state = AgentState.IDLE
+        target.ended_at = None
+        session = self._build_session(target)
+        self._index.upsert(target)
+        self._bus.publish(AgentSpawned(info=target))
+        await session.start(
+            options=self._build_options(target, resume_session_id=target.session_id),
+        )
+        return session
 
     def list_infos(self) -> list[AgentInfo]:
         return [s.info for s in self._sessions.values()]
@@ -164,6 +231,22 @@ class AgentManager:
 
     def _on_direct_message(self, event: DirectMessageToAgent) -> None:
         session = self._sessions.get(event.agent_id)
+        if session is not None:
+            session.queue_send(event.text)
+            return
+        # No live session: this is a record from a previous process. Try to
+        # resurrect it via SDK resume so the user's message lands on a real
+        # conversation. Schedule on the running loop because EventBus
+        # handlers must be sync.
+        import asyncio
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return  # no loop — nothing we can do (e.g. unit-test without loop)
+        loop.create_task(self._resume_then_send(event.agent_id, event.text))
+
+    async def _resume_then_send(self, agent_id: str, text: str) -> None:
+        session = await self.resume(agent_id)
         if session is None:
-            return  # silently ignore stale messages for dead agents
-        session.queue_send(event.text)
+            return  # legacy record without session_id/spawn_options
+        session.queue_send(text)

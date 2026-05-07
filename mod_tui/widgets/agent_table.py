@@ -11,6 +11,7 @@ from mod_tui.events import (
     AgentStateChanged,
     EventBus,
 )
+from mod_tui.persistence.agents_index import AgentsIndex
 
 
 class AgentTable(Container):
@@ -63,6 +64,17 @@ class AgentTable(Container):
         yield table
 
     def on_mount(self) -> None:
+        # Seed past agents from disk so a fresh process boot still surfaces
+        # the agents the user spawned in the previous session. AgentManager
+        # has already reconciled any non-terminal records to ERROR, so what
+        # we read here is safe to display as-is.
+        cwd = getattr(self.app, "cwd", None)
+        if cwd is not None:
+            for info in AgentsIndex(cwd=cwd).load():
+                if info.id == "orchestrator":
+                    continue
+                self._add_row(info)
+
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is None:
             return
@@ -81,10 +93,7 @@ class AgentTable(Container):
     # --- event handlers ---------------------------------------------------
 
     def _on_spawned(self, event: AgentSpawned) -> None:
-        info = event.info
-        self._infos[info.id] = info
-        if self._is_visible(info):
-            self._add_row(info)
+        self._add_row(event.info)
 
     def _on_state(self, event: AgentStateChanged) -> None:
         # Preserve any archived flag we already know about — AgentStateChanged
@@ -140,6 +149,14 @@ class AgentTable(Container):
         return self._show_archived or not info.archived
 
     def _add_row(self, info: AgentInfo) -> None:
+        """Record `info` and add a row to the DataTable iff it should be
+        visible under the current filter. Idempotent — a duplicate call for
+        an already-rendered agent is a no-op (still refreshes `_infos`)."""
+        self._infos[info.id] = info
+        if info.id in self._rows:
+            return
+        if not self._is_visible(info):
+            return
         table = self.query_one(DataTable)
         table.add_row(*self._render_cells(info), key=info.id)
         self._rows[info.id] = info.id  # row key == agent id

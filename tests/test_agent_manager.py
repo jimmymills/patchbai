@@ -180,6 +180,114 @@ async def test_set_archived_unknown_id_raises_keyerror(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_spawn_captures_session_id_and_spawn_options(tmp_path: Path):
+    # Resume across restarts depends on (a) spawn_options being persisted
+    # at spawn time and (b) the SDK session_id being captured from the first
+    # ResultMessage. Verify both land on disk.
+    from mod_tui.persistence.agents_index import AgentsIndex
+
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await manager.spawn(
+        name="research", prompt="hi",
+        model="claude-sonnet-4-6", allowed_tools=["Read"],
+    )
+    await manager.wait_idle(aid)
+
+    persisted = next(i for i in AgentsIndex(cwd=tmp_path).load() if i.id == aid)
+    assert persisted.session_id == "fake-session"
+    assert persisted.spawn_options is not None
+    assert persisted.spawn_options["model"] == "claude-sonnet-4-6"
+    assert persisted.spawn_options["allowed_tools"] == ["Read"]
+
+
+@pytest.mark.asyncio
+async def test_resume_revives_session_for_persisted_agent(tmp_path: Path):
+    # Simulate a crash-restart: spawn in one manager, drop it, then construct
+    # a fresh manager (mirrors a fresh process) and call resume(). The
+    # resumed session should be live and reachable via send().
+    bus = EventBus()
+    m1 = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await m1.spawn(name="research", prompt="first")
+    await m1.wait_idle(aid)
+    await m1.shutdown()
+
+    m2 = AgentManager(
+        cwd=tmp_path, bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script(), _ok_script()]),
+    )
+    # Pre-resume the manager has no live session for this id.
+    assert m2.get_session(aid) is None
+
+    revived = await m2.resume(aid)
+    assert revived is not None
+    assert m2.get_session(aid) is revived
+
+    # Now send works against the revived session.
+    await m2.send(aid, "follow up")
+    await m2.wait_idle(aid)
+
+
+@pytest.mark.asyncio
+async def test_resume_returns_none_for_legacy_record(tmp_path: Path):
+    # Records written before the resume feature have no session_id /
+    # spawn_options. resume() must report this and not throw.
+    from mod_tui.agents.state import AgentInfo, AgentState
+    from mod_tui.persistence.agents_index import AgentsIndex
+
+    AgentsIndex(cwd=tmp_path).save([
+        AgentInfo(id="legacy", name="old", cwd=str(tmp_path),
+                  started_at=100.0, state=AgentState.ERROR),
+    ])
+    manager = AgentManager(
+        cwd=tmp_path, bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    assert await manager.resume("legacy") is None
+
+
+@pytest.mark.asyncio
+async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
+    import asyncio
+
+    from mod_tui.events import DirectMessageToAgent
+
+    bus = EventBus()
+    m1 = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await m1.spawn(name="research", prompt="first")
+    await m1.wait_idle(aid)
+    await m1.shutdown()
+
+    bus2 = EventBus()
+    m2 = AgentManager(
+        cwd=tmp_path, bus=bus2,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script(), _ok_script()]),
+    )
+    bus2.publish(DirectMessageToAgent(agent_id=aid, text="hello again"))
+    # Let the resume task scheduled by the handler run to completion.
+    for _ in range(10):
+        await asyncio.sleep(0)
+        if m2.get_session(aid) is not None:
+            break
+    await m2.wait_idle(aid)
+
+    entries = m2.read_transcript(aid)
+    user_texts = [e.text for e in entries if e.role == "user"]
+    # First prompt is from the prior process; the second is the lazy-resume
+    # send we just published.
+    assert user_texts == ["first", "hello again"]
+
+
+@pytest.mark.asyncio
 async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
     from mod_tui.agents.request_inbox import RequestInbox
 

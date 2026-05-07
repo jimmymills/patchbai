@@ -27,6 +27,14 @@ class AgentInfo:
     tokens_in: int = 0
     tokens_out: int = 0
     archived: bool = False
+    # SDK session id observed from the first ResultMessage. Required to
+    # resume the conversation in a fresh process after a crash/restart.
+    session_id: str | None = None
+    # JSON-serializable kwargs needed to reconstruct ClaudeAgentOptions on
+    # resume (cwd, model, allowed_tools, disallowed_tools, system_prompt).
+    # None means this record was written before the resume feature existed
+    # and cannot be auto-resumed.
+    spawn_options: dict | None = None
 
     def __post_init__(self) -> None:
         if self.last_activity == 0.0:
@@ -49,6 +57,8 @@ class AgentInfo:
             "tokens_in": self.tokens_in,
             "tokens_out": self.tokens_out,
             "archived": self.archived,
+            "session_id": self.session_id,
+            "spawn_options": self.spawn_options,
         }
 
     @classmethod
@@ -65,4 +75,6 @@ class AgentInfo:
             tokens_in=d.get("tokens_in", 0),
             tokens_out=d.get("tokens_out", 0),
             archived=d.get("archived", False),
+            session_id=d.get("session_id"),
+            spawn_options=d.get("spawn_options"),
         )

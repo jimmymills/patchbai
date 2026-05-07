@@ -38,6 +38,8 @@ def test_agent_info_round_trip_dict():
         id="abc", name="research", cwd="/tmp", started_at=100.0,
         state=AgentState.DONE, ended_at=200.0, last_activity=199.0,
         cost=0.123, tokens_in=500, tokens_out=750,
+        session_id="sdk-session-xyz",
+        spawn_options={"cwd": "/tmp", "model": "claude-sonnet-4-6"},
     )
     d = info.to_dict()
     again = AgentInfo.from_dict(d)
@@ -70,3 +72,16 @@ def test_agent_info_archived_back_compat_when_missing_from_dict():
         "cost": 0.0, "tokens_in": 0, "tokens_out": 0,
     }
     assert AgentInfo.from_dict(legacy).archived is False
+
+
+def test_agent_info_from_dict_tolerates_legacy_records():
+    # Records written before the resume feature lack session_id and
+    # spawn_options. from_dict must read them as None, not crash on KeyError.
+    legacy = {
+        "id": "old", "name": "agent", "cwd": "/tmp", "started_at": 100.0,
+        "state": "done", "ended_at": 110.0, "last_activity": 109.0,
+        "cost": 0.0, "tokens_in": 0, "tokens_out": 0,
+    }
+    info = AgentInfo.from_dict(legacy)
+    assert info.session_id is None
+    assert info.spawn_options is None
