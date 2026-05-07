@@ -64,23 +64,50 @@ async def test_terminal_renders_with_color_attributes(tmp_path):
         screen_widget = term.query_one("#terminal-screen", Static)
         rendered = screen_widget.content
         assert isinstance(rendered, Text)
-        # At least one span must carry red coloring across cells [0..3)
+        from rich.style import Style
         red_spans = [
             s for s in rendered.spans
-            if s.start < 3
-            and getattr(getattr(s.style, "color", None), "name", None) == "red"
+            if isinstance(s.style, Style)
+            and rendered.plain[s.start:s.end] == "RED"
+            and s.style.color is not None
+            and s.style.color.name == "red"
         ]
-        assert red_spans, f"expected a red span, got spans={rendered.spans!r}"
+        assert red_spans, f"expected a red span over 'RED', got spans={rendered.spans!r}"
         term._teardown()
 
 
 @pytest.mark.asyncio
-async def test_terminal_uses_history_screen():
-    import pyte
-    app = _Host()
+async def test_terminal_scrollback_accumulates_past_visible_window():
+    """HistoryScreen must collect lines that scroll off the top of the visible 24-row window."""
+    # Print 40 lines so ~16 scroll out of the 24-row default window.
+    cmd = ["/bin/sh", "-c", "i=1; while [ $i -le 40 ]; do echo line-$i; i=$((i+1)); done"]
+    app = _Host(command=cmd)
     async with app.run_test() as pilot:
         await pilot.pause()
         term = app.query_one(Terminal)
-        assert isinstance(term._screen, pyte.HistoryScreen), \
-            f"expected HistoryScreen, got {type(term._screen).__name__}"
+        for _ in range(40):
+            term._tick()
+            await pilot.pause()
+        # The earliest lines should now live in screen.history.top, not screen.display.
+        # pyte.HistoryScreen exposes .history with .top (deque of off-screen rows).
+        assert len(term._screen.history.top) > 0, (
+            f"expected scrollback rows in history.top; "
+            f"history.top size={len(term._screen.history.top)}"
+        )
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_handles_non_ascii_output():
+    # Print é (U+00E9, two bytes in UTF-8) and an emoji (4 bytes).
+    app = _Host(command=["/bin/sh", "-c", "printf 'caf\\xc3\\xa9 \\xf0\\x9f\\x9a\\x80'"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        for _ in range(20):
+            term._tick()
+            await pilot.pause()
+        text = "\n".join(term._screen.display)
+        assert "café" in text, f"expected 'café' in screen, got {text!r}"
+        assert "🚀" in text, f"expected rocket emoji in screen, got {text!r}"
         term._teardown()

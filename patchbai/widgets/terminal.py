@@ -47,6 +47,7 @@ class Terminal(Container):
 
     DEFAULT_COLS = 80
     DEFAULT_ROWS = 24
+    HISTORY_LINES = 2000  # ~17 MB worst case at 80 cols × 112B per pyte Char
 
     def __init__(
         self,
@@ -63,7 +64,7 @@ class Terminal(Container):
             environ.update(env)
         self._env = environ
         self._pty = None
-        self._screen = pyte.HistoryScreen(self.DEFAULT_COLS, self.DEFAULT_ROWS, history=2000, ratio=0.5)
+        self._screen = pyte.HistoryScreen(self.DEFAULT_COLS, self.DEFAULT_ROWS, history=self.HISTORY_LINES)
         self._stream = pyte.Stream(self._screen)
         self._timer = None
 
