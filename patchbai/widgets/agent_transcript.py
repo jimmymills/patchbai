@@ -60,7 +60,7 @@ class AgentTranscript(Vertical):
         if event.agent_id != self._agent_id:
             return
         from patchbai.widgets.permission_request_bar import PermissionRequestBar
-        for bar in self.query(PermissionRequestBar):
+        for bar in list(self.query(PermissionRequestBar)):
             if bar.request_id == event.request_id:
                 bar.remove()
 

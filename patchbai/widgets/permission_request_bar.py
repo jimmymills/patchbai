@@ -1,3 +1,5 @@
+from typing import Literal
+
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from textual.app import ComposeResult
 from textual.containers import Horizontal
@@ -53,7 +55,13 @@ class PermissionRequestBar(Horizontal):
         elif bid == "bar-deny-once":
             self._resolve("deny", scope=None, grants=grants)
 
-    def _resolve(self, behavior: str, *, scope: str | None, grants) -> None:
+    def _resolve(
+        self,
+        behavior: Literal["allow", "deny"],
+        *,
+        scope: Literal["persistent", "session"] | None,
+        grants: "PermissionGrants | None",
+    ) -> None:
         req = self._request
         if scope is not None and grants is not None:
             grants.remember(
