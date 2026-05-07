@@ -124,9 +124,8 @@ class AgentTable(Container):
     def _on_msg(self, event: AgentMessageAppended) -> None:
         self._last_actions[event.agent_id] = f"[{event.role}] {event.text[:60]}"
         if event.agent_id in self._infos:
-            # Task 4 will replace this with a full _rebuild_sorted() so the
-            # last_activity tiebreaker can re-rank rows. For now, just
-            # rebuild — the cells include the updated last-action text.
+            # last_activity feeds the sort tiebreaker, so rebuild to let the
+            # row bubble up within its bucket and refresh its last-action cell.
             self._rebuild_sorted()
 
     def _on_archive_changed(self, event: AgentArchiveChanged) -> None:
