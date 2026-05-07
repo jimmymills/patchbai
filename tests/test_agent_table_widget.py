@@ -341,3 +341,66 @@ async def test_seeded_rows_are_in_default_sort_order(tmp_path: Path):
         table = app.query_one(AgentTable).query_one(DataTable)
         keys = [str(row.value) for row in table.rows.keys()]
         assert keys == ["w1", "r1", "e1", "d1"]
+
+
+@pytest.mark.asyncio
+async def test_state_change_running_to_done_moves_row_to_bottom():
+    # Two agents start RUNNING; when one finishes, the DONE row should
+    # drop below the still-RUNNING row.
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        a = _info("a", state=AgentState.RUNNING)
+        b = _info("b", state=AgentState.RUNNING)
+        bus.publish(AgentSpawned(info=a))
+        bus.publish(AgentSpawned(info=b))
+        await pilot.pause()
+
+        # Flip "a" to DONE.
+        a_done = dataclasses.replace(a, state=AgentState.DONE, ended_at=200.0)
+        bus.publish(AgentStateChanged(info=a_done, old_state=AgentState.RUNNING))
+        await pilot.pause()
+
+        table = app.query_one(AgentTable).query_one(DataTable)
+        keys = [str(row.value) for row in table.rows.keys()]
+        # "b" still RUNNING ⇒ priority 1; "a" now DONE ⇒ priority 4.
+        assert keys == ["b", "a"]
+
+
+@pytest.mark.asyncio
+async def test_spawn_inserts_at_correct_priority_position():
+    # Existing DONE agent on top should be displaced when a WAITING
+    # agent spawns.
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentSpawned(info=_info("d", state=AgentState.DONE)))
+        await pilot.pause()
+        bus.publish(AgentSpawned(info=_info("w", state=AgentState.WAITING)))
+        await pilot.pause()
+
+        table = app.query_one(AgentTable).query_one(DataTable)
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["w", "d"]
+
+
+@pytest.mark.asyncio
+async def test_archived_row_sinks_to_bottom_when_visible():
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(AgentSpawned(info=_info("live", state=AgentState.DONE)))
+        bus.publish(AgentSpawned(info=_info("arch", state=AgentState.WAITING,
+                                            archived=True)))
+        await pilot.pause()
+
+        table = app.query_one(AgentTable).query_one(DataTable)
+        await pilot.press("a")  # show archived
+        await pilot.pause()
+
+        keys = [str(row.value) for row in table.rows.keys()]
+        # Even though "arch" is WAITING (priority 0), it's archived ⇒ last.
+        assert keys == ["live", "arch"]
