@@ -6,6 +6,7 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
+from mod_tui.agents.state import AgentState
 from mod_tui.app import ModTuiApp
 from mod_tui.events import EventBus, WorkspaceCwdChanged
 from mod_tui.orchestrator.session import OrchestratorSession
@@ -90,3 +91,34 @@ async def test_change_cwd_rejects_invalid_path(tmp_path):
         result = await app.change_cwd(tmp_path / "does-not-exist")
         assert "error" in result
         assert app.cwd == proj.resolve() or app.cwd == proj
+
+
+@pytest.mark.asyncio
+async def test_change_cwd_refuses_with_running_children(tmp_path):
+    proj_a = tmp_path / "a"
+    proj_b = tmp_path / "b"
+    proj_a.mkdir()
+    proj_b.mkdir()
+    app, _ = _build_app(proj_a)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        # Spawn a child agent. The FakeSDKAdapter's stream completes when its
+        # script is exhausted, so the AgentSession transitions to DONE on its
+        # own. To simulate a "still running" child, we force the state back
+        # to RUNNING after spawn — the refusal check in App.change_cwd just
+        # inspects info.state.is_terminal on each AgentInfo.
+        manager = app.manager
+        manager._adapter_factory = lambda: FakeSDKAdapter(
+            scripts=[[
+                AssistantMessage(content=[TextBlock(text="hi")], model="fake-model"),
+            ]],
+        )
+        await manager.spawn(name="worker", prompt="do thing")
+        await pilot.pause()
+        infos = manager.list_infos()
+        assert infos, "spawn should register an agent info"
+        infos[0].state = AgentState.RUNNING
+        result = await app.change_cwd(proj_b)
+        assert result.get("error") == "agents_running"
+        assert result.get("agents") and result["agents"][0]["name"] == "worker"
+        assert app.cwd == proj_a.resolve() or app.cwd == proj_a
