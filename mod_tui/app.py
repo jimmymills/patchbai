@@ -12,7 +12,7 @@ from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter
 from mod_tui.config import ConfigStore
 from mod_tui.events import (
-    EventBus, OpenResumePicker, TabAdded, TabClosed, TabSwitched,
+    EventBus, LayoutResized, OpenResumePicker, TabAdded, TabClosed, TabSwitched,
 )
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
@@ -50,6 +50,33 @@ from mod_tui.widgets.placeholders import ActivityFeed
 from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
 from mod_tui.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
+
+
+def _apply_size_updates(
+    root_layout: dict,
+    parent_path: tuple[int, ...],
+    updates: tuple[tuple[int, str], ...],
+) -> bool:
+    """Walk `root_layout` (a dict shaped like LayoutSpec.layout) following
+    `parent_path` (each step indexes into `children`), then write the new
+    size strings into the matching child dicts. Returns True if every step
+    of the path resolved and at least one update was applied. Mutates the
+    dict in place — the caller is expected to pass a fresh dump."""
+    node = root_layout
+    for idx in parent_path:
+        children = node.get("children")
+        if not isinstance(children, list) or idx >= len(children):
+            return False
+        node = children[idx]
+    children = node.get("children")
+    if not isinstance(children, list):
+        return False
+    applied = False
+    for child_idx, new_size in updates:
+        if 0 <= child_idx < len(children):
+            children[child_idx]["size"] = new_size
+            applied = True
+    return applied
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -153,6 +180,7 @@ class ModTuiApp(App):
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("ctrl+shift+l", "open_theme_switcher", "themes"),
+        Binding("ctrl+shift+r", "reset_panel_sizes", "reset panel sizes"),
         Binding("?", "show_help", "help"),
         Binding("ctrl+t", "new_tab", "new tab", priority=True),
         Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
@@ -255,6 +283,14 @@ class ModTuiApp(App):
         self.actions_registry.register(
             "open_theme_switcher", self.action_open_theme_switcher,
             description="Open the saved-themes switcher modal.", args_schema={},
+        )
+        self.actions_registry.register(
+            "reset_panel_sizes", self.action_reset_panel_sizes,
+            description=(
+                "Discard mouse-drag panel size adjustments by reloading the "
+                "active tab's layout from its named source."
+            ),
+            args_schema={},
         )
 
     def _focus_panel(self, panel_id: str) -> None:
@@ -426,7 +462,7 @@ class ModTuiApp(App):
     def action_show_help(self) -> None:
         self.notify(
             "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
-            "ctrl-shift-l themes · "
+            "ctrl-shift-l themes · ctrl-shift-r reset panel sizes · "
             "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
             "ctrl-w close tab · /reset new · /resume past · /rename title · "
             "/help cmds · ? help",
@@ -629,6 +665,54 @@ class ModTuiApp(App):
         self._current_layout_name = layout_name
         save_local_workspace(self.cwd, self._workspace)
 
+    # --- splitter persistence ---------------------------------------------
+
+    def _on_layout_resized(self, event: LayoutResized) -> None:
+        """Persist the new sizes from a Splitter drag back to the workspace.
+        Mutates only the size fields of the targeted children — does not
+        re-apply the layout, so the live widget tree (with the inline cell
+        sizes the splitter just set) stays as the user left it."""
+        if self._workspace is None:
+            return
+        # Find the tab and walk its layout to the parent container.
+        new_tabs: list[dict] = []
+        mutated = False
+        for t in self._workspace.tabs:
+            tab_dump = t.model_dump(mode="json")
+            if t.id == event.tab_id:
+                root_layout = tab_dump["layout"]["layout"]
+                if _apply_size_updates(root_layout, event.parent_path, event.updates):
+                    mutated = True
+            new_tabs.append(tab_dump)
+        if not mutated:
+            return
+        try:
+            candidate = Workspace.model_validate({
+                "version": self._workspace.version,
+                "tabs": new_tabs,
+                "active": self._workspace.active,
+                "active_theme": self._workspace.active_theme,
+            })
+        except Exception:
+            # Validation failure leaves both memory and disk untouched.
+            return
+        self._workspace = candidate
+        save_local_workspace(self.cwd, candidate)
+
+    async def action_reset_panel_sizes(self) -> None:
+        """Discard any drag-set sizes by reloading the active tab's layout
+        from its named source (or the built-in dashboard if unnamed)."""
+        if self._active_tab_id is None:
+            return
+        spec: LayoutSpec | None = None
+        if self._current_layout_name:
+            spec = self.layouts_store.load(self._current_layout_name)
+        if spec is None:
+            spec = dashboard_layout()
+        await self._apply_to_tab(
+            self._active_tab_id, spec, layout_name=self._current_layout_name,
+        )
+
     # --- tab activation handler --------------------------------------------
 
     def on_tabbed_content_tab_activated(
@@ -692,6 +776,7 @@ class ModTuiApp(App):
             self.layouts_store.save("default", dashboard_layout())
         await self.orchestrator.start()
         self.event_bus.subscribe(OpenResumePicker, self._on_open_resume_picker)
+        self.event_bus.subscribe(LayoutResized, self._on_layout_resized)
         ws = self._load_or_seed_workspace()
         self._workspace = ws
         self._active_tab_id = ws.active

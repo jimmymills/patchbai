@@ -83,6 +83,30 @@ async def test_single_child_container_has_no_splitter():
 
 
 @pytest.mark.asyncio
+async def test_splitter_records_spec_path_on_built_widgets():
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        host = app.query_one("#panel-area", Container)
+        await apply_layout(host, _spec_three_horizontal(), _registry())
+        await pilot.pause()
+
+        box = host.children[0]
+        # Spec children at indices (0,), (1,), (2,) — splitters between them.
+        spec_paths = [getattr(c, "_mod_tui_spec_path", None) for c in box.children]
+        assert spec_paths[0] == (0,)
+        assert spec_paths[2] == (1,)
+        assert spec_paths[4] == (2,)
+
+        splitters = [c for c in box.children if isinstance(c, Splitter)]
+        # The splitter remembers the parent's path (the root, ()), and which
+        # spec children it sits between.
+        assert splitters[0]._parent_path == ()
+        assert splitters[0]._prev_index == 0 and splitters[0]._next_index == 1
+        assert splitters[1]._prev_index == 1 and splitters[1]._next_index == 2
+
+
+@pytest.mark.asyncio
 async def test_splitter_drag_resizes_neighbors():
     """Directly drive the splitter's mouse handlers and assert that neighbor
     inline width styles update with the drag delta."""
