@@ -188,3 +188,42 @@ async def test_terminal_resizes_screen_and_pty():
         assert pty_cols == term._screen.columns
         assert pty_rows == term._screen.lines
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_arrow_key_bytes():
+    """Pressing arrow keys writes xterm sequences to the PTY."""
+    app = _Host(command=["/bin/cat"])  # cat echoes its stdin to stdout
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("up")
+        await pilot.pause()
+        # The widget records the bytes it forwarded in _last_write.
+        assert getattr(term, "_last_write", None) == b"\x1b[A"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_forwards_ctrl_letter():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        await pilot.press("ctrl+l")
+        await pilot.pause()
+        assert getattr(term, "_last_write", None) == b"\x0c"
+        term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_terminal_drops_unknown_key_silently():
+    app = _Host()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # super+x is not something we handle
+        await pilot.press("super+x")
+        await pilot.pause()
+        assert getattr(term, "_last_write", None) is None
+        term._teardown()

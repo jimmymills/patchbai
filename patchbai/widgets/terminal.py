@@ -9,6 +9,7 @@ from textual.widgets import Static
 import ptyprocess
 import pyte
 
+from patchbai.widgets._terminal_keys import encode_key
 from patchbai.widgets._terminal_render import render_screen
 
 
@@ -46,6 +47,8 @@ class Terminal(Container):
     }
     """
 
+    can_focus = True
+
     DEFAULT_COLS = 80
     DEFAULT_ROWS = 24
     HISTORY_LINES = 2000  # ~17 MB worst case at 80 cols × 112B per pyte Char
@@ -70,6 +73,7 @@ class Terminal(Container):
         self._stream = pyte.Stream(self._screen)
         self._timer = None
         self._reader_registered: bool = False
+        self._last_write: bytes | None = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="terminal-screen")
@@ -183,29 +187,16 @@ class Terminal(Container):
     def on_key(self, event) -> None:
         if self._pty is None:
             return
-        key = event.key
-        char = event.character
+        data = encode_key(event.key, event.character)
+        if data is None:
+            return
         try:
-            if char is not None and len(char) == 1 and char.isprintable():
-                self._pty.write(char)
-                event.stop()
-            elif key == "enter":
-                self._pty.write("\n")
-                event.stop()
-            elif key == "backspace":
-                self._pty.write("\x7f")
-                event.stop()
-            elif key == "tab":
-                self._pty.write("\t")
-                event.stop()
-            elif key == "ctrl+c":
-                self._pty.write("\x03")
-                event.stop()
-            elif key == "ctrl+d":
-                self._pty.write("\x04")
-                event.stop()
+            # PtyProcessUnicode.write expects str; round-trip safely.
+            self._pty.write(data.decode("utf-8", errors="replace"))
         except Exception:
-            pass
+            return
+        self._last_write = data
+        event.stop()
 
     @classmethod
     def default_border_title(cls, props: dict) -> str:
