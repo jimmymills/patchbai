@@ -6,6 +6,7 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
+from mod_tui.app import ModTuiApp
 from mod_tui.events import EventBus
 from mod_tui.orchestrator.tools import build_orchestrator_tools
 
@@ -79,3 +80,26 @@ async def test_read_agent_transcript_tool_returns_messages(tmp_path: Path):
     text = out["content"][0]["text"]
     assert "say hi" in text
     assert "done" in text
+
+
+@pytest.mark.asyncio
+async def test_build_orchestrator_tools_includes_tab_tools(tmp_path):
+    bus = EventBus()
+    manager = AgentManager(cwd=tmp_path, bus=bus,
+                           adapter_factory=lambda: FakeSDKAdapter(scripts=[]))
+    app = ModTuiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    tools = build_orchestrator_tools(
+        app.manager,
+        apply_layout=app._orchestrator_apply_layout,
+        layouts_store=app.layouts_store,
+        config_store=app.config_store,
+        actions=app.actions_registry,
+        rebind_keys=app._rebind_keys,
+        widget_registry=app.registry,
+        current_layout=lambda: app._active_layout(),
+        app=app,
+    )
+    assert "add_tab" in tools
+    assert "close_tab" in tools
+    assert "switch_tab" in tools
+    assert "list_tabs" in tools

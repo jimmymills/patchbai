@@ -36,7 +36,7 @@ async def test_get_layout_returns_message_when_no_layout_applied(tmp_path, ok_sc
     manager = _make_manager(tmp_path, ok_script)
     store = NamedLayoutsStore(global_dir=tmp_path)
 
-    async def apply_callable(spec, *, layout_name=None):
+    async def apply_callable(spec, *, layout_name=None, tab_id=None):
         pass
 
     tools = build_orchestrator_tools(
@@ -78,7 +78,7 @@ async def test_get_layout_returns_dashboard_with_effective_titles(tmp_path, ok_s
         for c in node["children"]:
             _walk(c)
 
-    _walk(payload["layout"])
+    _walk(payload["spec"]["layout"])
     assert titles == {
         "orch": "Orchestrator",
         "agents": "Agents",
@@ -122,6 +122,6 @@ async def test_get_layout_preserves_explicit_panel_title(tmp_path, ok_script):
         for c in node["children"]:
             _walk(c)
 
-    _walk(payload["layout"])
+    _walk(payload["spec"]["layout"])
     assert titles["orch"] == "My Boss"
     assert titles["feed"] == "Activity"

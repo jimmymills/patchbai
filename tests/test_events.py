@@ -119,3 +119,55 @@ def test_agent_message_appended_has_optional_tool_fields():
     )
     assert e2.tool_id == "toolu_abc"
     assert e2.tool_name == "bash"
+
+
+from mod_tui.events import (
+    LayoutApplied,
+    LayoutFailed,
+    TabAdded,
+    TabClosed,
+    TabSwitched,
+)
+
+
+def test_tab_added_event_has_id_and_title():
+    e = TabAdded(tab_id="t1", title="Main")
+    assert e.tab_id == "t1"
+    assert e.title == "Main"
+
+
+def test_tab_closed_event_has_id():
+    e = TabClosed(tab_id="t1")
+    assert e.tab_id == "t1"
+
+
+def test_tab_switched_event_has_id_and_title():
+    e = TabSwitched(tab_id="t1", title="Main")
+    assert (e.tab_id, e.title) == ("t1", "Main")
+
+
+def test_layout_applied_includes_tab_id():
+    from mod_tui.layout.spec import LayoutSpec
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {"id": "orch", "widget": "OrchestratorChat"},
+    })
+    e = LayoutApplied(spec=spec, layout_name=None, tab_id="t1")
+    assert e.tab_id == "t1"
+
+
+def test_layout_applied_tab_id_defaults_to_none():
+    from mod_tui.layout.spec import LayoutSpec
+    spec = LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {"id": "orch", "widget": "OrchestratorChat"},
+    })
+    e = LayoutApplied(spec=spec)
+    assert e.tab_id is None
+
+
+def test_layout_failed_includes_tab_id():
+    e = LayoutFailed(error="boom", tab_id="t1")
+    assert e.tab_id == "t1"
+    e2 = LayoutFailed(error="boom")
+    assert e2.tab_id is None

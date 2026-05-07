@@ -70,3 +70,53 @@ def test_added_panel_is_mounted():
     ])
     ops = diff(a, b)
     assert any(isinstance(op, MountPanel) and op.panel.id == "agents" for op in ops)
+
+
+def _spec_with_tabs(tabs_children: list[dict]) -> LayoutSpec:
+    return LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "orch", "widget": "OrchestratorChat"},
+                {"type": "tabs", "children": tabs_children},
+            ],
+        },
+    })
+
+
+def test_panel_inside_tabs_props_change_produces_update():
+    a = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed", "props": {"x": 1}},
+        {"id": "logs", "widget": "LogTail"},
+    ])
+    b = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed", "props": {"x": 2}},
+        {"id": "logs", "widget": "LogTail"},
+    ])
+    ops = diff(a, b)
+    assert ops == [UpdateProps(panel_id="feed", props={"x": 2})]
+
+
+def test_panel_added_to_tabs_is_mounted():
+    a = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed"},
+    ])
+    b = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed"},
+        {"id": "logs", "widget": "LogTail"},
+    ])
+    ops = diff(a, b)
+    assert any(isinstance(op, MountPanel) and op.panel.id == "logs" for op in ops)
+
+
+def test_panel_removed_from_tabs_is_unmounted():
+    a = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed"},
+        {"id": "logs", "widget": "LogTail"},
+    ])
+    b = _spec_with_tabs([
+        {"id": "feed", "widget": "ActivityFeed"},
+    ])
+    ops = diff(a, b)
+    assert any(isinstance(op, UnmountPanel) and op.panel_id == "logs" for op in ops)

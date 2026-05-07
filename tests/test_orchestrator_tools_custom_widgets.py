@@ -25,7 +25,7 @@ async def test_set_layout_registers_custom_widget_before_apply(tmp_path, ok_scri
     registry.register("OrchestratorChat", Static)
 
     applied: list[LayoutSpec] = []
-    async def apply_callable(spec, *, layout_name=None):
+    async def apply_callable(spec, *, layout_name=None, tab_id=None):
         applied.append(spec)
 
     tools = build_orchestrator_tools(
@@ -67,7 +67,7 @@ async def test_set_layout_with_invalid_custom_widget_aborts(tmp_path, ok_script)
     registry.register("OrchestratorChat", Static)
 
     applied: list = []
-    async def apply_callable(spec, *, layout_name=None):
+    async def apply_callable(spec, *, layout_name=None, tab_id=None):
         applied.append(spec)
 
     tools = build_orchestrator_tools(

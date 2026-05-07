@@ -1,25 +1,28 @@
+import secrets
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingsMap
 from textual.containers import Container
 from textual.keys import _character_to_key
-from textual.widgets import DataTable
+from textual.widgets import DataTable, TabbedContent, TabPane
 
 from mod_tui.actions import ActionRegistry
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter
 from mod_tui.config import ConfigStore
-from mod_tui.events import EventBus
+from mod_tui.events import EventBus, TabAdded, TabClosed, TabSwitched
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
 from mod_tui.layout.registry import WidgetRegistry
 from mod_tui.layout.spec import LayoutSpec
 from mod_tui.orchestrator.session import OrchestratorSession
-from mod_tui.persistence.layout_store import load_layout as load_local_layout
-from mod_tui.persistence.layout_store import save_layout as save_local_layout
 from mod_tui.persistence.layouts_store import NamedLayoutsStore
 from mod_tui.persistence.paths import global_config_dir
+from mod_tui.persistence.workspace_store import (
+    load_workspace as load_local_workspace,
+    save_workspace as save_local_workspace,
+)
 from mod_tui.persistence.agents_index import AgentsIndex
 from mod_tui.widgets.agent_table import AgentTable
 from mod_tui.widgets.agent_transcript import AgentTranscript
@@ -32,10 +35,12 @@ from mod_tui.widgets.file_viewer import FileViewer
 from mod_tui.widgets.markdown import Markdown
 from mod_tui.widgets.history_screen import HistoryScreen
 from mod_tui.widgets.layout_switcher import LayoutSwitcherScreen
+from mod_tui.widgets.new_tab_screen import NewTabScreen
 from mod_tui.widgets.orchestrator_chat import OrchestratorChat
 from mod_tui.widgets.placeholders import ActivityFeed
 from mod_tui.widgets.terminal import Terminal
 from mod_tui.widgets.transcript_screen import TranscriptScreen
+from mod_tui.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
 
 
 def build_default_registry() -> WidgetRegistry:
@@ -116,7 +121,7 @@ class ModTuiApp(App):
     """Plan-4 App: layout + config mutability via orchestrator MCP tools."""
 
     CSS = """
-    #panel-area {
+    #app-tabs {
         height: 1fr;
     }
     """
@@ -128,6 +133,17 @@ class ModTuiApp(App):
         Binding("ctrl+h", "open_history", "history"),
         Binding("ctrl+l", "open_layout_switcher", "layouts"),
         Binding("?", "show_help", "help"),
+        Binding("ctrl+t", "new_tab", "new tab", priority=True),
+        Binding("ctrl+w", "close_active_tab", "close tab", priority=True),
+        Binding("ctrl+1", "switch_tab_index(0)", "tab 1"),
+        Binding("ctrl+2", "switch_tab_index(1)", "tab 2"),
+        Binding("ctrl+3", "switch_tab_index(2)", "tab 3"),
+        Binding("ctrl+4", "switch_tab_index(3)", "tab 4"),
+        Binding("ctrl+5", "switch_tab_index(4)", "tab 5"),
+        Binding("ctrl+6", "switch_tab_index(5)", "tab 6"),
+        Binding("ctrl+7", "switch_tab_index(6)", "tab 7"),
+        Binding("ctrl+8", "switch_tab_index(7)", "tab 8"),
+        Binding("ctrl+9", "switch_tab_index(8)", "tab 9"),
     ]
 
     def __init__(
@@ -143,8 +159,10 @@ class ModTuiApp(App):
         self.cwd = Path(cwd) if cwd else Path.cwd()
         self.event_bus = EventBus()
         self.registry = registry or build_default_registry()
-        self._current_spec: LayoutSpec | None = None
-        self._current_layout_name: str | None = None
+        self._workspace: Workspace | None = None
+        self._active_tab_id: str | None = None
+        self._current_layout_name: str | None = None  # last `load_layout` name
+        self._tab_focus_snapshots: dict[str, str] = {}  # tab_id -> last focused panel id
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
@@ -165,7 +183,8 @@ class ModTuiApp(App):
             actions=self.actions_registry,
             rebind_keys=self._rebind_keys,
             widget_registry=self.registry,
-            current_layout=lambda: self._current_spec,
+            current_layout=lambda: self._active_layout(),
+            app=self,
         )
 
     # --- action registration -----------------------------------------------
@@ -248,6 +267,103 @@ class ModTuiApp(App):
         except AttributeError:
             pass
 
+    # --- tab workspace-mutation surface ------------------------------------
+
+    def _generate_tab_id(self) -> str:
+        """Short, collision-checked id."""
+        existing = {t.id for t in (self._workspace.tabs if self._workspace else [])}
+        while True:
+            candidate = secrets.token_hex(3)  # 6 hex chars
+            if candidate not in existing:
+                return candidate
+
+    def _default_seed_layout(self) -> LayoutSpec:
+        """Layout used when add_tab is called with no layout arg.
+
+        If the workspace already has chat in another tab, seed with a chat-less
+        ActivityFeed (most 'add a new tab' requests will be followed by a
+        set_layout). Otherwise seed with an OrchestratorChat panel."""
+        has_chat = False
+        if self._workspace is not None:
+            has_chat = any(_contains_chat(t.layout.layout) for t in self._workspace.tabs)
+        if has_chat:
+            return LayoutSpec.model_validate({
+                "version": 1,
+                "layout": {"id": "feed", "widget": "ActivityFeed"},
+            })
+        return LayoutSpec.model_validate({
+            "version": 1,
+            "layout": {"id": "orch", "widget": "OrchestratorChat"},
+        })
+
+    async def close_tab(self, tab_id: str) -> dict:
+        """Close a tab. Returns a small result dict; never raises on bad input."""
+        if self._workspace is None:
+            return {"error": "workspace_not_initialized"}
+        ws = self._workspace
+        tabs = ws.tabs
+        target = next((t for t in tabs if t.id == tab_id), None)
+        if target is None:
+            return {"error": "unknown_tab_id"}
+        if len(tabs) == 1:
+            return {"error": "would_leave_zero_tabs"}
+        remaining = [t for t in tabs if t.id != tab_id]
+        if not any(_contains_chat(t.layout.layout) for t in remaining):
+            return {"error": "would_leave_no_chat",
+                    "suggestion": "add OrchestratorChat to another tab before closing this one"}
+        # Determine new active: previous tab, or the first remaining if we close index 0.
+        if self._active_tab_id == tab_id:
+            idx = next(i for i, t in enumerate(tabs) if t.id == tab_id)
+            fallback_idx = max(0, idx - 1)
+            new_active = remaining[min(fallback_idx, len(remaining) - 1)].id
+        else:
+            new_active = self._active_tab_id  # type: ignore[assignment]
+        self._workspace = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [t.model_dump(mode="json") for t in remaining],
+            "active": new_active,
+        })
+        self._tab_focus_snapshots.pop(tab_id, None)
+        # Update _active_tab_id BEFORE awaiting remove_pane: removing the
+        # active pane can fire TabActivated synchronously, and the handler
+        # short-circuits when new_active == self._active_tab_id. Without this
+        # ordering the handler would run with stale state.
+        if self._active_tab_id == tab_id:
+            self._active_tab_id = new_active
+        tc = self.query_one("#app-tabs", TabbedContent)
+        await tc.remove_pane(f"tab-{tab_id}")
+        if tc.active != f"tab-{new_active}":
+            tc.active = f"tab-{new_active}"
+        save_local_workspace(self.cwd, self._workspace)
+        self.event_bus.publish(TabClosed(tab_id=tab_id))
+        return {"closed": tab_id, "new_active": new_active}
+
+    async def add_tab(self, title: str, layout: LayoutSpec, *, activate: bool = True) -> str:
+        """Append a new tab. Returns the new tab id. Updates persistence."""
+        if self._workspace is None:
+            raise RuntimeError("workspace not yet initialized")
+        ws = self._workspace
+        new_id = self._generate_tab_id()
+        new_tab = Tab(id=new_id, title=title, layout=layout)
+        new_ws = Workspace.model_validate({
+            "version": ws.version,
+            "tabs": [t.model_dump(mode="json") for t in ws.tabs] + [new_tab.model_dump(mode="json")],
+            "active": new_id if activate else ws.active,
+        })
+        self._workspace = new_ws
+        # Mount the new pane and apply its layout.
+        tc = self.query_one("#app-tabs", TabbedContent)
+        pane = TabPane(title, Container(id=f"panel-area-{new_id}"), id=f"tab-{new_id}")
+        await tc.add_pane(pane)
+        area = self.query_one(f"#panel-area-{new_id}", Container)
+        await apply_layout(area, layout, self.registry, layout_name=None)
+        if activate:
+            tc.active = f"tab-{new_id}"
+            self._active_tab_id = new_id
+        save_local_workspace(self.cwd, self._workspace)
+        self.event_bus.publish(TabAdded(tab_id=new_id, title=title))
+        return new_id
+
     async def action_dispatch(self, name: str) -> None:
         # Look up the action and call it. If it returns a coroutine (async
         # actions like action_quit / action_open_history / action_open_layout_switcher),
@@ -268,9 +384,20 @@ class ModTuiApp(App):
 
     def action_show_help(self) -> None:
         self.notify(
-            "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · ? help",
+            "/ command bar · ctrl-q quit · ctrl-h history · ctrl-l layouts · "
+            "ctrl-pgup/pgdn prev/next tab · ctrl-1..9 tab N · ctrl-t new tab · "
+            "ctrl-w close tab · ? help",
             title="keybindings",
         )
+
+    def action_switch_tab_index(self, idx: int) -> None:
+        if self._workspace is None:
+            return
+        if idx < 0 or idx >= len(self._workspace.tabs):
+            return  # quietly no-op
+        target = self._workspace.tabs[idx].id
+        tc = self.query_one("#app-tabs", TabbedContent)
+        tc.active = f"tab-{target}"
 
     def action_open_history(self) -> None:
         # push_screen with a callback avoids the worker requirement that
@@ -299,11 +426,145 @@ class ModTuiApp(App):
 
         self.push_screen(LayoutSwitcherScreen(store=self.layouts_store), _on_picked)
 
+    def action_new_tab(self) -> None:
+        import asyncio as _asyncio
+
+        def _on_picked(title: str | None) -> None:
+            if not title:
+                return
+            layout = self._default_seed_layout()
+            _asyncio.create_task(self.add_tab(title, layout, activate=True))
+
+        self.push_screen(NewTabScreen(), _on_picked)
+
+    async def action_close_active_tab(self) -> None:
+        if self._active_tab_id is None:
+            return
+        result = await self.close_tab(self._active_tab_id)
+        if "error" in result:
+            self.notify(f"can't close tab: {result['error']}", severity="warning")
+
+    # --- helpers -----------------------------------------------------------
+
+    def _active_layout(self) -> LayoutSpec | None:
+        if self._workspace is None or self._active_tab_id is None:
+            return None
+        for t in self._workspace.tabs:
+            if t.id == self._active_tab_id:
+                return t.layout
+        return None
+
+    def _load_or_seed_workspace(self) -> Workspace:
+        """Load workspace.json, fall back to migrating layout.json, fall back
+        to seeding from the built-in dashboard."""
+        ws = load_local_workspace(self.cwd)
+        if ws is not None:
+            return ws
+        # Migration: legacy layout.json -> single-tab workspace.
+        from mod_tui.persistence.layout_store import load_layout as _load_legacy
+        legacy = _load_legacy(self.cwd)
+        if legacy is not None:
+            return workspace_from_layout(legacy, tab_id="default", title="default")
+        return workspace_from_layout(dashboard_layout(), tab_id="default", title="default")
+
+    async def _mount_workspace(self, ws: Workspace) -> None:
+        tc = self.query_one("#app-tabs", TabbedContent)
+        # Build one TabPane per Tab, each containing a panel-area-<id> Container.
+        new_panes = []
+        for t in ws.tabs:
+            new_panes.append(
+                TabPane(t.title, Container(id=f"panel-area-{t.id}"), id=f"tab-{t.id}")
+            )
+        await tc.clear_panes()
+        for pane in new_panes:
+            await tc.add_pane(pane)
+        # Apply each tab's layout to its container, eagerly (persistent semantics).
+        for t in ws.tabs:
+            area = self.query_one(f"#panel-area-{t.id}", Container)
+            try:
+                await apply_layout(area, t.layout, self.registry, layout_name=None)
+            except Exception:
+                # Apply errors already publish LayoutFailed; swallow here so one
+                # bad tab doesn't block the rest of the workspace from booting.
+                pass
+        tc.active = f"tab-{ws.active}"
+
+    async def _apply_to_tab(
+        self, tab_id: str | None, spec: LayoutSpec,
+        *, layout_name: str | None = None,
+    ) -> None:
+        if tab_id is None or self._workspace is None:
+            return
+        # Build candidate workspace and validate FIRST (atomic). model_copy
+        # bypasses the model_validator, so we round-trip through model_validate
+        # to catch invariant breaks (e.g., user removed the only chat) before
+        # touching the live UI or persistence.
+        candidate = Workspace.model_validate({
+            "version": self._workspace.version,
+            "tabs": [
+                {**t.model_dump(mode="json"), "layout": spec.model_dump(mode="json")}
+                if t.id == tab_id else t.model_dump(mode="json")
+                for t in self._workspace.tabs
+            ],
+            "active": self._workspace.active,
+        })
+        # Validation passed → commit memory, then UI, then disk.
+        self._workspace = candidate
+        area = self.query_one(f"#panel-area-{tab_id}", Container)
+        await apply_layout(area, spec, self.registry, layout_name=layout_name)
+        self._current_layout_name = layout_name
+        save_local_workspace(self.cwd, self._workspace)
+
+    # --- tab activation handler --------------------------------------------
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated,
+    ) -> None:
+        """Triggered by TabbedContent when the user (or code) switches the active
+        pane. Updates workspace state, persists, fires our TabSwitched event, and
+        restores focus to the tab's last-focused panel id."""
+        if self._workspace is None:
+            return
+        # event.tab.id carries the internal ContentTab prefix ("--content-tab-tab-logs");
+        # event.pane.id is the TabPane id we set ("tab-logs"), which is what we want.
+        pane_id = event.pane.id if event.pane is not None else None
+        if not pane_id or not pane_id.startswith("tab-"):
+            return
+        new_active = pane_id[len("tab-"):]
+        if new_active == self._active_tab_id:
+            return
+        if self._active_tab_id is not None:
+            try:
+                focused = self.focused
+                if focused is not None and focused.id and focused.id.startswith("panel-"):
+                    self._tab_focus_snapshots[self._active_tab_id] = focused.id[len("panel-"):]
+            except Exception:
+                pass
+        self._active_tab_id = new_active
+        # model_copy bypasses model_validator. Safe here because TabActivated
+        # only fires for panes that already exist in self._workspace.tabs, so
+        # the "active id must be in tabs" invariant cannot be violated.
+        ws = self._workspace.model_copy(update={"active": new_active})
+        self._workspace = ws
+        save_local_workspace(self.cwd, ws)
+        title = next((t.title for t in ws.tabs if t.id == new_active), new_active)
+        self.event_bus.publish(TabSwitched(tab_id=new_active, title=title))
+        target_tab = next((t for t in ws.tabs if t.id == new_active), None)
+        target_panel_id = (
+            self._tab_focus_snapshots.get(new_active)
+            or (target_tab.layout.focus if target_tab else None)
+        )
+        if target_panel_id:
+            try:
+                self.query_one(f"#panel-{target_panel_id}").focus()
+            except Exception:
+                pass
+
     # --- composition & lifecycle -------------------------------------------
 
     def compose(self) -> ComposeResult:
         yield CommandBar(event_bus=self.event_bus)
-        yield Container(id="panel-area")
+        yield TabbedContent(id="app-tabs")
         yield StatusBar(event_bus=self.event_bus)
 
     async def on_mount(self) -> None:
@@ -316,20 +577,18 @@ class ModTuiApp(App):
         if self.layouts_store.load("default") is None:
             self.layouts_store.save("default", dashboard_layout())
         await self.orchestrator.start()
-        spec = load_local_layout(self.cwd) or dashboard_layout()
-        await self._apply(spec)
+        ws = self._load_or_seed_workspace()
+        self._workspace = ws
+        self._active_tab_id = ws.active
+        await self._mount_workspace(ws)
+        save_local_workspace(self.cwd, ws)
 
     async def _orchestrator_apply_layout(
-        self, spec: LayoutSpec, *, layout_name: str | None = None
+        self, spec: LayoutSpec,
+        *, layout_name: str | None = None, tab_id: str | None = None,
     ) -> None:
-        await self._apply(spec, layout_name=layout_name)
-
-    async def _apply(self, spec: LayoutSpec, *, layout_name: str | None = None) -> None:
-        area = self.query_one("#panel-area", Container)
-        await apply_layout(area, spec, self.registry, layout_name=layout_name)
-        self._current_spec = spec
-        self._current_layout_name = layout_name
-        save_local_layout(self.cwd, spec)
+        target = tab_id or self._active_tab_id
+        await self._apply_to_tab(target, spec, layout_name=layout_name)
 
     async def on_unmount(self) -> None:
         await self.orchestrator.stop()
