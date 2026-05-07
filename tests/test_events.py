@@ -183,3 +183,19 @@ def test_orchestrator_session_switched_event_carries_id_and_path():
 def test_open_resume_picker_event_is_constructible():
     from patchbai.events import OpenResumePicker
     OpenResumePicker()  # smoke
+
+
+def test_permission_request_events_carry_required_fields():
+    from patchbai.events import PermissionRequested, PermissionResolved
+    req = PermissionRequested(
+        agent_id="a1", agent_name="researcher",
+        request_id="r1", tool_name="Read", tool_input={"path": "x"},
+        title=None, description=None,
+    )
+    assert req.agent_id == "a1"
+    assert req.tool_name == "Read"
+
+    res = PermissionResolved(
+        agent_id="a1", request_id="r1", behavior="allow",
+    )
+    assert res.behavior == "allow"

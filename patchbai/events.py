@@ -96,6 +96,30 @@ class AgentRequestedUserInput:
 
 
 @dataclass(frozen=True)
+class PermissionRequested:
+    """A session's SDK called can_use_tool. The session is blocked
+    awaiting a user decision via the global modal or the per-agent
+    transcript bar. agent_id == "orchestrator" identifies the orchestrator's
+    own request."""
+    agent_id: str
+    agent_name: str
+    request_id: str
+    tool_name: str
+    tool_input: dict
+    title: str | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class PermissionResolved:
+    """A pending permission request was answered. Behavior is a string
+    (`"allow"` | `"deny"` | `"cancelled"`) for serialization friendliness."""
+    agent_id: str
+    request_id: str
+    behavior: str
+
+
+@dataclass(frozen=True)
 class AgentNotifiedOrchestrator:
     """A child agent called notify_orchestrator (fire-and-forget)."""
     agent_id: str
