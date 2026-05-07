@@ -8,6 +8,7 @@ from textual.widgets import DataTable
 from patchbai.agents.state import AgentInfo, AgentState
 from patchbai.events import (
     AgentArchiveChanged,
+    AgentMessageAppended,
     AgentSpawned,
     AgentStateChanged,
     EventBus,
@@ -404,3 +405,38 @@ async def test_archived_row_sinks_to_bottom_when_visible():
         keys = [str(row.value) for row in table.rows.keys()]
         # Even though "arch" is WAITING (priority 0), it's archived ⇒ last.
         assert keys == ["live", "arch"]
+
+
+@pytest.mark.asyncio
+async def test_message_bumps_agent_to_top_of_its_bucket():
+    # Two RUNNING agents; the one that just received a message should
+    # rise to the top of the RUNNING bucket via the last_activity
+    # tiebreaker. To get the bump, we publish a state event whose info
+    # carries the new last_activity (since AgentMessageAppended itself
+    # doesn't carry the AgentInfo — but _on_msg uses the cached info).
+    bus = EventBus()
+    app = _HostApp(bus)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        a = _info("a", state=AgentState.RUNNING)
+        a.last_activity = 100.0
+        b = _info("b", state=AgentState.RUNNING)
+        b.last_activity = 200.0
+        bus.publish(AgentSpawned(info=a))
+        bus.publish(AgentSpawned(info=b))
+        await pilot.pause()
+
+        table = app.query_one(AgentTable).query_one(DataTable)
+        # b is more recent ⇒ b first.
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["b", "a"]
+
+        # Now a gets a message; bump its last_activity past b's and
+        # republish via AgentStateChanged (same state, fresher timestamp).
+        a.last_activity = 300.0
+        bus.publish(AgentMessageAppended(
+            agent_id="a", role="assistant", text="hello",
+        ))
+        await pilot.pause()
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["a", "b"]
