@@ -7,7 +7,7 @@ from claude_agent_sdk import (
 
 from mod_tui.agents.fake_sdk_adapter import FakeSDKAdapter
 from mod_tui.agents.manager import AgentManager
-from mod_tui.events import EventBus
+from mod_tui.events import EventBus, UserMessageToOrchestrator
 from mod_tui.orchestrator.session import OrchestratorSession
 from mod_tui.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
@@ -587,5 +587,78 @@ async def test_slash_commands_do_not_count_as_first_user_message(tmp_path):
         entry = idx.get("post-reset")
         assert entry is not None
         assert entry.first_user_message == "first real prompt"
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_rename_command_renames_active_session(tmp_path):
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="renameable")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("hi"))
+        await orch.wait_idle()
+
+        bus.publish(UserMessageToOrchestrator("/rename my session"))
+        await orch.wait_idle()
+
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        assert idx.get("renameable").title == "my session"
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_rename_command_with_id_renames_specific_session(tmp_path):
+    # Pre-create another session in the index.
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="other-id", transcript_path="x.jsonl",
+        started_at=100.0, last_activity=200.0,
+    ))
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="active-id")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("/rename other-id was a great chat"))
+        await orch.wait_idle()
+        assert idx.get("other-id").title == "was a great chat"
+        # Active session unchanged.
+        bus.publish(UserMessageToOrchestrator("hi"))
+        await orch.wait_idle()
+        assert idx.get("active-id").title is None
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_auto_title_generation_writes_to_index(tmp_path):
+    """When _auto_title_enabled is on, _summarize_for_title is called and
+    its return value is saved as the session title."""
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="titled")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+    orch._auto_title_enabled = True
+    summarize_calls: list[str] = []
+
+    async def _fake_summarize(self, msg):
+        summarize_calls.append(msg)
+        return "Help with widget refactor"
+
+    # Bind as a method on the instance.
+    import types
+    orch._summarize_for_title = types.MethodType(_fake_summarize, orch)
+
+    await orch.start()
+    try:
+        bus.publish(UserMessageToOrchestrator("can you help me refactor the widgets?"))
+        await orch.wait_idle()
+        # Title is generated asynchronously; wait for the task.
+        if orch._title_task is not None:
+            await orch._title_task
+
+        assert summarize_calls == ["can you help me refactor the widgets?"]
+        idx = OrchestratorSessionsIndex(cwd=tmp_path)
+        assert idx.get("titled").title == "Help with widget refactor"
     finally:
         await orch.stop()

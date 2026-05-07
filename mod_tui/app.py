@@ -190,6 +190,8 @@ class ModTuiApp(App):
             current_layout=lambda: self._active_layout(),
             app=self,
         )
+        # Production opts in to LLM-summarized session titles.
+        self.orchestrator._auto_title_enabled = True
 
     # --- action registration -----------------------------------------------
 

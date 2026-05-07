@@ -6,7 +6,12 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from claude_agent_sdk import ClaudeAgentOptions
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    TextBlock,
+    query as sdk_query,
+)
 
 from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter, SDKAdapter
@@ -36,6 +41,15 @@ log = logging.getLogger(__name__)
 _RESET_RE = re.compile(r"^/reset(?:\s|$)")
 _RESUME_BARE_RE = re.compile(r"^/resume\s*$")
 _RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
+# /rename <title>  — current session
+# /rename <session_id> <title>  — specific session (id is non-space; title is rest)
+_RENAME_RE = re.compile(r"^/rename(?:\s+(.*))?$")
+
+_TITLE_PROMPT = (
+    "Summarize the following user message in 5-7 words for use as a session "
+    "title. Respond with ONLY the title — no quotes, no punctuation, no "
+    "preamble. Message:\n\n{message}"
+)
 
 
 class OrchestratorSession:
@@ -94,6 +108,11 @@ class OrchestratorSession:
         # swap (during /reset or /resume). Production wiring uses RealSDKAdapter.
         self._next_adapter_factory: "Callable[[], SDKAdapter] | None" = None
         self._send_tasks: list[asyncio.Task] = []
+        # Production sets this to True after construction so new sessions
+        # get auto-titled. Defaults to False so tests don't spawn real Claude
+        # CLI subprocesses.
+        self._auto_title_enabled: bool = False
+        self._title_task: asyncio.Task | None = None
 
     @property
     def active_transcript_path(self) -> "Path | None":
@@ -201,6 +220,7 @@ class OrchestratorSession:
 
         existing = self._index.get(session_id)
         now = time.time()
+        is_new_entry = existing is None
         if existing is None:
             entry = OrchestratorSessionEntry(
                 session_id=session_id,
@@ -221,6 +241,19 @@ class OrchestratorSession:
             existing.cost = self._info.cost
             entry = existing
         self._index.upsert(entry)
+
+        # New session + first prompt available → fire async title summarizer.
+        if (
+            is_new_entry
+            and self._auto_title_enabled
+            and entry.title is None
+            and self._current_session_first_message
+        ):
+            self._title_task = asyncio.create_task(
+                self._generate_title_async(
+                    session_id, self._current_session_first_message,
+                )
+            )
 
     async def interrupt(self) -> None:
         """Cancel the SDK's currently-running query, if any.
@@ -274,12 +307,92 @@ class OrchestratorSession:
             self._send_tasks = [t for t in self._send_tasks if not t.done()]
             self._send_tasks.append(asyncio.create_task(self.resume(m.group(1))))
             return
+        m = _RENAME_RE.match(text)
+        if m:
+            self._handle_rename_command(m.group(1) or "")
+            return
         # Fall through: ordinary prompt.
         if self._current_session_first_message is None:
             self._current_session_first_message = text
         self._send_tasks = [t for t in self._send_tasks if not t.done()]
         task = self._inner.queue_send(text)
         self._send_tasks.append(task)
+
+    def _handle_rename_command(self, args: str) -> None:
+        """Handle /rename invocations.
+
+        Forms:
+          /rename                       → notice on missing title
+          /rename <title>               → renames the active session
+          /rename <session_id> <title>  → renames a specific session
+        """
+        args = args.strip()
+        if not args:
+            self._publish_notice(
+                "Usage: /rename <new title>  or  /rename <session_id> <title>"
+            )
+            return
+        # If the first token matches a known session_id, treat it as
+        # /rename <id> <title>; otherwise the whole thing is the active title.
+        first, _, rest = args.partition(" ")
+        rest = rest.strip()
+        candidate_entry = self._index.get(first)
+        if candidate_entry is not None and rest:
+            target_id = first
+            new_title: str | None = rest
+        else:
+            target_id = self._sdk_session_id or ""
+            new_title = args
+        if not target_id:
+            self._publish_notice("No active session to rename.")
+            return
+        if not new_title:
+            new_title = None  # explicit clear
+        ok = self._index.set_title(target_id, new_title)
+        if not ok:
+            self._publish_notice(f"No such session: {target_id}")
+            return
+        label = new_title if new_title else "(cleared)"
+        self._publish_notice(f"Renamed session to: {label}")
+
+    async def _generate_title_async(self, session_id: str, first_user_message: str) -> None:
+        """Issue a one-shot SDK query to summarize the first message into a
+        5-7 word title. Silently no-ops on any failure."""
+        try:
+            text = await self._summarize_for_title(first_user_message)
+        except Exception:
+            log.exception("title summarization failed for %s", session_id)
+            return
+        if not text:
+            return
+        # Strip stray quotes/punctuation a model might add despite instructions.
+        title = text.strip().strip('"\'').rstrip(".").strip()
+        if not title:
+            return
+        # Cap to a reasonable display length even if the model went over.
+        if len(title) > 80:
+            title = title[:79] + "…"
+        self._index.set_title(session_id, title)
+
+    async def _summarize_for_title(self, first_user_message: str) -> str:
+        """One-shot SDK query that returns the model's title text.
+
+        Isolated as its own method so tests can monkeypatch it without
+        spawning a real subprocess.
+        """
+        prompt = _TITLE_PROMPT.format(message=first_user_message)
+        options = ClaudeAgentOptions(
+            cwd=str(self._cwd),
+            permission_mode="bypassPermissions",
+            model="claude-haiku-4-5",
+        )
+        chunks: list[str] = []
+        async for msg in sdk_query(prompt=prompt, options=options):
+            if isinstance(msg, AssistantMessage):
+                for block in msg.content:
+                    if isinstance(block, TextBlock):
+                        chunks.append(block.text)
+        return " ".join(chunks).strip()
 
     async def reset(self) -> None:
         async with self._switching_lock:

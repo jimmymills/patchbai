@@ -18,6 +18,7 @@ class OrchestratorSessionEntry:
     started_at: float
     last_activity: float
     first_user_message: str | None = None
+    title: str | None = None  # explicit title; defaults to first_user_message-derived
     num_turns: int = 0
     tokens_in: int = 0
     tokens_out: int = 0
@@ -77,6 +78,15 @@ class OrchestratorSessionsIndex:
             if e.session_id == session_id:
                 return e
         return None
+
+    def set_title(self, session_id: str, title: str | None) -> bool:
+        """Update an entry's title. Returns True if the entry was found."""
+        entry = self.get(session_id)
+        if entry is None:
+            return False
+        entry.title = title
+        self.upsert(entry)
+        return True
 
     def migrate_legacy_if_needed(self) -> None:
         """One-time migration: rename .mod_tui/transcripts/orchestrator.jsonl
