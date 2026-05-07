@@ -445,33 +445,51 @@ async def test_message_bumps_agent_to_top_of_its_bucket():
 
 @pytest.mark.asyncio
 async def test_cursor_follows_agent_across_state_change_reorder():
-    # Two RUNNING agents; cursor on "a"; flip "b" to DONE so order
-    # changes; cursor should still be on "a".
+    # Construct a scenario where the focused agent's row index actually
+    # changes AND the new row-0 agent is NOT the focused one, so we
+    # exercise the move_cursor(row=index) restore branch — Textual's
+    # default after clear() resets the cursor to row 0, so a 2-agent
+    # setup where the focused agent ends up at row 0 anyway would pass
+    # vacuously. Three agents with the focused one at row 1 after the
+    # reorder forces the test to depend on the restore wiring.
     bus = EventBus()
     app = _HostApp(bus)
     async with app.run_test() as pilot:
         await pilot.pause()
         a = _info("a", state=AgentState.RUNNING)
-        a.last_activity = 200.0
+        a.last_activity = 100.0  # least recent → starts at row 2
         b = _info("b", state=AgentState.RUNNING)
-        b.last_activity = 100.0
+        b.last_activity = 200.0  # middle → starts at row 1
+        c = _info("c", state=AgentState.RUNNING)
+        c.last_activity = 300.0  # most recent → starts at row 0
         bus.publish(AgentSpawned(info=a))
         bus.publish(AgentSpawned(info=b))
+        bus.publish(AgentSpawned(info=c))
         await pilot.pause()
 
         widget = app.query_one(AgentTable)
         table = widget.query_one(DataTable)
         table.focus()
         await pilot.pause()
-        # Initial order: ["a", "b"] (a is more recent). Cursor at row 0 → "a".
+        # Initial order: [c, b, a] — all RUNNING, sorted by last_activity desc.
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["c", "b", "a"]
+        # Move cursor to row 2 ("a") so the upcoming reorder will move it
+        # to a row that is NOT row 0 (which is where Textual's default lands).
+        table.move_cursor(row=2)
+        await pilot.pause()
         assert widget._cursor_agent_id() == "a"
 
-        # Bump "b" — DONE drops it to the bottom. Order becomes ["a", "b"]
-        # still (a is RUNNING; b is DONE). Cursor must still be on "a".
-        b_done = dataclasses.replace(b, state=AgentState.DONE, ended_at=300.0)
-        bus.publish(AgentStateChanged(info=b_done, old_state=AgentState.RUNNING))
+        # Flip "c" to DONE — drops it below the RUNNING agents.
+        # New order: [b, a, c]. "a" moves from row 2 → row 1.
+        # Without the restore branch, Textual resets cursor to row 0 = "b".
+        # With the restore branch, cursor follows "a" to row 1.
+        c_done = dataclasses.replace(c, state=AgentState.DONE, ended_at=400.0)
+        bus.publish(AgentStateChanged(info=c_done, old_state=AgentState.RUNNING))
         await pilot.pause()
 
+        keys = [str(row.value) for row in table.rows.keys()]
+        assert keys == ["b", "a", "c"]
         assert widget._cursor_agent_id() == "a"
 
 
@@ -504,5 +522,6 @@ async def test_cursor_resets_when_focused_agent_archived_off_screen():
 
         # Only the un-archived row remains (archived hidden by default).
         assert table.row_count == 1
-        # Cursor lands on the surviving row without raising.
-        assert widget._cursor_agent_id() in ("a", "b")
+        # Cursor lands on the surviving (un-archived) row without raising.
+        surviving = "b" if focused == "a" else "a"
+        assert widget._cursor_agent_id() == surviving
