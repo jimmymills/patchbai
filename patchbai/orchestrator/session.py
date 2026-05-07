@@ -603,6 +603,8 @@ class OrchestratorSession:
         self._bus.publish(OrchestratorReply(text))
 
     async def _swap_inner(self, *, resume: str | None) -> None:
+        if self._perm_inbox is not None:
+            self._perm_inbox.cancel_all()
         # Stop current, start a new inner with either resume=<id> or a fresh id.
         if self._inner is not None:
             try:

@@ -112,3 +112,34 @@ async def test_orchestrator_callback_publishes_event_with_orchestrator_identity(
     assert requests[0].agent_id == "orchestrator"
     assert requests[0].agent_name == "orchestrator"
     await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_callback_returns_deny_when_inbox_cancelled(
+    tmp_path: Path,
+):
+    bus = EventBus()
+    grants = PermissionGrants(cwd=tmp_path)
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
+        permission_grants=grants,
+    )
+    orch = OrchestratorSession(
+        cwd=tmp_path, bus=bus, manager=manager,
+        adapter=FakeSDKAdapter(scripts=[_ok()]),
+        permission_grants=grants,
+    )
+    await orch.start()
+    callback = orch._can_use_tool_callback
+    ctx = ToolPermissionContext(tool_use_id="t1")
+
+    async def canceller():
+        await asyncio.sleep(0)
+        orch.get_permission_inbox().cancel_all()
+
+    asyncio.create_task(canceller())
+    result = await callback("Bash", {"cmd": "ls"}, ctx)
+    assert isinstance(result, PermissionResultDeny)
+    assert "cancelled" in result.message
+    await orch.stop()
