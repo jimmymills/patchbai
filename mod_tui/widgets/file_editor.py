@@ -24,9 +24,15 @@ def _stat_or_none(path: Path) -> tuple[float, int] | None:
 class FileEditor(TextArea):
     """Editable, syntax-highlighted file editor.
 
-    Mirrors FileViewer for loading and language detection but is writable
-    and (in later tasks) supports Ctrl+S save, dirty tracking, follow_selection,
-    and modal prompts on dirty switches / external file changes.
+    Mirrors `FileViewer` for loading and language detection, plus:
+
+    - `Ctrl+S` saves the buffer to disk; the border title shows ` *` when
+      the buffer differs from the loaded baseline.
+    - With `follow_selection=True`, subscribes to `FileSelected` events on
+      the EventBus and reloads to show the selected file. If unsaved edits
+      exist when the path changes, prompts via `ConfirmDirtySwitchScreen`.
+    - At save time, if the file's mtime/size on disk diverges from what was
+      cached at load, prompts via `ConfirmOverwriteScreen` before writing.
     """
 
     DEFAULT_CSS = """
