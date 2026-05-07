@@ -177,14 +177,14 @@ async def test_terminal_resizes_screen_and_pty():
         # Give Textual time to deliver the Resize event to the widget.
         await pilot.pause()
         term = app.query_one(Terminal)
-        # The Container has 1-cell border + 1-cell padding on each side.
-        # We just assert the screen got resized away from 80x24 — exact
-        # numbers depend on Textual's layout, so check the trend.
-        assert term._screen.columns != 80 or term._screen.lines != 24, (
-            f"screen still 80x24 — resize not propagated; "
-            f"got cols={term._screen.columns}, lines={term._screen.lines}"
-        )
-        # And the screen dimensions should be reasonable for a 120x40 host.
-        assert term._screen.columns > 24
-        assert term._screen.lines > 8
+        # 120x40 host minus CSS chrome (border 1 each side + horizontal
+        # padding 1 each side -> -4 width, -2 height) = 116x38.
+        assert term._screen.columns == 116
+        assert term._screen.lines == 38
+        # The PTY's window size must match — proves both the screen.resize
+        # AND setwinsize legs of the propagation actually fired.
+        assert term._pty is not None
+        pty_rows, pty_cols = term._pty.getwinsize()
+        assert pty_cols == term._screen.columns
+        assert pty_rows == term._screen.lines
         term._teardown()

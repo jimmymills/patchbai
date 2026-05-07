@@ -90,38 +90,29 @@ class Terminal(Container):
         self._reader_registered = True
 
     def on_resize(self, event) -> None:
-        """Propagate Textual size changes to the PTY and the pyte screen."""
+        """Propagate Textual size changes to the PTY and the pyte screen.
+
+        Uses `self.content_size` (region shrunk by the styles gutter, i.e.
+        border + padding) as the authoritative inner dimensions. This is
+        populated by the time the Resize event fires, so we don't need to
+        consult the inner Static (whose auto-height can collapse to 1) or
+        subtract CSS chrome by hand.
+        """
         if self._pty is None:
             return
-        # Prefer the inner Static's content size (already reflects border+padding).
-        # Fall back to the event's size minus the CSS chrome if the inner is not
-        # laid out to a usable height yet (Static auto-height can collapse to 1).
-        cols: int
-        rows: int
-        try:
-            inner = self.query_one("#terminal-screen", Static)
-            isize = inner.size
-            cols = isize.width
-            rows = isize.height
-        except Exception:
-            cols = 0
-            rows = 0
-        if cols <= 0 or rows <= 1:
-            # CSS: border: round (1 cell each side) + padding: 0 1 (1 cell each side horizontal)
-            cols = max(1, event.size.width - 4)
-            rows = max(1, event.size.height - 2)
-        cols = max(1, cols)
-        rows = max(1, rows)
+        inner = self.content_size
+        cols = max(1, inner.width)
+        rows = max(1, inner.height)
         if cols == self._screen.columns and rows == self._screen.lines:
             return
+        # setwinsize and screen.resize form a logical pair: if one fails the
+        # other leaves the system in an inconsistent state, so they share a
+        # single guard. No logging in Phase 1 — failures are silent for now.
         try:
             self._pty.setwinsize(rows, cols)
-        except Exception:
-            pass
-        try:
             self._screen.resize(rows, cols)
         except Exception:
-            pass
+            return
         self._refresh()
 
     def on_unmount(self) -> None:
