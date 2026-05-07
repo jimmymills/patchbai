@@ -79,6 +79,57 @@ async def test_start_with_prior_session_passes_resume(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_start_seeds_counters_from_resumed_entry(tmp_path):
+    """When start() resumes a prior session, the orchestrator's _info
+    counters should be seeded from the persisted entry so the StatusBar
+    immediately reflects the running per-session totals."""
+    from mod_tui.events import AgentTokensTouched, StatsUpdated
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="prev-id", transcript_path="x.jsonl",
+        started_at=100.0, last_activity=200.0,
+        tokens_in=1234, tokens_out=567, cost=0.42,
+    ))
+    adapter = _RecordingAdapter(scripts=[_ok_script(session_id="prev-id")])
+    orch, bus = _build_orch(tmp_path, adapter=adapter)
+
+    touched: list[AgentTokensTouched] = []
+    bus.subscribe(AgentTokensTouched, lambda e: touched.append(e))
+
+    await orch.start()
+    try:
+        assert orch.info.tokens_in == 1234
+        assert orch.info.tokens_out == 567
+        assert orch.info.cost == pytest.approx(0.42)
+        assert any(e.agent_id == orch.info.id for e in touched)
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_reset_zeroes_counters(tmp_path):
+    """After /reset the orchestrator starts a fresh SDK session — per-session
+    totals must drop to zero."""
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(OrchestratorSessionEntry(
+        session_id="prev-id", transcript_path="x.jsonl",
+        started_at=100.0, last_activity=200.0,
+        tokens_in=999, tokens_out=999, cost=1.0,
+    ))
+    adapter = _RecordingAdapter(scripts=[_ok_script(), _ok_script()])
+    orch, _ = _build_orch(tmp_path, adapter=adapter)
+    await orch.start()
+    try:
+        assert orch.info.tokens_in == 999
+        await orch.reset()
+        assert orch.info.tokens_in == 0
+        assert orch.info.tokens_out == 0
+        assert orch.info.cost == 0.0
+    finally:
+        await orch.stop()
+
+
+@pytest.mark.asyncio
 async def test_start_skips_legacy_entries_for_resume(tmp_path):
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(

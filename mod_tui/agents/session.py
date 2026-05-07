@@ -20,6 +20,7 @@ from mod_tui.agents.state import AgentInfo, AgentState
 from mod_tui.events import (
     AgentMessageAppended,
     AgentStateChanged,
+    AgentTokensTouched,
     EventBus,
 )
 from mod_tui.persistence.transcript_store import AgentTranscript, TranscriptEntry
@@ -143,10 +144,14 @@ class AgentSession:
                         # Callback errors must not poison the SDK stream.
                         pass
             usage = msg.usage or {}
-            self.info.tokens_in += int(usage.get("input_tokens", 0) or 0)
-            self.info.tokens_out += int(usage.get("output_tokens", 0) or 0)
+            tokens_in = int(usage.get("input_tokens", 0) or 0)
+            tokens_out = int(usage.get("output_tokens", 0) or 0)
+            self.info.tokens_in += tokens_in
+            self.info.tokens_out += tokens_out
             if msg.total_cost_usd is not None:
                 self.info.cost += float(msg.total_cost_usd)
+            if tokens_in or tokens_out or msg.total_cost_usd:
+                self._bus.publish(AgentTokensTouched(agent_id=self.info.id))
         self.info.last_activity = time.time()
 
     def _record(

@@ -68,6 +68,15 @@ class AgentStateChanged:
 
 
 @dataclass(frozen=True)
+class AgentTokensTouched:
+    """An AgentSession (orchestrator inner session or child agent) just
+    accumulated tokens / cost from a ResultMessage. Lightweight signal — no
+    deltas, no totals; subscribers re-aggregate from the canonical AgentInfo
+    objects."""
+    agent_id: str
+
+
+@dataclass(frozen=True)
 class AgentMessageAppended:
     """A new message landed in an agent's transcript."""
     agent_id: str

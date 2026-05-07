@@ -21,6 +21,7 @@ from mod_tui.events import (
     AgentMessageAppended,
     AgentNotifiedOrchestrator,
     AgentRequestedUserInput,
+    AgentTokensTouched,
     EventBus,
     OpenResumePicker,
     OrchestratorReply,
@@ -129,6 +130,13 @@ class OrchestratorSession:
     def active_transcript_path(self) -> "Path | None":
         return self._active_transcript_path
 
+    @property
+    def info(self) -> AgentInfo:
+        """The AgentInfo accumulating tokens, cost, and last-activity for the
+        orchestrator's own SDK session. Shared by reference with the inner
+        AgentSession, so reads always reflect the latest counters."""
+        return self._info
+
     async def start(self) -> None:
         # One-time migration of any pre-existing orchestrator.jsonl.
         self._index.migrate_legacy_if_needed()
@@ -156,6 +164,10 @@ class OrchestratorSession:
             resume=resume_id, new_session_id=session_id_for_options,
             transcript_path=transcript_path,
         )
+        # Seed per-session counters from the resumed entry (or zero for a
+        # fresh start) so the StatusBar reflects the running total of the
+        # conversation we just attached to.
+        self._seed_counters_from(prior if resume_id is not None else None)
 
         self._unsub_user = self._bus.subscribe(
             UserMessageToOrchestrator, self._on_user_message
@@ -412,6 +424,7 @@ class OrchestratorSession:
     async def reset(self) -> None:
         async with self._switching_lock:
             await self._swap_inner(resume=None)
+            self._seed_counters_from(None)
 
     async def resume(self, session_id: str) -> None:
         async with self._switching_lock:
@@ -424,9 +437,11 @@ class OrchestratorSession:
                     "This session predates SDK resume support; starting a fresh session."
                 )
                 await self._swap_inner(resume=None)
+                self._seed_counters_from(None)
                 return
             try:
                 await self._swap_inner(resume=session_id)
+                self._seed_counters_from(entry)
             except Exception:
                 log.exception("SDK rejected resume=%s; falling back to fresh", session_id)
                 self._publish_notice(
@@ -434,6 +449,21 @@ class OrchestratorSession:
                 )
                 self._inner = None
                 await self._swap_inner(resume=None)
+                self._seed_counters_from(None)
+
+    def _seed_counters_from(self, entry: "OrchestratorSessionEntry | None") -> None:
+        """Reset (entry=None) or seed (entry=resumed entry) the per-session
+        token / cost counters on self._info, then publish AgentTokensTouched
+        so the StatusBar aggregator picks up the change."""
+        if entry is None:
+            self._info.tokens_in = 0
+            self._info.tokens_out = 0
+            self._info.cost = 0.0
+        else:
+            self._info.tokens_in = entry.tokens_in
+            self._info.tokens_out = entry.tokens_out
+            self._info.cost = entry.cost
+        self._bus.publish(AgentTokensTouched(agent_id=self._info.id))
 
     def _publish_notice(self, text: str) -> None:
         # Toast for the running app (production UI surface).

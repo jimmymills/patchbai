@@ -12,7 +12,8 @@ from mod_tui.agents.manager import AgentManager
 from mod_tui.agents.sdk_adapter import RealSDKAdapter
 from mod_tui.config import ConfigStore
 from mod_tui.events import (
-    EventBus, LayoutResized, OpenResumePicker, TabAdded, TabClosed, TabSwitched,
+    AgentSpawned, AgentStateChanged, AgentTokensTouched, EventBus, LayoutResized,
+    OpenResumePicker, StatsUpdated, TabAdded, TabClosed, TabSwitched,
 )
 from mod_tui.layout.defaults import dashboard_layout
 from mod_tui.layout.engine import apply as apply_layout
@@ -753,6 +754,40 @@ class ModTuiApp(App):
         self._current_layout_name = layout_name
         save_local_workspace(self.cwd, self._workspace)
 
+    # --- stats aggregation -------------------------------------------------
+
+    def _on_stats_changed(self, _event) -> None:
+        """Re-aggregate token / cost / active-agent counters across the
+        orchestrator and every child agent, and publish a StatsUpdated event
+        so the StatusBar repaints. Fired by AgentTokensTouched (every
+        ResultMessage), AgentSpawned, and AgentStateChanged."""
+        tokens_in = 0
+        tokens_out = 0
+        cost = 0.0
+        try:
+            orch_info = self.orchestrator.info
+            tokens_in += orch_info.tokens_in
+            tokens_out += orch_info.tokens_out
+            cost += orch_info.cost
+        except Exception:
+            pass
+        active = 0
+        try:
+            for info in self.manager.list_infos():
+                tokens_in += info.tokens_in
+                tokens_out += info.tokens_out
+                cost += info.cost
+                if not info.state.is_terminal:
+                    active += 1
+        except Exception:
+            pass
+        self.event_bus.publish(StatsUpdated(
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost=cost,
+            active_agents=active,
+        ))
+
     # --- splitter persistence ---------------------------------------------
 
     def _on_layout_resized(self, event: LayoutResized) -> None:
@@ -865,6 +900,9 @@ class ModTuiApp(App):
         await self.orchestrator.start()
         self.event_bus.subscribe(OpenResumePicker, self._on_open_resume_picker)
         self.event_bus.subscribe(LayoutResized, self._on_layout_resized)
+        self.event_bus.subscribe(AgentTokensTouched, self._on_stats_changed)
+        self.event_bus.subscribe(AgentStateChanged, self._on_stats_changed)
+        self.event_bus.subscribe(AgentSpawned, self._on_stats_changed)
         ws = self._load_or_seed_workspace()
         self._workspace = ws
         self._active_tab_id = ws.active
