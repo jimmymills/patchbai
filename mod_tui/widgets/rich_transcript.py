@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from rich.markdown import Markdown as _RichMarkdown
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
@@ -152,6 +153,28 @@ class _ThinkingGroup(Collapsible):
         self.collapsed = True
 
 
+class _AssistantBlock(Static):
+    """Final assistant text rendered as markdown via Rich.
+
+    Stores the original source on `_source` so rendered_text() (used by
+    tests and any plain-text consumers) returns the markdown source rather
+    than the renderable's repr.
+    """
+
+    DEFAULT_CSS = """
+    _AssistantBlock {
+        margin: 0;
+        padding: 0;
+    }
+    """
+
+    def __init__(self, source: str) -> None:
+        self._source = source
+        # code_theme="ansi_dark" keeps fenced-code blocks inside Textual's
+        # palette instead of injecting a hard-coded background color.
+        super().__init__(_RichMarkdown(source, code_theme="ansi_dark"))
+
+
 class _TurnContainer(Vertical):
     """One conversation turn: user prompt + steps + final response."""
 
@@ -230,10 +253,10 @@ class _TurnContainer(Vertical):
 
     def add_text(self, text: str) -> None:
         self._close_thinking_group()
-        line = Text()
-        line.append("claude: ", style="bold")
-        line.append(text)
-        self.mount(Static(line, classes="msg-final"))
+        prefix = Text()
+        prefix.append("claude:", style="bold")
+        self.mount(Static(prefix, classes="msg-final-prefix"))
+        self.mount(_AssistantBlock(text))
 
     def mark_done(self) -> None:
         self.remove_class("turn-running")
@@ -254,7 +277,10 @@ class _TurnContainer(Vertical):
     def rendered_text(self) -> str:
         parts: list[str] = []
         for static in self.query(Static):
-            parts.append(str(static.content))
+            if isinstance(static, _AssistantBlock):
+                parts.append(static._source)
+            else:
+                parts.append(str(static.content))
         return "\n".join(parts)
 
 
