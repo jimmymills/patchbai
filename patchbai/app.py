@@ -51,6 +51,7 @@ from patchbai.widgets.placeholders import ActivityFeed
 from patchbai.widgets.terminal import Terminal
 from patchbai.widgets.transcript_screen import TranscriptScreen
 from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
+from patchbai.agents.permission_grants import PermissionGrants
 
 
 def _resolve_container(root_layout: dict, parent_path: tuple[int, ...]) -> dict | None:
@@ -259,6 +260,7 @@ class PatchbaiApp(App):
         manager: AgentManager | None = None,
         orchestrator: OrchestratorSession | None = None,
         global_dir: Path | None = None,
+        bypass_permissions: bool = False,
     ) -> None:
         super().__init__()
         # Cache for the currently-applied theme's extra_css. Initialized to
@@ -279,10 +281,20 @@ class PatchbaiApp(App):
         self.themes_store = NamedThemesStore(global_dir=self._global_dir)
         self.actions_registry = ActionRegistry()
         self._register_actions()
+
+        # Permission posture: a PermissionGrants object is constructed iff
+        # bypass is OFF (the default). Both the manager and the orchestrator
+        # consume the same object so disk-backed rules apply uniformly.
+        self._bypass_permissions = bypass_permissions
+        self._permission_grants = (
+            None if bypass_permissions else PermissionGrants(cwd=self.cwd)
+        )
+
         self.manager = manager or AgentManager(
             cwd=self.cwd,
             bus=self.event_bus,
             adapter_factory=RealSDKAdapter,
+            permission_grants=self._permission_grants,
         )
         self.orchestrator = orchestrator or OrchestratorSession(
             cwd=self.cwd,
@@ -297,6 +309,7 @@ class PatchbaiApp(App):
             widget_registry=self.registry,
             current_layout=lambda: self._active_layout(),
             app=self,
+            permission_grants=self._permission_grants,
         )
         # Production opts in to LLM-summarized session titles.
         self.orchestrator._auto_title_enabled = True
@@ -947,9 +960,13 @@ class PatchbaiApp(App):
             self._tab_focus_snapshots.clear()
 
             # Rebuild manager + orchestrator.
+            self._permission_grants = (
+                None if self._bypass_permissions else PermissionGrants(cwd=self.cwd)
+            )
             self.manager = AgentManager(
                 cwd=self.cwd, bus=self.event_bus,
                 adapter_factory=RealSDKAdapter,
+                permission_grants=self._permission_grants,
             )
             self.orchestrator = OrchestratorSession(
                 cwd=self.cwd, bus=self.event_bus, manager=self.manager,
@@ -962,6 +979,7 @@ class PatchbaiApp(App):
                 widget_registry=self.registry,
                 current_layout=lambda: self._active_layout(),
                 app=self,
+                permission_grants=self._permission_grants,
             )
             self.orchestrator._auto_title_enabled = True
             await self.orchestrator.start()
