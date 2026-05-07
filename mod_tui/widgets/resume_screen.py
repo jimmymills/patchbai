@@ -55,7 +55,7 @@ class ResumeScreen(ModalScreen[str | None]):
                 _truncate(e.first_user_message or "(no first message)", 60),
                 str(e.num_turns),
                 f"{e.tokens_in}/{e.tokens_out}",
-                _short_id(e.session_id),
+                e.session_id,
                 key=e.session_id,
             )
             self._ordered_ids.append(e.session_id)
@@ -99,7 +99,3 @@ def _truncate(s: str, n: int) -> str:
     return s[: n - 1] + "…"
 
 
-def _short_id(sid: str) -> str:
-    if len(sid) <= 12:
-        return sid
-    return sid[:8] + "…"
