@@ -37,7 +37,10 @@ def test_load_invalid_spec_returns_none(tmp_path: Path):
     state = tmp_path / ".mod_tui"
     state.mkdir()
     (state / "layout.json").write_text(
-        '{"version": 1, "layout": {"id": "x", "widget": "AgentTable"}}'
+        '{"version": 1, "layout": {"type": "horizontal", "children": ['
+        '{"id": "a", "widget": "OrchestratorChat"},'
+        '{"id": "b", "widget": "OrchestratorChat"}'
+        ']}}'
     )
-    # Missing OrchestratorChat — invariant violated.
+    # Two OrchestratorChat panels — at-most-one invariant violated.
     assert load_layout(tmp_path) is None

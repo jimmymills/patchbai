@@ -78,7 +78,17 @@ async def test_set_layout_with_invalid_spec_returns_error_text(tmp_path, ok_scri
     )
     set_layout = tools["set_layout"]
 
-    bad = {"version": 1, "layout": {"id": "x", "widget": "AgentTable"}}
+    # Two OrchestratorChat panels — violates the at-most-one invariant.
+    bad = {
+        "version": 1,
+        "layout": {
+            "type": "horizontal",
+            "children": [
+                {"id": "a", "widget": "OrchestratorChat"},
+                {"id": "b", "widget": "OrchestratorChat"},
+            ],
+        },
+    }
     out = await set_layout({"spec": bad})
     assert "error" in out["content"][0]["text"].lower() or "invalid" in out["content"][0]["text"].lower()
 
