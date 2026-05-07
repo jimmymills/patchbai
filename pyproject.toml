@@ -16,6 +16,12 @@ dependencies = [
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
+  # Pinned so every worktree/agent runs the same pyright as `.venv/bin/pyright`.
+  # Without this, `uv run pyright` falls through to whatever pyright is on PATH
+  # (homebrew, etc.), which causes inconsistent error sets across machines and
+  # — combined with missing dev extras — produces phantom "Import could not be
+  # resolved" errors that look like a stale cache. See docs/superpowers/notes/pyright.md.
+  "pyright>=1.1.395,<1.2",
 ]
 
 [project.scripts]
