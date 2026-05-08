@@ -62,7 +62,6 @@ website/
       Features.astro
       Screenshot.astro
       Examples.astro
-      Permissions.astro
       Widgets.astro
       Install.astro
       Footer.astro
