@@ -1,5 +1,4 @@
 """Integration tests for /bypass-permissions and /require-permissions slash commands."""
-import asyncio
 import pytest
 
 from patchbai.app import PatchbaiApp
@@ -78,7 +77,7 @@ async def test_slash_bypass_permissions_refused_with_running_agents(tmp_path):
     """/bypass-permissions is refused when child agents are running."""
     from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
     from patchbai.agents.state import AgentState
-    from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
+    from claude_agent_sdk import AssistantMessage, TextBlock
 
     app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     replies: list[OrchestratorReply] = []
