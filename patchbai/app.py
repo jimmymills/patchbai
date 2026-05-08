@@ -50,7 +50,7 @@ from patchbai.widgets.resume_screen import ResumeScreen
 from patchbai.widgets.theme_switcher import ThemeSwitcherScreen
 from patchbai.widgets.new_tab_screen import NewTabScreen
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 from patchbai.widgets.terminal import Terminal
 from patchbai.widgets.transcript_screen import TranscriptScreen
 from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
