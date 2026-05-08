@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Literal
 
 from textual.widget import Widget
 
@@ -7,12 +8,16 @@ class UnknownWidgetError(KeyError):
     """Raised when a LayoutSpec references a widget name that is not registered."""
 
 
+WidgetSource = Literal["builtin", "local", "inline"]
+
+
 @dataclass(frozen=True)
 class WidgetInfo:
     name: str
     cls: type[Widget]
     description: str = ""
     props_schema: dict = field(default_factory=dict)
+    source: WidgetSource = "builtin"
 
 
 class WidgetRegistry:
@@ -34,11 +39,13 @@ class WidgetRegistry:
         *,
         description: str = "",
         props_schema: dict | None = None,
+        source: WidgetSource = "builtin",
     ) -> None:
         self._infos[name] = WidgetInfo(
             name=name, cls=cls,
             description=description,
             props_schema=dict(props_schema) if props_schema else {},
+            source=source,
         )
 
     def unregister(self, name: str) -> None:
