@@ -1,0 +1,51 @@
+---
+const widgets = [
+  { name: "OrchestratorChat", body: "Rich transcript + input for the top-level Claude session." },
+  { name: "AgentTable", body: "Sortable list of children: name, status, elapsed, cost." },
+  { name: "AgentTranscript", body: "One agent's conversation, with a direct-message input." },
+  { name: "Terminal", body: "Real PTY — drop into the actual claude CLI or your shell." },
+  { name: "FileEditor", body: "Editable, syntax-highlighted; ctrl-s saves; warns on external changes." },
+  { name: "DiffViewer", body: "Unified-diff viewer (precomputed diff or before + after)." },
+  { name: "FileTree", body: "Directory tree; emits FileSelected events on the bus." },
+  { name: "SystemUsage", body: "Compact CPU + RAM gauges with threshold-colored bars." },
+];
+---
+
+<section id="widgets" class="py-20 sm:py-28 border-t border-[var(--color-border)]">
+  <div class="container-page">
+    <div class="reveal max-w-2xl">
+      <p class="mono text-sm text-[color:var(--color-accent)]">/* built-in widgets */</p>
+      <h2 class="mt-3 text-3xl sm:text-4xl">A curated palette the orchestrator can place anywhere.</h2>
+      <p class="mt-4 text-[color:var(--color-fg-muted)]">
+        Splits, panels, sizes — the orchestrator emits a declarative spec and the engine swaps
+        widgets in place. When the curated library doesn't fit, it can ship a custom Python
+        widget at runtime in the same call.
+      </p>
+    </div>
+
+    <div class="reveal mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {
+        widgets.map((w) => (
+          <div class="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-card)] p-4 hover:border-[var(--color-accent-dim)] transition-colors">
+            <p class="mono text-sm font-medium text-[color:var(--color-accent-soft)]">
+              {w.name}
+            </p>
+            <p class="mt-1.5 text-sm text-[color:var(--color-fg-muted)]">{w.body}</p>
+          </div>
+        ))
+      }
+    </div>
+
+    <p class="reveal mt-6 text-sm text-[color:var(--color-fg-dim)]">
+      Plus
+      <code class="mono text-[color:var(--color-fg-muted)]">ActivityFeed</code>,
+      <code class="mono text-[color:var(--color-fg-muted)]">FileViewer</code>,
+      <code class="mono text-[color:var(--color-fg-muted)]">LogTail</code>,
+      <code class="mono text-[color:var(--color-fg-muted)]">Markdown</code>,
+      <code class="mono text-[color:var(--color-fg-muted)]">Notebook</code>
+      — and any
+      <code class="mono text-[color:var(--color-fg-muted)]">.py</code>
+      file you drop into <code class="mono text-[color:var(--color-fg-muted)]">~/.config/patchfeld/widgets/</code>.
+    </p>
+  </div>
+</section>
