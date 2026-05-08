@@ -11,7 +11,7 @@ from patchbai.layout.engine import apply as apply_layout
 from patchbai.layout.registry import WidgetRegistry
 from patchbai.widgets.agent_table import AgentTable
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 
 
 def _registry() -> WidgetRegistry:

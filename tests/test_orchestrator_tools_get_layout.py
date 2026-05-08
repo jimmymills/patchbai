@@ -12,7 +12,7 @@ from patchbai.orchestrator.tools import build_orchestrator_tools
 from patchbai.persistence.layouts_store import NamedLayoutsStore
 from patchbai.widgets.agent_table import AgentTable
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 
 
 def _make_manager(tmp_path, ok_script):
