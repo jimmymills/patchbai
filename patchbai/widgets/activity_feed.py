@@ -139,6 +139,7 @@ class _ModeChip(Static):
 
     DEFAULT_CSS = """
     _ModeChip {
+        width: auto;
         padding: 0 1;
         margin: 0 1 0 0;
         border: tall $surface-lighten-2;

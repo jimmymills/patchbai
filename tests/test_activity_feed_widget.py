@@ -423,3 +423,48 @@ async def test_user_scroll_up_pauses_autofollow(tmp_path):
         await pilot.pause()
         # We should NOT have jumped to the bottom.
         assert scroll.scroll_y < scroll.max_scroll_y - 2
+
+
+@pytest.mark.asyncio
+async def test_all_four_mode_chips_fit_horizontally(tmp_path):
+    """All 4 mode chips must lay out side-by-side and fit within the chip
+    strip's visible width. Pre-fix bug: each chip took 100% of the strip's
+    width because Static's default width inside Horizontal expanded to fill
+    the parent, so chips 2-4 overflowed off-screen and the user only saw
+    the first ('Audit') chip."""
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [{
+            "id": "main", "title": "Main",
+            "layout": {"version": 1, "layout": {
+                "type": "horizontal",
+                "children": [
+                    {"id": "orch", "widget": "OrchestratorChat", "size": "30%"},
+                    {"id": "feed", "widget": "ActivityFeed", "size": "70%"},
+                ],
+            }},
+        }],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ModeChip, _ModeChips
+        feed = app.query(ActivityFeed).first()
+        strip = feed.query_one(_ModeChips)
+        chips = list(strip.query(_ModeChip))
+        assert len(chips) == 4
+        # Each chip's right edge must lie within the strip's visible region.
+        strip_right = strip.region.x + strip.region.width
+        for chip in chips:
+            chip_right = chip.region.x + chip.region.width
+            assert chip_right <= strip_right, (
+                f"{chip.mode!r} chip right edge {chip_right} exceeds "
+                f"strip right edge {strip_right} (strip region: {strip.region}, "
+                f"chip region: {chip.region})"
+            )
