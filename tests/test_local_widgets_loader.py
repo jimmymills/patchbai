@@ -1,0 +1,257 @@
+from pathlib import Path
+
+import pytest
+
+from patchbai.layout.local_widgets import LocalWidgetLoader, LoadOutcome
+from patchbai.layout.registry import WidgetRegistry
+
+
+def _write(p: Path, body: str) -> Path:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_loader_registers_single_widget(tmp_path):
+    _write(tmp_path / "banner.py", """
+from textual.widgets import Static
+
+class Banner(Static):
+    pass
+""")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert [o.status for o in outcomes] == ["ok"]
+    assert reg.get("Banner").__name__ == "Banner"
+    assert reg.describe("Banner").source == "local"
+
+
+def test_loader_uses_metadata_name_description_props(tmp_path):
+    _write(tmp_path / "spark.py", """
+from textual.widgets import Static
+
+__patchbai_widget__ = {
+    "name": "Sparkline",
+    "description": "Token sparkline.",
+    "props_schema": {"agent_id": str},
+}
+
+class Sparkline(Static):
+    pass
+""")
+    reg = WidgetRegistry()
+    LocalWidgetLoader(tmp_path, reg).load()
+    info = reg.describe("Sparkline")
+    assert info.description == "Token sparkline."
+    assert info.props_schema == {"agent_id": str}
+
+
+def test_loader_honors_entry_point_metadata(tmp_path):
+    _write(tmp_path / "x.py", """
+from textual.widgets import Static
+
+class Real(Static):
+    pass
+
+class Decoy(Static):
+    pass
+
+__patchbai_widget__ = {"name": "X", "entry_point": Real}
+""")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert outcomes[0].status == "ok"
+    assert reg.get("X").__name__ == "Real"
+
+
+def test_loader_honors_widget_class_sentinel(tmp_path):
+    _write(tmp_path / "y.py", """
+from textual.widgets import Static
+
+class Picked(Static):
+    pass
+
+class Other(Static):
+    pass
+
+WIDGET_CLASS = Picked
+""")
+    reg = WidgetRegistry()
+    LocalWidgetLoader(tmp_path, reg).load()
+    assert reg.get("Y").__name__ == "Picked"
+
+
+def test_loader_pascal_cases_filename_stem(tmp_path):
+    _write(tmp_path / "git_status.py", """
+from textual.widgets import Static
+class GitStatus(Static):
+    pass
+""")
+    reg = WidgetRegistry()
+    LocalWidgetLoader(tmp_path, reg).load()
+    assert "GitStatus" in reg.known()
+
+
+def test_loader_skips_underscore_and_dot_files(tmp_path):
+    _write(tmp_path / "_hidden.py", "x = 1")
+    _write(tmp_path / ".dot.py", "x = 1")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert outcomes == []
+
+
+def test_loader_missing_dir_returns_empty(tmp_path):
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path / "does_not_exist", reg).load()
+    assert outcomes == []
+
+
+def test_loader_records_import_error(tmp_path):
+    _write(tmp_path / "broken.py", "this is not valid python\n")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert len(outcomes) == 1
+    assert outcomes[0].status == "import_error"
+    assert outcomes[0].error and "SyntaxError" in outcomes[0].error
+    assert "broken" not in reg.known() and "Broken" not in reg.known()
+
+
+def test_loader_records_no_widget_class(tmp_path):
+    _write(tmp_path / "nowidget.py", "x = 42\n")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert outcomes[0].status == "no_widget_class"
+
+
+def test_loader_records_ambiguous_class(tmp_path):
+    _write(tmp_path / "two.py", """
+from textual.widgets import Static
+class A(Static):
+    pass
+class B(Static):
+    pass
+""")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert outcomes[0].status == "ambiguous_class"
+
+
+def test_loader_skips_name_collision_with_builtin(tmp_path):
+    from textual.widgets import Static
+    reg = WidgetRegistry()
+    reg.register("OrchestratorChat", Static)  # builtin (default source)
+
+    _write(tmp_path / "evil.py", """
+from textual.widgets import Static
+
+__patchbai_widget__ = {"name": "OrchestratorChat"}
+
+class Evil(Static):
+    pass
+""")
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert outcomes[0].status == "name_collision"
+    # Builtin still wins.
+    assert reg.get("OrchestratorChat") is Static
+
+
+def test_loader_does_not_register_imported_class_via_name_match(tmp_path):
+    """Tier 3 of class detection (`getattr(module, name)`) must filter out
+    imported Widget subclasses — otherwise a file that just imports `Static`
+    and metadata-names it would silently register textual's Static as a
+    'local' widget.
+    """
+    _write(tmp_path / "static.py", """
+from textual.widgets import Static
+
+__patchbai_widget__ = {"name": "Static"}
+""")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert len(outcomes) == 1
+    assert outcomes[0].status == "no_widget_class"
+    assert "Static" not in reg.known()
+
+
+from patchbai.layout.local_widgets import validate_widget_source
+
+
+def test_validate_returns_class_and_meta_for_valid_source():
+    src = """
+from textual.widgets import Static
+__patchbai_widget__ = {
+    "name": "Banner",
+    "description": "A banner.",
+    "props_schema": {"text": str},
+}
+class Banner(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("Banner", src)
+    assert cls is not None and cls.__name__ == "Banner"
+    assert meta["description"] == "A banner."
+    assert meta["props_schema"] == {"text": str}
+    assert err == ""
+
+
+def test_validate_returns_empty_meta_when_absent():
+    src = """
+from textual.widgets import Static
+class X(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None
+    assert meta == {}
+    assert err == ""
+
+
+def test_validate_uses_metadata_entry_point():
+    src = """
+from textual.widgets import Static
+class Real(Static):
+    pass
+class Decoy(Static):
+    pass
+__patchbai_widget__ = {"name": "X", "entry_point": Real}
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None and cls.__name__ == "Real"
+    assert err == ""
+
+
+def test_validate_rejects_syntax_error():
+    # Note: "this is not python" parses (it's `this is (not python)` — a
+    # NameError at exec time, not a SyntaxError). Use the same broken-syntax
+    # source as the existing import-error test so we actually exercise the
+    # syntax-error path that this test name promises.
+    cls, meta, err = validate_widget_source("X", "this is not valid python\n")
+    assert cls is None
+    assert meta == {}
+    assert "SyntaxError" in err or "syntax" in err.lower()
+
+
+def test_validate_rejects_no_widget_class():
+    cls, meta, err = validate_widget_source("X", "x = 42\n")
+    assert cls is None
+    assert "no_widget_class" in err or "no Widget" in err.lower()
+
+
+def test_validate_rejects_ambiguous():
+    src = """
+from textual.widgets import Static
+class A(Static): pass
+class B(Static): pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is None
+    assert "ambiguous" in err.lower()
+
+
+def test_validate_does_not_touch_filesystem(tmp_path, monkeypatch):
+    # Validation must not write anywhere under cwd; tempfile lands in the
+    # OS tempdir.
+    monkeypatch.chdir(tmp_path)
+    src = "from textual.widgets import Static\nclass X(Static):\n    pass\n"
+    validate_widget_source("X", src)
+    assert list(tmp_path.iterdir()) == []  # nothing written under cwd

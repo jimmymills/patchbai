@@ -31,9 +31,15 @@ class UISection:
 
 
 @dataclass
+class WidgetsSection:
+    local_dir_enabled: bool = True
+
+
+@dataclass
 class Config:
     bindings: dict[str, KeyBinding] = field(default_factory=dict)
     ui: UISection = field(default_factory=UISection)
+    widgets: WidgetsSection = field(default_factory=WidgetsSection)
 
     def get_path(self, path: str) -> Any:
         section, attr = self._split_path(path)
@@ -95,6 +101,13 @@ class ConfigStore:
             if "default_model" in ui_raw and isinstance(ui_raw["default_model"], str):
                 cfg.ui.default_model = ui_raw["default_model"]
             # Legacy `ui.theme` key (now removed) is silently ignored.
+
+        widgets_raw = raw.get("widgets", {})
+        if isinstance(widgets_raw, dict):
+            if "local_dir_enabled" in widgets_raw and isinstance(
+                widgets_raw["local_dir_enabled"], bool
+            ):
+                cfg.widgets.local_dir_enabled = widgets_raw["local_dir_enabled"]
         return cfg
 
     def save(self, cfg: Config) -> None:
@@ -107,6 +120,9 @@ class ConfigStore:
             "ui": {
                 "active_theme": cfg.ui.active_theme,
                 "default_model": cfg.ui.default_model,
+            },
+            "widgets": {
+                "local_dir_enabled": cfg.widgets.local_dir_enabled,
             },
         }
         self._path.write_text(tomli_w.dumps(out), encoding="utf-8")

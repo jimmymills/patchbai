@@ -1,3 +1,4 @@
+import logging
 import secrets
 from pathlib import Path
 
@@ -17,12 +18,13 @@ from patchbai.events import (
 )
 from patchbai.layout.defaults import dashboard_layout
 from patchbai.layout.engine import apply as apply_layout
+from patchbai.layout.local_widgets import LocalWidgetLoader, LoadOutcome
 from patchbai.layout.registry import WidgetRegistry
 from patchbai.layout.spec import LayoutSpec
 from patchbai.orchestrator.session import OrchestratorSession
 from patchbai.persistence.layouts_store import NamedLayoutsStore
 from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.persistence.paths import global_config_dir
+from patchbai.persistence.paths import global_config_dir, local_widgets_dir
 from patchbai.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
 from patchbai.theme.spec import ThemeSpec
 from patchbai.persistence.workspace_store import (
@@ -51,6 +53,9 @@ from patchbai.widgets.placeholders import ActivityFeed
 from patchbai.widgets.terminal import Terminal
 from patchbai.widgets.transcript_screen import TranscriptScreen
 from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
+
+
+log = logging.getLogger(__name__)
 
 
 def _resolve_container(root_layout: dict, parent_path: tuple[int, ...]) -> dict | None:
@@ -268,7 +273,28 @@ class PatchbaiApp(App):
         import asyncio as _asyncio
         self._cwd_swap_lock = _asyncio.Lock()
         self.event_bus = EventBus()
+        self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.registry = registry or build_default_registry()
+        self._local_widget_outcomes: list[LoadOutcome] = []
+        # Load user-authored widgets from `~/.config/patchbai/widgets/` UNLESS
+        # the caller passed in their own registry (test/embedded use case) OR
+        # the widgets.local_dir_enabled flag is False.
+        if registry is None:
+            from patchbai.config import ConfigStore as _ConfigStore
+            _cfg = _ConfigStore(global_dir=self._global_dir).load()
+            if _cfg.widgets.local_dir_enabled:
+                self._local_widget_outcomes = LocalWidgetLoader(
+                    local_widgets_dir(global_dir=self._global_dir),
+                    self.registry,
+                ).load()
+                _ok = sum(1 for o in self._local_widget_outcomes if o.status == "ok")
+                _err = sum(1 for o in self._local_widget_outcomes if o.status != "ok")
+                if _ok or _err:
+                    log.info(
+                        "loaded %d local widgets (%d errors) from %s",
+                        _ok, _err,
+                        local_widgets_dir(global_dir=self._global_dir),
+                    )
         self._workspace: Workspace | None = None
         self._active_tab_id: str | None = None
         self._current_layout_name: str | None = None  # last `load_layout` name
@@ -279,7 +305,6 @@ class PatchbaiApp(App):
         # is what sticks once the dust settles. _mount_workspace clears this
         # and explicitly re-pins tc.active after a refresh tick.
         self._mounting_workspace: bool = False
-        self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
         self.themes_store = NamedThemesStore(global_dir=self._global_dir)

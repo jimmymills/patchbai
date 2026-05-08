@@ -35,3 +35,14 @@ def global_config_dir() -> Path:
     if xdg:
         return Path(xdg) / "patchbai"
     return Path.home() / ".config" / "patchbai"
+
+
+def local_widgets_dir(global_dir: Path | None = None) -> Path:
+    """Return the directory where user-authored custom widgets live.
+
+    With `global_dir` provided, returns `<global_dir>/widgets/` — useful for
+    tests that pin a per-tmp_path config root. Without it, derives from
+    `global_config_dir()` (which honors `XDG_CONFIG_HOME`).
+    """
+    base = Path(global_dir) if global_dir else global_config_dir()
+    return base / "widgets"

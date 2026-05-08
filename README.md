@@ -138,6 +138,50 @@ source in the `custom_widgets` block of a `set_layout` call. The source
 runs in an isolated module namespace; instantiation failures roll the
 apply back so a broken widget can't brick the app.
 
+### Custom widgets
+
+Drop a `.py` file in `~/.config/patchbai/widgets/` and patchbai will pick
+it up at startup. One file = one widget. The stem of the filename is the
+default registered name (`token_chart.py` → `TokenChart`); override it
+with an optional module-level `__patchbai_widget__` dict. A minimal one
+looks like:
+
+```python
+from textual.widgets import Static
+
+__patchbai_widget__ = {
+    "name": "Hello",
+    "description": "Says hi.",
+    "props_schema": {"who": str},
+}
+
+class Hello(Static):
+    def __init__(self, who: str = "world", **kw) -> None:
+        super().__init__(f"hello, {who}", **kw)
+```
+
+Now ask the orchestrator: *"set a layout with a Hello panel where who is 'jimmy'."*
+
+> **Trust model.** Files in `~/.config/patchbai/widgets/` are imported
+> in-process with full Python privileges on every launch. Only put
+> source there that you wrote (or audited). The orchestrator's
+> `save_widget` tool persists files into this same directory — review
+> what it generates before re-launching.
+
+Reload semantics are restart-only by design — patchbai does not watch
+the directory. The exception is the `save_widget` MCP tool: when the
+orchestrator authors a widget through that tool, it's registered live
+into the running app so you can use it in the same conversation. To
+disable local-directory loading entirely (for security audits, or to
+hand the laptop to a colleague), set `widgets.local_dir_enabled = false`
+in `~/.config/patchbai/config.toml`. Built-in widgets always win on a
+name collision; the loader skips your file and surfaces the conflict
+in `list_widgets`'s `errors` array.
+
+The deep-dive — class-detection precedence, common pitfalls, full
+metadata reference — lives in
+[docs/superpowers/notes/widget-authoring.md](docs/superpowers/notes/widget-authoring.md).
+
 ## Tabs, layouts, and themes
 
 - **Tabs.** `ctrl-t` to add, `ctrl-w` to close, `ctrl-1`..`ctrl-9` to jump,

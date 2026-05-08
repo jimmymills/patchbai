@@ -90,6 +90,11 @@ files or shelling out usually requires a restart and can desync the live UI.
 - Theme / config / keys: prefer `set_theme`, `save_theme`, `load_theme`,
   `set_config`, `bind_key`, `unbind_key` over editing config.toml or theme
   files directly.
+- Custom widgets: prefer `save_widget` (persists to
+  ~/.config/patchbai/widgets/ and registers live for use in the same
+  conversation) over `Write`-ing the file via the generic tool. For
+  one-off, throwaway widgets that should NOT be persisted, embed the
+  source in `LayoutSpec.custom_widgets` instead.
 
 Generic tools (Bash, Edit, Write, Read, Grep) remain appropriate for
 arbitrary source-code edits, running tests, git operations, and anything

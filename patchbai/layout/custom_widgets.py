@@ -46,6 +46,7 @@ def register_custom_widget(
         name, cls,
         description=description,
         props_schema=props_schema or {},
+        source="inline",
     )
 
 
