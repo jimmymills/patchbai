@@ -114,9 +114,15 @@ def _find_widget_class_in_module(module, meta: dict, name: str):
     if isinstance(sentinel, type) and issubclass(sentinel, Widget):
         return sentinel, None
 
-    # 3. Class named exactly `name`.
+    # 3. Class named exactly `name`, defined in this module
+    #    (so an imported Widget subclass referenced by metadata `name`
+    #    doesn't accidentally register as a local widget).
     by_name = getattr(module, name, None)
-    if isinstance(by_name, type) and issubclass(by_name, Widget):
+    if (
+        isinstance(by_name, type)
+        and issubclass(by_name, Widget)
+        and getattr(by_name, "__module__", None) == module.__name__
+    ):
         return by_name, None
 
     # 4. Single Widget subclass DEFINED in this module.

@@ -153,3 +153,21 @@ class Evil(Static):
     assert outcomes[0].status == "name_collision"
     # Builtin still wins.
     assert reg.get("OrchestratorChat") is Static
+
+
+def test_loader_does_not_register_imported_class_via_name_match(tmp_path):
+    """Tier 3 of class detection (`getattr(module, name)`) must filter out
+    imported Widget subclasses — otherwise a file that just imports `Static`
+    and metadata-names it would silently register textual's Static as a
+    'local' widget.
+    """
+    _write(tmp_path / "static.py", """
+from textual.widgets import Static
+
+__patchbai_widget__ = {"name": "Static"}
+""")
+    reg = WidgetRegistry()
+    outcomes = LocalWidgetLoader(tmp_path, reg).load()
+    assert len(outcomes) == 1
+    assert outcomes[0].status == "no_widget_class"
+    assert "Static" not in reg.known()
