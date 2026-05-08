@@ -279,12 +279,23 @@ class ActivityFeed(Container):
             self._unsub()
             self._unsub = None
 
+    def _is_at_bottom(self) -> bool:
+        scroll = self.query_one("#activity-rows", VerticalScroll)
+        # Treat anything within 2 cells of bottom as "at bottom" — accounts
+        # for fractional scrolls and avoids edge-case desync.
+        return scroll.max_scroll_y - scroll.scroll_y <= 2
+
     def _on_logged(self, event: ActivityLogged) -> None:
         entry: ActivityEntry = event.entry  # type: ignore[assignment]
         if entry.kind not in _MODE_KINDS[self.mode]:
             return
         scroll = self.query_one("#activity-rows", VerticalScroll)
+        was_following = self._is_at_bottom()
         scroll.mount(_ActivityRow(entry))
+        if was_following:
+            # call_after_refresh so the new row's height is included in
+            # max_scroll_y before we jump.
+            self.call_after_refresh(lambda: scroll.scroll_end(animate=False))
 
     def on_click(self, event) -> None:
         # Identify whether the click landed on a _ModeChip and switch.

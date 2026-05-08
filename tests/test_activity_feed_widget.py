@@ -346,3 +346,80 @@ async def test_clicking_non_interactive_row_does_nothing(tmp_path):
         await pilot.click(cwd_row)
         await pilot.pause()
         assert len(seen) == before  # no new focus requests
+
+
+@pytest.mark.asyncio
+async def test_new_event_scrolls_to_bottom_when_at_bottom(tmp_path):
+    """When the feed scroll is at the bottom, a new event should auto-scroll
+    to keep it in view."""
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {
+                 "type": "horizontal",
+                 "children": [
+                     {"id": "orch", "widget": "OrchestratorChat", "size": "20%"},
+                     {"id": "feed", "widget": "ActivityFeed", "size": "80%"},
+                 ],
+             }}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed
+        from textual.containers import VerticalScroll
+        feed = app.query(ActivityFeed).first()
+        scroll = feed.query_one("#activity-rows", VerticalScroll)
+        # Fill enough rows to make the scroll meaningful.
+        for i in range(60):
+            app.event_bus.publish(TabAdded(tab_id=f"t{i}", title=f"Tab {i}"))
+        await pilot.pause()  # first tick: rows mount, call_after_refresh queued
+        await pilot.pause()  # second tick: scroll_end fires
+        # Scroll should be at (or near) bottom.
+        assert scroll.scroll_y == pytest.approx(scroll.max_scroll_y, abs=2)
+
+
+@pytest.mark.asyncio
+async def test_user_scroll_up_pauses_autofollow(tmp_path):
+    """If the user scrolls up, new events should NOT auto-jump to the bottom."""
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {
+                 "type": "horizontal",
+                 "children": [
+                     {"id": "orch", "widget": "OrchestratorChat", "size": "20%"},
+                     {"id": "feed", "widget": "ActivityFeed", "size": "80%"},
+                 ],
+             }}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed
+        from textual.containers import VerticalScroll
+        feed = app.query(ActivityFeed).first()
+        scroll = feed.query_one("#activity-rows", VerticalScroll)
+        for i in range(60):
+            app.event_bus.publish(TabAdded(tab_id=f"t{i}", title=f"Tab {i}"))
+        await pilot.pause()
+        # Move user scroll to the top.
+        scroll.scroll_to(0, 0, animate=False)
+        await pilot.pause()
+        # Now publish another event.
+        app.event_bus.publish(TabAdded(tab_id="late", title="Late"))
+        await pilot.pause()
+        # We should NOT have jumped to the bottom.
+        assert scroll.scroll_y < scroll.max_scroll_y - 2
