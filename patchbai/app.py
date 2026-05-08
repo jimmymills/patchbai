@@ -43,6 +43,7 @@ from patchbai.widgets.log_tail import LogTail
 from patchbai.widgets.notebook import Notebook
 from patchbai.widgets.file_viewer import FileViewer
 from patchbai.widgets.markdown import Markdown
+from patchbai.widgets.system_usage import SystemUsage
 from patchbai.persistence.orchestrator_sessions import OrchestratorSessionsIndex
 from patchbai.widgets.history_screen import HistoryScreen
 from patchbai.widgets.layout_switcher import LayoutSwitcherScreen
@@ -221,6 +222,17 @@ def build_default_registry() -> WidgetRegistry:
             "`command` (argv), `cwd`, and `env` props."
         ),
         props_schema={"command": list, "cwd": str, "env": dict},
+    )
+    reg.register(
+        "SystemUsage", SystemUsage,
+        description=(
+            "Compact single-row CPU and RAM gauges with colored bars "
+            "(green / yellow / red at 50% / 80% thresholds). Auto-refreshes "
+            "every `interval` seconds. Uses `psutil` when available; "
+            "otherwise shells out non-blockingly to `top` and `vm_stat` on "
+            "macOS. `bar_width` controls the width of each progress bar."
+        ),
+        props_schema={"interval": float, "bar_width": int},
     )
     return reg
 
