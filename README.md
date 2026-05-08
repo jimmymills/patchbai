@@ -259,36 +259,37 @@ repo's `.gitignore` and you should add it to yours.
   uses your `~/.claude/settings.json` for permissions and tool allowlists.
 - A terminal with TrueColor support (any modern macOS / Linux terminal).
 
-### With `uv` (recommended, used by this repo)
+### From PyPI (recommended)
 
 ```bash
-git clone <repo> patchbai
-cd patchbai
-uv sync                  # install runtime deps into .venv
-uv run patchbai          # or: uv run mt
-```
-
-For development, sync the dev extras (pyright, pytest):
-
-```bash
-uv sync --extra dev
-uv run pytest
-./scripts/typecheck.sh   # canonical pyright invocation
-```
-
-### With `pipx`
-
-```bash
-pipx install .
+pipx install patchbai    # isolated, on PATH
 patchbai                 # or: mt
 ```
 
-### Editable install with `pip`
+Or with `uv`:
+
+```bash
+uv tool install patchbai
+patchbai
+```
+
+Or with plain `pip` into a venv:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+pip install patchbai
 patchbai
+```
+
+### From source (for hacking on patchbai itself)
+
+```bash
+git clone https://github.com/jimmymills/patchbai.git
+cd patchbai
+uv sync --extra dev      # runtime + dev deps (pyright, pytest)
+uv run patchbai          # or: uv run mt
+uv run pytest
+./scripts/typecheck.sh   # canonical pyright invocation
 ```
 
 ## Running
