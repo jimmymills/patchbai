@@ -171,3 +171,87 @@ __patchbai_widget__ = {"name": "Static"}
     assert len(outcomes) == 1
     assert outcomes[0].status == "no_widget_class"
     assert "Static" not in reg.known()
+
+
+from patchbai.layout.local_widgets import validate_widget_source
+
+
+def test_validate_returns_class_and_meta_for_valid_source():
+    src = """
+from textual.widgets import Static
+__patchbai_widget__ = {
+    "name": "Banner",
+    "description": "A banner.",
+    "props_schema": {"text": str},
+}
+class Banner(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("Banner", src)
+    assert cls is not None and cls.__name__ == "Banner"
+    assert meta["description"] == "A banner."
+    assert meta["props_schema"] == {"text": str}
+    assert err == ""
+
+
+def test_validate_returns_empty_meta_when_absent():
+    src = """
+from textual.widgets import Static
+class X(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None
+    assert meta == {}
+    assert err == ""
+
+
+def test_validate_uses_metadata_entry_point():
+    src = """
+from textual.widgets import Static
+class Real(Static):
+    pass
+class Decoy(Static):
+    pass
+__patchbai_widget__ = {"name": "X", "entry_point": Real}
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None and cls.__name__ == "Real"
+    assert err == ""
+
+
+def test_validate_rejects_syntax_error():
+    # Note: "this is not python" parses (it's `this is (not python)` — a
+    # NameError at exec time, not a SyntaxError). Use the same broken-syntax
+    # source as the existing import-error test so we actually exercise the
+    # syntax-error path that this test name promises.
+    cls, meta, err = validate_widget_source("X", "this is not valid python\n")
+    assert cls is None
+    assert meta == {}
+    assert "SyntaxError" in err or "syntax" in err.lower()
+
+
+def test_validate_rejects_no_widget_class():
+    cls, meta, err = validate_widget_source("X", "x = 42\n")
+    assert cls is None
+    assert "no_widget_class" in err or "no Widget" in err.lower()
+
+
+def test_validate_rejects_ambiguous():
+    src = """
+from textual.widgets import Static
+class A(Static): pass
+class B(Static): pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is None
+    assert "ambiguous" in err.lower()
+
+
+def test_validate_does_not_touch_filesystem(tmp_path, monkeypatch):
+    # Validation must not write anywhere under cwd; tempfile lands in the
+    # OS tempdir.
+    monkeypatch.chdir(tmp_path)
+    src = "from textual.widgets import Static\nclass X(Static):\n    pass\n"
+    validate_widget_source("X", src)
+    assert list(tmp_path.iterdir()) == []  # nothing written under cwd

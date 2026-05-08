@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import sys
+import tempfile
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -141,3 +142,47 @@ def _find_widget_class_in_module(module, meta: dict, name: str):
     if len(unique) > 1:
         return None, "ambiguous_class"
     return None, "no_widget_class"
+
+
+def validate_widget_source(
+    name: str, source: str,
+) -> tuple[type[Widget] | None, dict, str]:
+    """Compile `source` and run the §2 class-detection precedence WITHOUT
+    registering anything. Returns (cls, meta, "") on success, or
+    (None, {}, error_text) on failure. `error_text` is one of: a one-line
+    syntax error excerpt, "no_widget_class", "ambiguous_class", or another
+    short description. `meta` is the imported module's `__patchbai_widget__`
+    dict (or `{}` if absent) — used by `save_widget` to register description
+    and props_schema in the live registry.
+
+    Used by the `save_widget` MCP tool to validate orchestrator-supplied
+    source before committing it to ~/.config/patchbai/widgets/.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / f"{name}.py"
+        try:
+            path.write_text(source, encoding="utf-8")
+        except OSError as e:
+            return None, {}, f"could not stage source for validation: {e}"
+
+        mod_name = f"_patchbai_validate_widget_{name}"
+        try:
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            assert spec is not None and spec.loader is not None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                # Don't leak a module entry that points at a deleted tempdir.
+                sys.modules.pop(mod_name, None)
+        except Exception as e:
+            return None, {}, f"{type(e).__name__}: {e}"
+
+        meta = getattr(module, "__patchbai_widget__", {}) or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        cls, err = _find_widget_class_in_module(module, meta, name)
+        if cls is None:
+            return None, {}, err or "no_widget_class"
+        return cls, meta, ""
