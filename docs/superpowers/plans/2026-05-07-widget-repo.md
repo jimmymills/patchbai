@@ -359,6 +359,8 @@ These can land in a follow-up plan if real friction shows up.
 - Builtin collision: `save_widget("OrchestratorChat", ...)` returns an error AND does NOT create a file. The built-in registration is unaffected.
 - Overwrite: saving twice under the same name overwrites the file AND re-registers the new class. The old registration is gone (`reg.get("X")` returns the new class).
 - Inline-source overwrite: a `set_layout` registers `Fancy` inline with `source="inline"`; a subsequent `save_widget("Fancy", ...)` overwrites both the disk and the registry, with the new registration tagged `source="local"`.
+- **Cross-tool integration**: `save_widget` followed by `list_widgets` shows the new widget in the envelope's `widgets` array with `source: "local"` and the metadata block's `description` / `props_schema`. Pins the contract that both handlers share the same `WidgetRegistry` instance.
+- **Cross-tool error asymmetry**: a failed `save_widget` returns the error inline; a subsequent `list_widgets` does NOT include the failed save in its `errors` array (that array reflects startup-discovery only). Pins the asymmetry documented in §10 against future refactor drift.
 
 **Unit (`tests/test_persistence_atomic_text.py`):**
 - Round-trip: `write_text_atomic(p, "hello")` then `p.read_text() == "hello"`.
@@ -1597,10 +1599,12 @@ from patchbai.persistence.layouts_store import NamedLayoutsStore
 
 class _FakeApp:
     """Minimal stand-in for PatchbaiApp — save_widget reads `_global_dir`
-    and `registry` from the app reference."""
+    and `registry` from the app reference; list_widgets reads
+    `_local_widget_outcomes` for its `errors` array."""
     def __init__(self, global_dir, registry):
         self._global_dir = global_dir
         self.registry = registry
+        self._local_widget_outcomes = []
 
 
 def _tools(tmp_path, registry):
@@ -1710,6 +1714,92 @@ async def test_save_widget_overwrite_re_registers(tmp_path):
     assert reg.get("Fancy").VERSION == 2
     written = tmp_path / "widgets" / "Fancy.py"
     assert "VERSION = 2" in written.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_save_widget_appears_in_list_widgets(tmp_path):
+    """End-to-end: after save_widget, the new widget appears in list_widgets
+    with source='local' and the metadata block's description/props_schema.
+
+    This test pins the cross-tool contract that the two MCP handlers share
+    the same WidgetRegistry instance (so a registration in one is visible
+    to the other within the same session, no restart required)."""
+    reg = WidgetRegistry()
+    # Pre-register a builtin so we can confirm builtins coexist with the new local.
+    from textual.widgets import Static
+    reg.register("OrchestratorChat", Static)  # source="builtin" by default
+
+    tools = _tools(tmp_path, reg)
+    src = (
+        "from textual.widgets import Static\n"
+        "__patchbai_widget__ = {\n"
+        "    'name': 'Sparkline',\n"
+        "    'description': 'Token-rate sparkline.',\n"
+        "    'props_schema': {'agent_id': str},\n"
+        "}\n"
+        "class Sparkline(Static):\n"
+        "    pass\n"
+    )
+
+    save_out = await tools["save_widget"]({"name": "Sparkline", "source": src})
+    assert "saved" in save_out["content"][0]["text"].lower()
+
+    # Now call list_widgets and inspect the envelope.
+    import json
+    list_out = await tools["list_widgets"]({})
+    payload = json.loads(list_out["content"][0]["text"])
+
+    assert "widgets" in payload and "errors" in payload
+    by_name = {w["name"]: w for w in payload["widgets"]}
+
+    # New local widget is visible with the metadata we provided.
+    assert "Sparkline" in by_name
+    assert by_name["Sparkline"]["source"] == "local"
+    assert by_name["Sparkline"]["description"] == "Token-rate sparkline."
+    assert by_name["Sparkline"]["props_schema"] == {"agent_id": "str"}
+
+    # Builtin still present and tagged correctly.
+    assert by_name["OrchestratorChat"]["source"] == "builtin"
+
+
+@pytest.mark.asyncio
+async def test_save_widget_failure_does_not_pollute_list_widgets_errors(tmp_path):
+    """A failed save_widget returns the error INLINE; list_widgets's `errors`
+    array reflects startup-discovery outcomes only, not save_widget failures.
+
+    Pins the asymmetry documented in §10 so a future refactor doesn't quietly
+    start tunneling save_widget failures through list_widgets — the orchestrator
+    relies on inline error returns from save_widget."""
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+
+    save_out = await tools["save_widget"]({
+        "name": "Broken",
+        "source": "this is not valid python\n",
+    })
+    assert "cannot save" in save_out["content"][0]["text"].lower()
+
+    import json
+    list_out = await tools["list_widgets"]({})
+    payload = json.loads(list_out["content"][0]["text"])
+
+    # No file was written → no entry in widgets, no entry in errors
+    # (because errors comes from the startup loader's outcomes list, which
+    # the FakeApp's _local_widget_outcomes — see _tools — leaves empty).
+    names = {w["name"] for w in payload["widgets"]}
+    assert "Broken" not in names
+    error_paths = {e.get("path") for e in payload["errors"]}
+    assert not any("Broken" in (p or "") for p in error_paths)
+```
+
+**Note for `_tools` test fixture:** the `_FakeApp` defined at the top of this test file should also expose `_local_widget_outcomes = []` so the `list_widgets` handler's `outcomes_provider` (which closes over `app._local_widget_outcomes` per Task 7 step 5) returns an empty list. Update the fixture:
+
+```python
+class _FakeApp:
+    def __init__(self, global_dir, registry):
+        self._global_dir = global_dir
+        self.registry = registry
+        self._local_widget_outcomes = []  # populated only by the real app at startup
 ```
 
 - [ ] **Step 2: Run to verify they fail**
@@ -1793,20 +1883,24 @@ In `build_orchestrator_mcp_server`, append a tool registration with the trust wa
             "save_widget",
             "Persist a custom Textual widget to "
             "~/.config/patchbai/widgets/<name>.py and register it into the "
-            "live registry so it's available immediately for `set_layout`. "
-            "`name` is the widget's registered name (letters, digits, _, -); "
-            "the file is written as `<name>.py`. `source` is the full "
-            "Python source for the widget — including imports and an "
-            "OPTIONAL module-level `__patchbai_widget__ = {\"name\": ..., "
-            "\"description\": ..., \"props_schema\": {...}}` block to "
-            "supply metadata visible in `list_widgets`. Use `WIDGET_CLASS = "
-            "<class>` or include the metadata's `entry_point` field if your "
-            "source defines more than one Widget subclass. **Trust note: "
-            "the source is exec'd in-process during validation AND on "
-            "every subsequent app start with full Python privileges. Only "
-            "save source you have personally authored.** Returns an error "
-            "without writing to disk if the source fails to import, doesn't "
-            "yield a Widget subclass, or the name collides with a built-in.",
+            "live registry so it's available immediately for `set_layout` "
+            "and visible in the next `list_widgets` call (with "
+            "`source: \"local\"`). `name` is the widget's registered name "
+            "(letters, digits, _, -); the file is written as `<name>.py`. "
+            "`source` is the full Python source for the widget — including "
+            "imports and an OPTIONAL module-level `__patchbai_widget__ = "
+            "{\"name\": ..., \"description\": ..., \"props_schema\": {...}}` "
+            "block to supply metadata visible in `list_widgets`. Use "
+            "`WIDGET_CLASS = <class>` or include the metadata's `entry_point` "
+            "field if your source defines more than one Widget subclass. "
+            "**Trust note: the source is exec'd in-process during validation "
+            "AND on every subsequent app start with full Python privileges. "
+            "Only save source you have personally authored.** On failure "
+            "(import error, no Widget subclass, builtin name collision, "
+            "invalid name) returns an error string in the response and does "
+            "NOT write to disk; do NOT poll `list_widgets`.errors looking "
+            "for the failure — that array reflects startup-time discovery "
+            "only, not save_widget rejections.",
             {"name": str, "source": str},
         )(_save_widget_handler(app)))
 ```
@@ -1826,7 +1920,7 @@ In `patchbai/orchestrator/session.py`, append to `_ORCHESTRATOR_SYSTEM_APPEND` (
 - [ ] **Step 6: Run the full save_widget test file**
 
 Run: `uv run pytest tests/test_orchestrator_tools_save_widget.py -v`
-Expected: PASS for all 6 tests.
+Expected: PASS for all 8 tests (6 single-tool tests + 2 cross-tool integration tests covering the `save_widget` → `list_widgets` envelope).
 
 - [ ] **Step 7: Run the full suite**
 
