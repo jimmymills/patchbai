@@ -55,6 +55,8 @@ _RESUME_ID_RE = re.compile(r"^/resume\s+(\S+)\s*$")
 _RENAME_RE = re.compile(r"^/rename(?:\s+(.*))?$")
 _HELP_RE = re.compile(r"^/help\s*$")
 _CD_RE = re.compile(r"^/cd\s+(.+?)\s*$")
+_BYPASS_PERMS_RE = re.compile(r"^/bypass-permissions\s*$")
+_REQUIRE_PERMS_RE = re.compile(r"^/require-permissions\s*$")
 
 _HELP_TEXT = (
     "Available commands:\n"
@@ -62,6 +64,8 @@ _HELP_TEXT = (
     "  /resume [<session_id>]     Resume a past session (no arg → picker)\n"
     "  /rename [<id>] <title>     Rename the active or a specific session\n"
     "  /cd <path>                 Re-root the workspace at <path>\n"
+    "  /bypass-permissions        Disable the permission modal (agents run freely)\n"
+    "  /require-permissions       Re-enable the permission modal (default)\n"
     "  /help                      Show this list"
 )
 
@@ -445,6 +449,18 @@ class OrchestratorSession:
                 asyncio.create_task(self._handle_cd_command(path))
             )
             return
+        if _BYPASS_PERMS_RE.match(text) and self._app is not None:
+            self._send_tasks = [t for t in self._send_tasks if not t.done()]
+            self._send_tasks.append(
+                asyncio.create_task(self._handle_set_permissions(bypass=True))
+            )
+            return
+        if _REQUIRE_PERMS_RE.match(text) and self._app is not None:
+            self._send_tasks = [t for t in self._send_tasks if not t.done()]
+            self._send_tasks.append(
+                asyncio.create_task(self._handle_set_permissions(bypass=False))
+            )
+            return
         if _HELP_RE.match(text):
             self._publish_notice(_HELP_TEXT)
             return
@@ -513,6 +529,29 @@ class OrchestratorSession:
             self._publish_notice("cwd unchanged.")
         else:
             self._publish_notice(f"cwd → {result['changed']}")
+
+    async def _handle_set_permissions(self, *, bypass: bool) -> None:
+        if self._app is None:
+            return
+        result = await self._app.set_bypass_permissions(bypass)
+        if "error" in result:
+            err = result["error"]
+            if err == "agents_running":
+                names = ", ".join(a["name"] for a in result.get("agents", []))
+                self._publish_notice(
+                    f"Refusing /{'bypass' if bypass else 'require'}-permissions: "
+                    f"agents still running ({names})."
+                )
+            else:
+                self._publish_notice(
+                    f"/{'bypass' if bypass else 'require'}-permissions failed: {err}"
+                )
+        elif "unchanged" in result:
+            mode = "bypass" if bypass else "require"
+            self._publish_notice(f"Permission mode already: {mode}")
+        else:
+            mode = result["changed"]
+            self._publish_notice(f"Permission mode is now: {mode}")
 
     async def _generate_title_async(self, session_id: str, first_user_message: str) -> None:
         """Issue a one-shot SDK query to summarize the first message into a
