@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container, Horizontal, VerticalScroll
 from textual.widgets import Static
 
 from patchbai.activity.log import ActivityEntry, ActivityKind
@@ -38,6 +38,51 @@ _MODE_KINDS: dict[str, frozenset[str]] = {
         ActivityKind.WORKSPACE_CWD, ActivityKind.FILE_SELECTED,
     }),
 }
+
+
+class _ModeChip(Static):
+    """Clickable mode label inside the chip strip. Carries the mode string;
+    parent ActivityFeed reads `event.widget.mode` on click."""
+
+    DEFAULT_CSS = """
+    _ModeChip {
+        padding: 0 1;
+        margin: 0 1 0 0;
+        border: tall $surface-lighten-2;
+        color: $text;
+    }
+    _ModeChip.-active {
+        border: tall $primary;
+        color: $primary;
+    }
+    _ModeChip:hover {
+        background: $boost;
+    }
+    """
+
+    def __init__(self, mode: str, *, active: bool) -> None:
+        super().__init__(mode.capitalize())
+        self.mode = mode
+        if active:
+            self.add_class("-active")
+
+
+class _ModeChips(Horizontal):
+    DEFAULT_CSS = """
+    _ModeChips {
+        height: auto;
+        padding: 0 1;
+        background: $boost;
+    }
+    """
+
+    def __init__(self, active: str) -> None:
+        super().__init__()
+        self._active = active
+
+    def compose(self) -> ComposeResult:
+        for m in MODES:
+            yield _ModeChip(m, active=(m == self._active))
 
 
 class _ActivityRow(Static):
@@ -92,6 +137,7 @@ class ActivityFeed(Container):
         self._unsub = None
 
     def compose(self) -> ComposeResult:
+        yield _ModeChips(active=self.mode)
         yield VerticalScroll(id="activity-rows")
 
     def on_mount(self) -> None:
@@ -119,3 +165,69 @@ class ActivityFeed(Container):
             return
         scroll = self.query_one("#activity-rows", VerticalScroll)
         scroll.mount(_ActivityRow(entry))
+
+    def on_click(self, event) -> None:
+        # Identify whether the click landed on a _ModeChip and switch.
+        target = event.widget if hasattr(event, "widget") else None
+        if not isinstance(target, _ModeChip):
+            return
+        new_mode = target.mode
+        if new_mode == self.mode:
+            return
+        self._set_mode(new_mode)
+        event.stop()
+
+    def _set_mode(self, new_mode: str) -> None:
+        self.mode = new_mode
+        # Update chip styling.
+        for chip in self.query(_ModeChip):
+            chip.set_class(chip.mode == new_mode, "-active")
+        # Rebuild the scroll region for the new mode.
+        scroll = self.query_one("#activity-rows", VerticalScroll)
+        scroll.remove_children()
+        log = getattr(self.app, "activity_log", None)
+        if log is not None:
+            allow = _MODE_KINDS[new_mode]
+            for entry in log.entries():
+                if entry.kind in allow:
+                    scroll.mount(_ActivityRow(entry))
+        # Persist the new mode into the layout JSON for this panel.
+        self._persist_mode(new_mode)
+
+    def _persist_mode(self, new_mode: str) -> None:
+        """Walk the active tab's layout dict, find this widget's panel entry
+        by id (panel-{node.id} → node.id == self.id minus prefix), update its
+        `props.mode`, and call app._apply_to_tab to validate + save."""
+        app = self.app
+        active_tab_id = getattr(app, "_active_tab_id", None)
+        ws = getattr(app, "_workspace", None)
+        if active_tab_id is None or ws is None:
+            return
+        # The widget id is "panel-{node.id}". Extract the node id.
+        if not self.id or not self.id.startswith("panel-"):
+            return
+        node_id = self.id[len("panel-"):]
+        # Find the active tab's spec, deep-copy it, mutate the matching panel.
+        from patchbai.layout.spec import LayoutSpec
+        target_tab = next((t for t in ws.tabs if t.id == active_tab_id), None)
+        if target_tab is None:
+            return
+        spec_dict = target_tab.layout.model_dump(mode="json")
+
+        def _walk(node: dict) -> bool:
+            if node.get("widget") == "ActivityFeed" and node.get("id") == node_id:
+                node.setdefault("props", {})["mode"] = new_mode
+                return True
+            for child in node.get("children", []) or []:
+                if _walk(child):
+                    return True
+            return False
+
+        if not _walk(spec_dict["layout"]):
+            return
+        try:
+            new_spec = LayoutSpec.model_validate(spec_dict)
+        except Exception:
+            return
+        import asyncio as _asyncio
+        _asyncio.create_task(app._apply_to_tab(active_tab_id, new_spec))

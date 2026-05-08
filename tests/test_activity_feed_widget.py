@@ -116,3 +116,49 @@ async def test_mode_prop_filters_initial_render(tmp_path):
         # tab.added is not in agents mode → "HiddenTab" must not be rendered.
         assert "HiddenTab" not in labels
         assert feed.mode == "agents"
+
+
+@pytest.mark.asyncio
+async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [
+            {
+                "id": "main", "title": "Main",
+                "layout": {
+                    "version": 1,
+                    "layout": {
+                        "type": "horizontal",
+                        "children": [
+                            {"id": "orch", "widget": "OrchestratorChat", "size": "50%"},
+                            {"id": "feed", "widget": "ActivityFeed",
+                             "props": {"mode": "audit"}, "size": "50%"},
+                        ],
+                    },
+                },
+            },
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ModeChip
+        feed = app.query(ActivityFeed).first()
+        assert feed.mode == "audit"
+        # Find the "agents" chip and click it.
+        chips = list(feed.query(_ModeChip))
+        agents_chip = next(c for c in chips if c.mode == "agents")
+        await pilot.click(agents_chip)
+        await pilot.pause()
+        await pilot.pause()  # let _apply_to_tab settle
+        assert feed.mode == "agents"
+        # Check that workspace.json now has props.mode == "agents".
+        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        children = ws_raw["tabs"][0]["layout"]["layout"]["children"]
+        feed_node = next(c for c in children if c.get("widget") == "ActivityFeed")
+        assert feed_node["props"]["mode"] == "agents"
