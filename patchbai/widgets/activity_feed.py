@@ -40,6 +40,47 @@ _MODE_KINDS: dict[str, frozenset[str]] = {
 }
 
 
+_VARIANT: dict[str, str] = {
+    # Compact: routine signals.
+    ActivityKind.TAB_ADDED: "compact",
+    ActivityKind.TAB_CLOSED: "compact",
+    ActivityKind.TAB_SWITCHED: "compact",
+    ActivityKind.LAYOUT_APPLIED: "compact",
+    ActivityKind.WORKSPACE_CWD: "compact",
+    ActivityKind.AGENT_STATE: "compact",
+    ActivityKind.AGENT_ARCHIVE: "compact",
+    ActivityKind.FILE_SELECTED: "compact",
+    ActivityKind.AGENT_TOOL: "compact",
+    ActivityKind.ORCH_SESSION: "compact",
+
+    # Expanded: carries a body worth reading.
+    ActivityKind.ORCH_USER: "expanded",
+    ActivityKind.ORCH_REPLY: "expanded",
+    ActivityKind.AGENT_MESSAGE: "expanded",
+    ActivityKind.AGENT_NOTIFY: "expanded",
+    ActivityKind.AGENT_SPAWNED: "expanded",
+
+    # Card: needs attention.
+    ActivityKind.AGENT_ASK: "card",
+    ActivityKind.LAYOUT_FAILED: "card",
+    # AGENT_DONE: "compact" by default; ERROR overrides to "card" — handled by _variant_for.
+    ActivityKind.AGENT_DONE: "compact",
+}
+
+
+def _variant_for(entry: ActivityEntry) -> str:
+    """Pick the variant for an entry. Most kinds map statically via _VARIANT;
+    agent.done escalates to 'card' when the underlying state is ERROR."""
+    if entry.kind == ActivityKind.AGENT_DONE:
+        from patchbai.events import AgentStateChanged
+        from patchbai.agents.state import AgentState
+        raw = entry.raw
+        if isinstance(raw, AgentStateChanged) and raw.info.state == AgentState.ERROR:
+            return "card"
+        return "compact"
+    return _VARIANT.get(entry.kind, "compact")
+
+
 class _ModeChip(Static):
     """Clickable mode label inside the chip strip. Carries the mode string;
     parent ActivityFeed reads `event.widget.mode` on click."""
@@ -86,29 +127,42 @@ class _ModeChips(Horizontal):
 
 
 class _ActivityRow(Static):
-    """One feed row. Variants come in Task 9; for now this just renders a
-    compact single line."""
+    """One feed row. Variant comes from `_variant_for(entry)`; CSS classes
+    `-variant-compact|expanded|card` drive presentation."""
 
     DEFAULT_CSS = """
     _ActivityRow {
         height: auto;
         padding: 0 1;
     }
+    _ActivityRow.-variant-card {
+        border: round $warning;
+        padding: 0 1;
+        margin: 0 0 1 0;
+    }
     """
 
     def __init__(self, entry: ActivityEntry) -> None:
-        text = self._format(entry)
+        variant = _variant_for(entry)
+        text = self._format(entry, variant)
         super().__init__(text)
         self.entry = entry
         # Plain attribute mirroring the rendered string. Static stores its
         # content in a private `_renderable` field that isn't part of the
         # public API; consumers (tests, click handlers) read this instead.
         self.text = text
+        self.add_class(f"-variant-{variant}")
 
     @staticmethod
-    def _format(entry: ActivityEntry) -> str:
+    def _format(entry: ActivityEntry, variant: str) -> str:
         ts = entry.timestamp.strftime("%H:%M:%S")
-        return f"[{ts}] {entry.kind:<18} {entry.summary}"
+        head = f"[{ts}] {entry.kind:<18} {entry.summary}"
+        if variant == "compact" or not entry.detail:
+            return head
+        if variant == "expanded":
+            return f"{head}\n            ↳ {entry.detail}"
+        # card
+        return f"{entry.kind} · {entry.summary}\n{entry.detail}"
 
 
 class ActivityFeed(Container):

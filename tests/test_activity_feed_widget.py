@@ -162,3 +162,69 @@ async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
         children = ws_raw["tabs"][0]["layout"]["layout"]["children"]
         feed_node = next(c for c in children if c.get("widget") == "ActivityFeed")
         assert feed_node["props"]["mode"] == "agents"
+
+
+@pytest.mark.asyncio
+async def test_card_variant_used_for_agent_ask(tmp_path):
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.events import AgentRequestedUserInput
+        app.event_bus.publish(AgentRequestedUserInput(
+            agent_id="bot", question="ok?", request_id="r1",
+        ))
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        feed = app.query(ActivityFeed).first()
+        rows = list(feed.query(_ActivityRow))
+        ask_row = next(r for r in rows if r.entry.kind == "agent.ask")
+        assert ask_row.has_class("-variant-card")
+
+
+@pytest.mark.asyncio
+async def test_expanded_variant_used_for_agent_message(tmp_path):
+    """agent.message is in agents/debug modes, NOT audit. Mount with mode='agents'."""
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [
+            {"id": "main", "title": "Main",
+             "layout": {"version": 1, "layout": {
+                 "type": "horizontal",
+                 "children": [
+                     {"id": "orch", "widget": "OrchestratorChat", "size": "50%"},
+                     {"id": "feed", "widget": "ActivityFeed",
+                      "props": {"mode": "agents"}, "size": "50%"},
+                 ],
+             }}},
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    app = _build_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.events import AgentMessageAppended
+        app.event_bus.publish(AgentMessageAppended(
+            agent_id="bot", role="assistant", text="hi",
+        ))
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        feed = app.query(ActivityFeed).first()
+        rows = list(feed.query(_ActivityRow))
+        msg_row = next(r for r in rows if r.entry.kind == "agent.message")
+        assert msg_row.has_class("-variant-expanded")
+
+
+@pytest.mark.asyncio
+async def test_compact_variant_used_for_tab_added(tmp_path):
+    app = _build_app(tmp_path)
+    app.event_bus.publish(TabAdded(tab_id="t1", title="Files"))
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        feed = app.query(ActivityFeed).first()
+        rows = list(feed.query(_ActivityRow))
+        tab_row = next(r for r in rows if r.entry.kind == "tab.added" and r.entry.tab_id == "t1")
+        assert tab_row.has_class("-variant-compact")
