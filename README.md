@@ -83,6 +83,15 @@ the ideas.
   the actual `claude` CLI, or your shell, in any panel. Mode-C custom
   widgets let the orchestrator ship Python at runtime when the curated
   widget library isn't enough.
+- **Approve tool calls without leaving the room.** When a child wants
+  to use a tool that isn't auto-approved, a modal pops in patchbai with
+  the tool name and full arguments. Approve once, deny once, always
+  allow this tool for any agent named X (persisted to disk), or always
+  deny. The agent's status flips to `awaiting permission` and the
+  request also surfaces inline in its `AgentTranscript` panel so you
+  can clear it without opening the modal. Launch with
+  `--bypass-permissions` for "trust everything"; flip mid-session with
+  `/bypass-permissions` and `/require-permissions`.
 
 ## Concept
 
@@ -132,6 +141,7 @@ exactly one panel — the agent can shrink it but cannot hide its own input.
 | `Markdown` | Renders markdown from a string or file. |
 | `Notebook` | Editable scratch buffer; persists to `<cwd>/.patchbai/scratch/<name>.md`. |
 | `Terminal` | Real PTY — drop into `claude`, `$SHELL`, or any command. Opaque to the orchestrator. |
+| `SystemUsage` | Compact CPU + RAM gauges with auto-refresh and threshold-colored bars. Uses `psutil` if installed; otherwise async `top` / `vm_stat` shell-out on macOS. |
 
 The orchestrator can also register **custom widgets** by emitting Python
 source in the `custom_widgets` block of a `set_layout` call. The source
@@ -207,6 +217,8 @@ metadata reference — lives in
 | `/resume` | Open the resume picker for a past orchestrator session. |
 | `/rename` | Rename the current session's title. |
 | `/cd <path>` | Change the workspace cwd. |
+| `/bypass-permissions` | Switch the running session to bypass-all-permissions mode (no modals). |
+| `/require-permissions` | Switch back to permission-modal mode. |
 | `/help` | Show the slash-command list. |
 
 `ctrl-c` while the chat is focused interrupts the orchestrator without
@@ -531,8 +543,6 @@ the last good layout stays mounted.
 - **Claude Agent SDK only.** The agent abstraction is designed to
   accommodate other harnesses (Codex, Aider, Gemini CLI), but only the
   Claude adapter ships.
-- **No modal "approve this tool call?" UX.** Children inherit your
-  `~/.claude/settings.json` permissions, optionally narrowed at spawn.
 
 ## License
 
