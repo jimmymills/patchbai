@@ -179,7 +179,8 @@ _last_applied_spec: "weakref.WeakKeyDictionary[TxContainer, LayoutSpec]" = weakr
 
 
 async def apply(container: TxContainer, spec: LayoutSpec, registry,
-                *, layout_name: str | None = None) -> None:
+                *, layout_name: str | None = None,
+                apply_focus: bool = True) -> None:
     """Replace `container`'s children with widgets built from `spec.layout`.
 
     Behavior:
@@ -194,6 +195,11 @@ async def apply(container: TxContainer, spec: LayoutSpec, registry,
     - **Focus preservation:** if `spec.focus` is None and a panel is currently
       focused, restore that panel's id after the rebuild (provided the panel
       survives in the new spec).
+    - **`apply_focus=False`** skips the focus call entirely. Use when applying
+      a layout into a TabPane that isn't the workspace's active tab — focusing
+      a widget inside a hidden pane causes Textual to switch the displayed
+      pane to the one containing that widget, which silently overrides the
+      caller's intended active tab.
     """
     bus = getattr(container.app, "event_bus", None)
 
@@ -224,7 +230,7 @@ async def apply(container: TxContainer, spec: LayoutSpec, registry,
     await container.mount_all(new_children)
 
     target = spec.focus or snapshot_focus_id
-    if target:
+    if target and apply_focus:
         try:
             container.query_one(f"#panel-{target}").focus()
         except Exception:

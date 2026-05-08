@@ -273,6 +273,12 @@ class PatchbaiApp(App):
         self._active_tab_id: str | None = None
         self._current_layout_name: str | None = None  # last `load_layout` name
         self._tab_focus_snapshots: dict[str, str] = {}  # tab_id -> last focused panel id
+        # While _mount_workspace is building tabs, child widgets that auto-focus
+        # on mount (Input, etc.) can drag the active TabPane around. Suppress
+        # workspace-state updates from those activations so the saved ws.active
+        # is what sticks once the dust settles. _mount_workspace clears this
+        # and explicitly re-pins tc.active after a refresh tick.
+        self._mounting_workspace: bool = False
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.config_store = ConfigStore(global_dir=self._global_dir)
         self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)
@@ -841,6 +847,7 @@ class PatchbaiApp(App):
 
     async def _mount_workspace(self, ws: Workspace) -> None:
         tc = self.query_one("#app-tabs", TabbedContent)
+        self._mounting_workspace = True
         # Build one TabPane per Tab, each containing a panel-area-<id> Container.
         new_panes = []
         for t in ws.tabs:
@@ -851,15 +858,55 @@ class PatchbaiApp(App):
         for pane in new_panes:
             await tc.add_pane(pane)
         # Apply each tab's layout to its container, eagerly (persistent semantics).
+        # The active tab is applied first (with focus) and pinned via tc.active;
+        # non-active tabs get their layout built without their `focus` directive
+        # honored, since focusing a widget in a hidden TabPane makes Textual
+        # switch to it (a Terminal tab with focus="term" or any auto-focusing
+        # child like an Input will otherwise steal activation on launch). Each
+        # non-active layout is followed by a re-pin: widgets like Input
+        # auto-focus on mount independent of `apply_focus` and can still drag
+        # the active tab over. Pinning per-iteration keeps ws.active sticky.
+        target_active = f"tab-{ws.active}"
+        active_tab = next((t for t in ws.tabs if t.id == ws.active), None)
+        if active_tab is not None:
+            area = self.query_one(f"#panel-area-{active_tab.id}", Container)
+            try:
+                await apply_layout(
+                    area, active_tab.layout, self.registry, layout_name=None,
+                    apply_focus=True,
+                )
+            except Exception:
+                pass
+            tc.active = target_active
         for t in ws.tabs:
+            if t.id == ws.active:
+                continue
             area = self.query_one(f"#panel-area-{t.id}", Container)
             try:
-                await apply_layout(area, t.layout, self.registry, layout_name=None)
+                await apply_layout(
+                    area, t.layout, self.registry, layout_name=None,
+                    apply_focus=False,
+                )
             except Exception:
-                # Apply errors already publish LayoutFailed; swallow here so one
-                # bad tab doesn't block the rest of the workspace from booting.
                 pass
-        tc.active = f"tab-{ws.active}"
+            if tc.active != target_active:
+                tc.active = target_active
+        tc.active = target_active
+
+        # Final re-pin: child widgets (Input, etc.) that auto-focus on mount
+        # may queue TabActivated messages that fire after this function returns.
+        # Schedule a deferred pin once Textual has flushed those messages, then
+        # clear the suppression flag so the canonical activation handler runs
+        # for the user's first real tab switch.
+        def _finalize_active() -> None:
+            try:
+                if tc.active != target_active:
+                    tc.active = target_active
+            finally:
+                self._mounting_workspace = False
+                self._active_tab_id = ws.active
+
+        self.call_after_refresh(_finalize_active)
 
     async def _apply_to_tab(
         self, tab_id: str | None, spec: LayoutSpec,
@@ -1081,6 +1128,12 @@ class PatchbaiApp(App):
         pane. Updates workspace state, persists, fires our TabSwitched event, and
         restores focus to the tab's last-focused panel id."""
         if self._workspace is None:
+            return
+        # While the workspace is being mounted, child widgets that auto-focus
+        # on mount (Input, FocusableTextArea, etc.) can fire TabActivated for
+        # panes that aren't the saved active tab. Ignore those — _mount_workspace
+        # explicitly pins ws.active once mount settles via call_after_refresh.
+        if self._mounting_workspace:
             return
         # event.tab.id carries the internal ContentTab prefix ("--content-tab-tab-logs");
         # event.pane.id is the TabPane id we set ("tab-logs"), which is what we want.
