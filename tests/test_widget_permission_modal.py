@@ -166,3 +166,26 @@ async def test_modal_dismisses_when_last_request_resolved(tmp_path: Path):
         await pilot.click("#allow-once")
         await pilot.pause()
         assert not isinstance(app.screen, PermissionModal)
+
+
+@pytest.mark.asyncio
+async def test_long_tool_input_is_not_truncated(tmp_path: Path):
+    bus = EventBus()
+    inbox = PermissionInbox()
+    long_cmd = "rm -rf " + "/very/deeply/nested/path/that/keeps/going" * 5
+    rid = inbox.register(tool_name="Bash", tool_input={"cmd": long_cmd})
+    grants = PermissionGrants(cwd=tmp_path)
+
+    app = _Host(bus=bus, inbox=inbox, grants=grants)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(PermissionRequested(
+            agent_id="a1", agent_name="researcher", request_id=rid,
+            tool_name="Bash", tool_input={"cmd": long_cmd},
+        ))
+        await pilot.pause()
+        from textual.widgets import Static
+        widget = app.screen.query_one("#tool-args", Static)
+        rendered = str(widget.render())
+        # The full command must be present — no truncation.
+        assert long_cmd in rendered

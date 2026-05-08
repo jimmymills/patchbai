@@ -3,7 +3,7 @@ from typing import Callable, Literal
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical, Horizontal
+from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
@@ -38,6 +38,16 @@ class PermissionModal(ModalScreen[None]):
     PermissionModal #scope-hint { color: $text-muted; text-style: italic; }
     PermissionModal #buttons { height: 3; align-horizontal: center; }
     PermissionModal Button { margin: 0 1; }
+    PermissionModal #tool-args-scroll {
+        max-height: 8;
+        height: auto;
+        border: round $surface-lighten-1;
+        margin: 1 0;
+        padding: 0 1;
+    }
+    PermissionModal #tool-args {
+        width: auto;
+    }
     """
 
     BINDINGS = [Binding("escape", "deny_once", "deny once")]
@@ -62,7 +72,8 @@ class PermissionModal(ModalScreen[None]):
             yield Static("Permission requested", id="title")
             yield Label("(no pending request)", id="prompt")
             yield Label("", id="agent")
-            yield Label("", id="tool-args")
+            with VerticalScroll(id="tool-args-scroll"):
+                yield Static("", id="tool-args")
             yield Label("", id="scope-hint")
             with Horizontal(id="buttons"):
                 yield Button("Allow once", id="allow-once", variant="success")
@@ -107,8 +118,13 @@ class PermissionModal(ModalScreen[None]):
             req.title or f"Allow {req.tool_name}?"
         )
         self.query_one("#agent", Label).update(f"agent: {req.agent_name}")
-        self.query_one("#tool-args", Label).update(
-            f"{req.tool_name}({_short_repr(req.tool_input)})"
+        import json as _json
+        try:
+            pretty = _json.dumps(req.tool_input, indent=2, ensure_ascii=False)
+        except (TypeError, ValueError):
+            pretty = repr(req.tool_input)
+        self.query_one("#tool-args", Static).update(
+            f"{req.tool_name}\n{pretty}"
         )
         if req.agent_name == _ORCHESTRATOR:
             scope_text = "Always applies to the orchestrator session"
