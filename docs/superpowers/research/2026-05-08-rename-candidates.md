@@ -2,6 +2,9 @@
 
 **Date:** 2026-05-08
 **Status:** Research — recommendation only, no code changes proposed.
+*Addendum added later the same day after follow-up brainstorming surfaced four
+more candidates — see "Addendum" at the bottom. **Final pick was revised from
+Rookery to Patchfeld.***
 **Why:** `patchbai.com` is taken by an unrelated thing. The current PyPI / GitHub
 namespace (`jimmymills/patchbai`, `pipx install patchbai`) is technically still
 clear, but if we're going to rename, now — before 1.0 and before the README's
@@ -278,3 +281,161 @@ before committing the rename, but on every other axis it's the cleanest pick.
 - **App store / npm / crates.io / Docker Hub namespaces.** Patchbai is
   Python-only today, so PyPI was the priority; if a Rust port is on the
   roadmap, also check `crates.io/crates/<name>`.
+
+---
+
+# Addendum — candidates verified during follow-up conversation (2026-05-08)
+
+After the initial draft was written and committed, the conversation continued
+and four more candidates surfaced. Each was put through the same six-namespace
++ GitHub-prior-art pass as the original eight. The same methodology caveats
+from "Things I did NOT verify" above apply equally to everything in this
+addendum: TLD signal is HTTP-only (no WHOIS), no trademark searches, etc.
+
+## reAIrrange
+
+A user-coined wordplay name: "rearrange" with "AI" embedded inside. Stylized
+as `reAIrrange` to make the joke visible; lowercased to `reairrange` on every
+surface that forces it (CLI, PyPI, URLs).
+
+| Namespace | Status |
+|---|:-:|
+| PyPI `reairrange` | ✓ |
+| `github.com/reairrange` (top-level user/org) | ✓ |
+| `github.com/jimmymills/reairrange` | ✓ |
+| `reairrange.com` | ECONNREFUSED — likely unregistered |
+| `reairrange.dev` | ECONNREFUSED — likely unregistered |
+| `reairrange.io` | ECONNREFUSED — likely unregistered |
+| GitHub repos named `reairrange` | **0 results** |
+| Notable dev-tool prior art | none |
+
+**Strengths.** First candidate to clear all six namespaces *including* the
+top-level GitHub user/org. Coined word, zero existing SEO. Directly describes
+the headline feature ("the AI rearranges your panels").
+
+**Hazards.** Casing-dependent — the joke fires only when written
+`reAIrrange`, but most surfaces force lowercase (`reairrange`), where the
+wordplay is invisible and the string just looks like a typo. Hard to dictate
+verbally ("re-A-I-rrange" — you'll spell it every time on a podcast or
+conference talk). Easy to mistype (`rearrange`, `reairange`). The
+"AI-pun-in-product-names" trend may date the brand within 2-3 years.
+Phonetically adjacent to `einops.rearrange` (9.5k stars, ML staple) — same
+sound even if different string.
+
+## arrangetui
+
+Compound: `arrange` + `tui`, in the family of the original `mod_tui`.
+
+| Namespace | Status |
+|---|:-:|
+| PyPI `arrangetui` | ✓ |
+| `github.com/arrangetui` | ✓ |
+| `github.com/jimmymills/arrangetui` | ✓ |
+| `arrangetui.com` | ECONNREFUSED — likely unregistered |
+| `arrangetui.dev` | ECONNREFUSED — likely unregistered |
+| `arrangetui.io` | ECONNREFUSED — likely unregistered |
+| GitHub repos named `arrangetui` | **0 results** |
+| Notable dev-tool prior art | none |
+
+**Strengths.** Same green-field availability as `reAIrrange`. Pronounceable,
+spellable, no AI-zeitgeist baggage. Honest descriptive label.
+
+**Hazards.** Reads as a working title rather than a brand. The `-tui` suffix
+hardcodes the form factor — the same trap that retired `mod_tui`; if a
+future version adds a non-TUI surface (web companion, electron wrapper),
+the name becomes a lie. No metaphor, no hook — utility-shelf naming for a
+project whose README is brand-grade prose.
+
+## Zimmer
+
+German for "room"; carries the Hans Zimmer (composer) association as a
+free orchestration metaphor.
+
+| Namespace | Status |
+|---|:-:|
+| PyPI `zimmer` | ✓ |
+| `github.com/zimmer` (user) | ✗ taken — Pierre Jung Zimmer, dormant German personal account, 0 public repos |
+| `github.com/jimmymills/zimmer` | ✓ |
+| `zimmer.com` | ✗✗✗ redirects to **zimmerbiomet.com** — Zimmer Biomet, ~$7B medical-device company. Permanent. |
+| `zimmer.dev` | ✗ active personal site of Roman Zimmer (a working software engineer) |
+| `zimmer.io` | ECONNREFUSED — likely unregistered |
+| Notable dev-tool prior art | `sveltejs/zimmerframe` (116 stars, JS tree-walker) — mild |
+
+**Strengths.** PyPI free, `jimmymills/zimmer` free, `.io` plausibly free.
+Hans-Zimmer association makes the orchestration metaphor land for free
+("the composer of your agent score"). Friendly two-syllable English-mouth
+word.
+
+**Hazards.** Permanent SEO subordination to Hans Zimmer (composer) and
+Zimmer Biomet (med-device) — "zimmer" search results will not surface
+this project at the top for years. `zimmer.com` will *never* be available.
+**Trademark-adjacency risk in healthcare/clinical contexts is non-trivial**
+given this user's day-job context (clinical / FHIR tooling) — Zimmer Biomet
+holds registered "ZIMMER" marks in healthcare and software-adjacent classes.
+Workable for install paths, but the brand permanently lives in others'
+shadows.
+
+## Patchfeld
+
+German for "patch panel" / "patch bay" — the audio-engineering routing
+matrix where one operator wires many sources to many destinations under a
+single frame.
+
+| Namespace | Status |
+|---|:-:|
+| PyPI `patchfeld` | ✓ |
+| `github.com/patchfeld` (top-level user/org) | ✓ |
+| `github.com/jimmymills/patchfeld` | ✓ |
+| `patchfeld.com` | ECONNREFUSED — likely unregistered |
+| `patchfeld.dev` | ECONNREFUSED — likely unregistered |
+| `patchfeld.io` | ECONNREFUSED — likely unregistered |
+| GitHub repos named `patchfeld` | **0 results** |
+| Notable dev-tool prior art | **none** |
+
+**Strengths.** Best availability profile of every candidate evaluated in
+either pass — every one of the six namespaces apparently free, top-level
+GitHub user/org free, zero existing GitHub repos. The metaphor is the most
+*precise* of any candidate: a Patchfeld is literally a physical routing
+matrix where one operator decides which inputs feed which outputs — that's
+not metaphor-as-vibe, it's metaphor-as-mechanical-description of the
+orchestrator's role with children + panels. Clean lineage from `patchbai`:
+the "patch" through-line is preserved while the rest is upgraded — a tidy
+rename narrative ("we sharpened the metaphor, we didn't start over"). No
+existing SEO to fight. Pronounceable and spellable for English speakers
+(`patch` + `feld`, rhymes with "felled"). Brand-grade in the README
+headline: *"**Patchfeld** is the room you wish you had."*
+
+**Hazards.** The patch-panel image is most vivid to audio/AV/network
+engineers; some general devs may not parse the metaphor immediately
+(mitigant: "patch" is universally understood; "feld" reads as
+competent-European-tech). German-loanword energy reads as serious-craft to
+some (Kraftwerk, Werkbank, Zeitgeist) and as mild affectation to others.
+Spelling-confusion risk: a fraction of users may anglicize to `patchfield`
+— worth registering the variant as a redirect later, not blocking now.
+
+---
+
+## Updated final recommendation
+
+After verifying the four follow-up candidates, the field has shifted. New
+ranking:
+
+1. **Patchfeld** — best availability of any candidate, sharpest metaphor,
+   cleanest lineage from `patchbai`. **Recommended.**
+2. **Rookery** — still the strongest non-German option; vivid imagery, no
+   dev-tool collision, friendly verbal register. The original draft's pick.
+3. **reAIrrange** — equally clean availability to Patchfeld, but the
+   casing-dependent joke and verbal-dictation friction make it a step down
+   on every surface that isn't a polished marketing page.
+
+Everything else from the original draft (Chorale, Plenum, Tessera, Belfry,
+Atrium, Maestra, Podium) and from the follow-up (arrangetui, Zimmer) ranks
+below these three.
+
+**If I had to pick one tomorrow (revised):** **Patchfeld.** Run `whois
+patchfeld.com .dev .io` to convert the three `?`s to greens, then the
+rename is ready to plan: PyPI registration, GitHub repo (and ideally the
+top-level `github.com/patchfeld` org reservation), CLI binary names
+(`patchfeld` plus a short alias — `pf`?), config dir
+(`~/.config/patchfeld/`), README rebrand, and the migration note linking
+`patchbai → patchfeld` for any users following the old name.
