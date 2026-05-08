@@ -1,4 +1,5 @@
 import json
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -7,6 +8,7 @@ from claude_agent_sdk import create_sdk_mcp_server, tool
 from patchbai.actions import ActionRegistry
 from patchbai.agents.manager import AgentManager
 from patchbai.config import ConfigStore, KeyBinding
+from patchbai.layout.local_widgets import validate_widget_source
 from patchbai.layout.registry import WidgetRegistry
 from patchbai.layout.spec import LayoutSpec
 from patchbai.orchestrator.tabs_tools import (
@@ -17,11 +19,16 @@ from patchbai.orchestrator.tabs_tools import (
     reorder_tabs_handler,
     switch_tab_handler,
 )
+from patchbai.persistence.atomic import write_text_atomic
 from patchbai.persistence.layouts_store import NamedLayoutsStore
+from patchbai.persistence.paths import local_widgets_dir
 from patchbai.persistence.themes_store import NamedThemesStore
 from patchbai.persistence.workspace_store import save_workspace
 from patchbai.theme.engine import _EXTRA_CSS_KEY, apply_theme, palette_from_textual_theme
 from patchbai.theme.spec import ThemeSpec
+
+
+_VALID_WIDGET_NAME = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 @dataclass(frozen=True)
@@ -580,6 +587,51 @@ def _change_cwd_handler(app):
     return change_cwd_tool
 
 
+def _save_widget_handler(app):
+    async def save_widget_tool(args: dict) -> dict:
+        name = (args.get("name") or "").strip()
+        source = args.get("source") or ""
+        if not _VALID_WIDGET_NAME.fullmatch(name):
+            return {"content": [{"type": "text", "text":
+                f"Invalid widget name: {name!r} (allowed: letters, digits, _, -)"}]}
+
+        registry = getattr(app, "registry", None)
+        if registry is None:
+            return {"content": [{"type": "text",
+                "text": "save_widget unavailable: no registry on app."}]}
+
+        existing = registry._infos.get(name)
+        if existing is not None and existing.source == "builtin":
+            return {"content": [{"type": "text", "text":
+                f"Cannot save widget {name!r}: name reserved by built-in registry."}]}
+
+        cls, meta, err = validate_widget_source(name, source)
+        if cls is None:
+            return {"content": [{"type": "text",
+                "text": f"Cannot save widget {name!r}: {err}"}]}
+
+        widgets_dir = local_widgets_dir(global_dir=app._global_dir)
+        path = widgets_dir / f"{name}.py"
+        try:
+            write_text_atomic(path, source)
+        except OSError as e:
+            return {"content": [{"type": "text",
+                "text": f"Cannot save widget {name!r}: write failed: {e}"}]}
+
+        registry.unregister(name)
+        registry.register(
+            name, cls,
+            description=meta.get("description", ""),
+            props_schema=dict(meta.get("props_schema") or {}),
+            source="local",
+        )
+
+        return {"content": [{"type": "text", "text":
+            f"Saved widget {name!r} to {path}. Registered live; "
+            f"use it in set_layout immediately."}]}
+    return save_widget_tool
+
+
 def build_orchestrator_tools(
     manager: AgentManager,
     *,
@@ -641,6 +693,7 @@ def build_orchestrator_tools(
         handlers["rename_tab"] = rename_tab_handler(app)
         handlers["reorder_tabs"] = reorder_tabs_handler(app)
         handlers["change_cwd"] = _change_cwd_handler(app)
+        handlers["save_widget"] = _save_widget_handler(app)
     return handlers
 
 
@@ -892,6 +945,30 @@ def build_orchestrator_mcp_server(
             "workspace.json is loaded (or seeded from the dashboard).",
             {"path": str},
         )(_change_cwd_handler(app)))
+        sdk_tools.append(tool(
+            "save_widget",
+            "Persist a custom Textual widget to "
+            "~/.config/patchbai/widgets/<name>.py and register it into the "
+            "live registry so it's available immediately for `set_layout` "
+            "and visible in the next `list_widgets` call (with "
+            "`source: \"local\"`). `name` is the widget's registered name "
+            "(letters, digits, _, -); the file is written as `<name>.py`. "
+            "`source` is the full Python source for the widget — including "
+            "imports and an OPTIONAL module-level `__patchbai_widget__ = "
+            "{\"name\": ..., \"description\": ..., \"props_schema\": {...}}` "
+            "block to supply metadata visible in `list_widgets`. Use "
+            "`WIDGET_CLASS = <class>` or include the metadata's `entry_point` "
+            "field if your source defines more than one Widget subclass. "
+            "**Trust note: the source is exec'd in-process during validation "
+            "AND on every subsequent app start with full Python privileges. "
+            "Only save source you have personally authored.** On failure "
+            "(import error, no Widget subclass, builtin name collision, "
+            "invalid name) returns an error string in the response and does "
+            "NOT write to disk; do NOT poll `list_widgets`.errors looking "
+            "for the failure — that array reflects startup-time discovery "
+            "only, not save_widget rejections.",
+            {"name": str, "source": str},
+        )(_save_widget_handler(app)))
     return create_sdk_mcp_server(
         name="patchbai_orchestrator",
         version="1.0.0",
