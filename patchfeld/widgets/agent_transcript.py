@@ -1,4 +1,5 @@
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Input
 
@@ -22,6 +23,14 @@ class AgentTranscript(Vertical):
         height: 3;
     }
     """
+
+    # priority=True so the binding fires even when the Input child has
+    # focus — without it, ctrl+c is consumed by Textual's default driver
+    # handling (which would quit the app). Mirrors OrchestratorChat so
+    # both chat panels respond to ctrl+c the same way.
+    BINDINGS = [
+        Binding("ctrl+c", "interrupt", "interrupt agent", priority=True),
+    ]
 
     def __init__(
         self,
@@ -72,6 +81,12 @@ class AgentTranscript(Vertical):
         if bus is not None:
             bus.publish(DirectMessageToAgent(agent_id=self._agent_id, text=text))
         event.input.value = ""
+
+    async def action_interrupt(self) -> None:
+        manager = getattr(self.app, "manager", None)
+        if manager is None:
+            return
+        await manager.interrupt(self._agent_id)
 
     def rendered_text(self) -> str:
         """Test helper — delegates to the inner RichTranscript."""
