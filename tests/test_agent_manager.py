@@ -397,3 +397,46 @@ async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
     pairs = [(t.old_state, t.info.state) for t in transitions]
     assert (AgentState.RUNNING, AgentState.WAITING) in pairs
     assert (AgentState.WAITING, AgentState.RUNNING) in pairs
+
+
+@pytest.mark.asyncio
+async def test_get_permission_inbox_returns_inbox_per_agent(tmp_path: Path):
+    from patchbai.agents.permission_inbox import PermissionInbox
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await manager.spawn(name="r", prompt="hi")
+    await manager.wait_idle(aid)
+
+    inbox = manager.get_permission_inbox(aid)
+    assert isinstance(inbox, PermissionInbox)
+    assert manager.get_permission_inbox(aid) is inbox
+    assert manager.get_permission_inbox("nope") is None
+
+
+@pytest.mark.asyncio
+async def test_permission_inbox_register_flips_state_to_awaiting_permission(
+    tmp_path: Path,
+):
+    from patchbai.agents.state import AgentState
+    bus = EventBus()
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
+    )
+    aid = await manager.spawn(name="r", prompt="hi")
+    await manager.wait_idle(aid)
+
+    session = manager.get_session(aid)
+    session.info.state = AgentState.RUNNING
+    inbox = manager.get_permission_inbox(aid)
+    rid = inbox.register(tool_name="Read", tool_input={})
+    assert session.info.state == AgentState.AWAITING_PERMISSION
+
+    from claude_agent_sdk import PermissionResultAllow
+    inbox.resolve(rid, PermissionResultAllow())
+    await inbox.wait(rid, timeout_s=1.0)
+    assert session.info.state == AgentState.RUNNING

@@ -6,6 +6,7 @@ class AgentState(str, Enum):
     IDLE = "idle"
     RUNNING = "running"
     WAITING = "waiting"
+    AWAITING_PERMISSION = "awaiting_permission"
     DONE = "done"
     ERROR = "error"
 

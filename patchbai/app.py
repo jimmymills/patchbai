@@ -15,7 +15,7 @@ from patchbai.agents.sdk_adapter import RealSDKAdapter
 from patchbai.config import ConfigStore
 from patchbai.events import (
     AgentSpawned, AgentStateChanged, AgentTokensTouched, EventBus, LayoutResized,
-    OpenResumePicker, StatsUpdated, TabAdded, TabClosed, TabSwitched,
+    OpenResumePicker, PermissionRequested, StatsUpdated, TabAdded, TabClosed, TabSwitched,
 )
 from patchbai.layout.defaults import dashboard_layout
 from patchbai.layout.engine import apply as apply_layout
@@ -55,6 +55,7 @@ from patchbai.widgets.activity_feed import ActivityFeed
 from patchbai.widgets.terminal import Terminal
 from patchbai.widgets.transcript_screen import TranscriptScreen
 from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
+from patchbai.agents.permission_grants import PermissionGrants
 
 
 log = logging.getLogger(__name__)
@@ -277,6 +278,7 @@ class PatchbaiApp(App):
         manager: AgentManager | None = None,
         orchestrator: OrchestratorSession | None = None,
         global_dir: Path | None = None,
+        bypass_permissions: bool = False,
     ) -> None:
         super().__init__()
         # Cache for the currently-applied theme's extra_css. Initialized to
@@ -324,10 +326,25 @@ class PatchbaiApp(App):
         self.themes_store = NamedThemesStore(global_dir=self._global_dir)
         self.actions_registry = ActionRegistry()
         self._register_actions()
+
+        # Permission posture: a PermissionGrants object is constructed iff
+        # bypass is OFF (the default). Both the manager and the orchestrator
+        # consume the same object so disk-backed rules apply uniformly.
+        self._bypass_permissions = bypass_permissions
+        self._permission_grants = (
+            None if bypass_permissions else PermissionGrants(cwd=self.cwd)
+        )
+        # Latch: True while the PermissionModal is on the screen stack.
+        # Prevents double-push; reset to False in the modal's dismiss callback.
+        self._permission_modal_open = False
+        # Unsub callable for the PermissionRequested handler; None when bypass mode.
+        self._unsub_permission_requested: "callable | None" = None
+
         self.manager = manager or AgentManager(
             cwd=self.cwd,
             bus=self.event_bus,
             adapter_factory=RealSDKAdapter,
+            permission_grants=self._permission_grants,
         )
         self.orchestrator = orchestrator or OrchestratorSession(
             cwd=self.cwd,
@@ -342,6 +359,7 @@ class PatchbaiApp(App):
             widget_registry=self.registry,
             current_layout=lambda: self._active_layout(),
             app=self,
+            permission_grants=self._permission_grants,
         )
         # Production opts in to LLM-summarized session titles.
         self.orchestrator._auto_title_enabled = True
@@ -1033,9 +1051,13 @@ class PatchbaiApp(App):
             self._tab_focus_snapshots.clear()
 
             # Rebuild manager + orchestrator.
+            self._permission_grants = (
+                None if self._bypass_permissions else PermissionGrants(cwd=self.cwd)
+            )
             self.manager = AgentManager(
                 cwd=self.cwd, bus=self.event_bus,
                 adapter_factory=RealSDKAdapter,
+                permission_grants=self._permission_grants,
             )
             self.orchestrator = OrchestratorSession(
                 cwd=self.cwd, bus=self.event_bus, manager=self.manager,
@@ -1048,6 +1070,7 @@ class PatchbaiApp(App):
                 widget_registry=self.registry,
                 current_layout=lambda: self._active_layout(),
                 app=self,
+                permission_grants=self._permission_grants,
             )
             self.orchestrator._auto_title_enabled = True
             await self.orchestrator.start()
@@ -1075,6 +1098,82 @@ class PatchbaiApp(App):
 
             self.event_bus.publish(WorkspaceCwdChanged(cwd=str(self.cwd)))
             return {"changed": str(self.cwd)}
+
+    async def set_bypass_permissions(self, bypass: bool) -> dict:
+        """Flip permission mode at runtime. Tears down + rebuilds the orchestrator
+        and manager. Returns a result dict mirroring change_cwd's shape:
+        - {"changed": "bypass"} or {"changed": "require"} on success.
+        - {"unchanged": True} if already in the requested mode.
+        - {"error": "agents_running", "agents": [...]} if children are alive.
+        """
+        from patchbai.agents.sdk_adapter import RealSDKAdapter
+
+        async with self._cwd_swap_lock:
+            # Already in the requested mode.
+            if self._bypass_permissions == bypass:
+                return {"unchanged": True}
+
+            # Refuse with running children.
+            running = [
+                {"id": info.id, "name": info.name}
+                for info in self.manager.list_infos()
+                if not info.state.is_terminal
+            ]
+            if running:
+                return {"error": "agents_running", "agents": running}
+
+            # Tear down current orchestrator + manager.
+            try:
+                await self.orchestrator.stop()
+            except Exception:
+                pass
+            try:
+                await self.manager.shutdown()
+            except Exception:
+                pass
+
+            # Flip mode and rebuild grants.
+            self._bypass_permissions = bypass
+            self._permission_grants = (
+                None if bypass else PermissionGrants(cwd=self.cwd)
+            )
+
+            # Manage the PermissionRequested subscription dynamically.
+            if bypass:
+                # Switching to bypass: drop the subscription if present.
+                if self._unsub_permission_requested is not None:
+                    self._unsub_permission_requested()
+                    self._unsub_permission_requested = None
+            else:
+                # Switching to require: add the subscription if not present.
+                if self._unsub_permission_requested is None:
+                    self._unsub_permission_requested = self.event_bus.subscribe(
+                        PermissionRequested, self._on_permission_requested,
+                    )
+
+            # Rebuild manager + orchestrator with the new grants.
+            self.manager = AgentManager(
+                cwd=self.cwd, bus=self.event_bus,
+                adapter_factory=RealSDKAdapter,
+                permission_grants=self._permission_grants,
+            )
+            self.orchestrator = OrchestratorSession(
+                cwd=self.cwd, bus=self.event_bus, manager=self.manager,
+                apply_layout=self._orchestrator_apply_layout,
+                layouts_store=self.layouts_store,
+                themes_store=self.themes_store,
+                config_store=self.config_store,
+                actions=self.actions_registry,
+                rebind_keys=self._rebind_keys,
+                widget_registry=self.registry,
+                current_layout=lambda: self._active_layout(),
+                app=self,
+                permission_grants=self._permission_grants,
+            )
+            self.orchestrator._auto_title_enabled = True
+            await self.orchestrator.start()
+
+            return {"changed": "bypass" if bypass else "require"}
 
     # --- stats aggregation -------------------------------------------------
 
@@ -1109,6 +1208,36 @@ class PatchbaiApp(App):
             cost=cost,
             active_agents=active,
         ))
+
+    def _on_permission_requested(self, event: PermissionRequested) -> None:
+        from patchbai.widgets.permission_modal import PermissionModal
+        # Defensive: grants may have just been swapped to None by
+        # set_bypass_permissions before this in-flight event lands.
+        if self._permission_grants is None:
+            return
+        # The modal's own subscription handles queueing once it's mounted.
+        # Skip pushing a second one if it's already on the stack.
+        if self._permission_modal_open:
+            return
+        self._permission_modal_open = True
+
+        def _on_dismissed(_: object) -> None:
+            self._permission_modal_open = False
+
+        # Lookup is unified across orchestrator + child agents.
+        def _inbox_lookup(agent_id: str):
+            if agent_id == "orchestrator":
+                return self.orchestrator.get_permission_inbox()
+            return self.manager.get_permission_inbox(agent_id)
+
+        self.push_screen(
+            PermissionModal(
+                inbox_lookup=_inbox_lookup,
+                grants=self._permission_grants,
+                initial_request=event,
+            ),
+            _on_dismissed,
+        )
 
     # --- splitter persistence ---------------------------------------------
 
@@ -1231,6 +1360,10 @@ class PatchbaiApp(App):
         self.event_bus.subscribe(AgentTokensTouched, self._on_stats_changed)
         self.event_bus.subscribe(AgentStateChanged, self._on_stats_changed)
         self.event_bus.subscribe(AgentSpawned, self._on_stats_changed)
+        if self._permission_grants is not None:
+            self._unsub_permission_requested = self.event_bus.subscribe(
+                PermissionRequested, self._on_permission_requested,
+            )
         ws = self._load_or_seed_workspace()
         self._workspace = ws
         self._active_tab_id = ws.active
