@@ -9,6 +9,7 @@ from textual.keys import _character_to_key
 from textual.widgets import DataTable, TabbedContent, TabPane
 
 from patchbai.actions import ActionRegistry
+from patchbai.activity.log import ActivityLog
 from patchbai.agents.manager import AgentManager
 from patchbai.agents.sdk_adapter import RealSDKAdapter
 from patchbai.config import ConfigStore
@@ -273,6 +274,7 @@ class PatchbaiApp(App):
         import asyncio as _asyncio
         self._cwd_swap_lock = _asyncio.Lock()
         self.event_bus = EventBus()
+        self.activity_log = ActivityLog(self.event_bus)
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.registry = registry or build_default_registry()
         self._local_widget_outcomes: list[LoadOutcome] = []
