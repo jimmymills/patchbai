@@ -4,7 +4,7 @@
 orchestrator-managed workspace — and lets the agent reshape the UI to fit
 the work.**
 
-![patchbai — orchestrator chat on the left, agent table and activity feed on the right](docs/images/screenshot.png)
+![patchbai — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchbai/main/docs/images/screenshot.png)
 
 ## The pitch
 

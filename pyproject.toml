@@ -1,11 +1,26 @@
 [project]
 name = "patchbai"
-version = "0.0.1"
+version = "0.1.0"
 description = "A Textual TUI for managing multiple Claude Code agent sessions"
+readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Jimmy Mills" }]
+keywords = ["textual", "tui", "claude", "claude-code", "agents", "orchestrator"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console :: Curses",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development",
+  "Topic :: Terminals",
+]
 dependencies = [
   "textual>=0.80",
   "pydantic>=2.6",
@@ -14,6 +29,11 @@ dependencies = [
   "ptyprocess>=0.7",
   "pyte>=0.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jimmymills/patchbai"
+Repository = "https://github.com/jimmymills/patchbai"
+Issues = "https://github.com/jimmymills/patchbai/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -47,3 +67,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["patchbai"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "patchbai",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
