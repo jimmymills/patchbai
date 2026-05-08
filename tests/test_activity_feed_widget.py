@@ -74,3 +74,45 @@ async def test_activity_feed_appends_new_event_after_mount(tmp_path):
         after_rows = list(feed.query(_ActivityRow))
         assert len(after_rows) == before + 1
         assert "Surprise" in after_rows[-1].text
+
+
+@pytest.mark.asyncio
+async def test_mode_prop_filters_initial_render(tmp_path):
+    """Layout prop `{mode: 'agents'}` should hide tab/orch/etc. kinds."""
+    import json
+    seed = {
+        "version": 1,
+        "tabs": [
+            {
+                "id": "main", "title": "Main",
+                "layout": {
+                    "version": 1,
+                    "layout": {
+                        "type": "horizontal",
+                        "children": [
+                            {"id": "orch", "widget": "OrchestratorChat", "size": "50%"},
+                            {"id": "feed", "widget": "ActivityFeed",
+                             "props": {"mode": "agents"}, "size": "50%"},
+                        ],
+                    },
+                },
+            },
+        ],
+        "active": "main",
+    }
+    (tmp_path / ".patchbai").mkdir()
+    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+
+    app = _build_app(tmp_path)
+    # Pre-load: tab.added is filtered out in agents mode.
+    app.event_bus.publish(TabAdded(tab_id="t1", title="HiddenTab"))
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        feed = app.query(ActivityFeed).first()
+        rows = list(feed.query(_ActivityRow))
+        labels = " ".join(r.text for r in rows)
+        # tab.added is not in agents mode → "HiddenTab" must not be rendered.
+        assert "HiddenTab" not in labels
+        assert feed.mode == "agents"
