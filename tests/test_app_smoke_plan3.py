@@ -3,17 +3,17 @@ import asyncio
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.state import AgentState
-from patchbai.events import (
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.state import AgentState
+from patchfeld.events import (
     AgentRequestedUserInput,
     AgentStateChanged,
     EventBus,
     UserMessageToOrchestrator,
 )
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok():

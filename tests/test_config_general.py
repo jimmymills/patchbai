@@ -1,6 +1,6 @@
 import pytest
 
-from patchbai.config import Config, ConfigStore
+from patchfeld.config import Config, ConfigStore
 
 
 def test_get_path_works_for_unknown_section_after_extension(tmp_path, monkeypatch):
@@ -11,7 +11,7 @@ def test_get_path_works_for_unknown_section_after_extension(tmp_path, monkeypatc
 
     class _LogsSection:
         level = "info"
-        path = "/var/log/patchbai.log"
+        path = "/var/log/patchfeld.log"
 
     cfg.logs = _LogsSection()  # type: ignore[attr-defined]
 

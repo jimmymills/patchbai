@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from patchbai.agents.request_inbox import RequestInbox
+from patchfeld.agents.request_inbox import RequestInbox
 
 
 @pytest.mark.asyncio

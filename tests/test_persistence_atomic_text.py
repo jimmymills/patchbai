@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from patchbai.persistence.atomic import write_text_atomic
+from patchfeld.persistence.atomic import write_text_atomic
 
 
 def test_write_text_atomic_round_trip(tmp_path):

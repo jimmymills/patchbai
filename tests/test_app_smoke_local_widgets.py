@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
 
 
 def _ok_script():
@@ -39,7 +39,7 @@ class Banner(Static):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     assert "Banner" in app.registry.known()
     assert app.registry.describe("Banner").source == "local"
     assert any(o.status == "ok" for o in app._local_widget_outcomes)
@@ -53,7 +53,7 @@ async def test_app_survives_broken_local_widget(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     statuses = [o.status for o in app._local_widget_outcomes]
     assert "import_error" in statuses
     # And the rest of the app constructs cleanly.
@@ -76,6 +76,6 @@ class Banner(Static):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     assert "Banner" not in app.registry.known()
     assert app._local_widget_outcomes == []

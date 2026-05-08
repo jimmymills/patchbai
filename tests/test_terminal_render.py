@@ -2,7 +2,7 @@ import pyte
 from rich.style import Style
 from rich.text import Text
 
-from patchbai.widgets._terminal_render import (
+from patchfeld.widgets._terminal_render import (
     _color_to_rich,
     cell_style,
     render_screen,

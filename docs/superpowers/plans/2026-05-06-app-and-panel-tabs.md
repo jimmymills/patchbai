@@ -4,7 +4,7 @@
 
 **Goal:** Add persistent app-level tabs (each owns its own `LayoutSpec`) and a `Tabs` panel-level node, exposed via four new orchestrator MCP tools and three keybinding routes.
 
-**Architecture:** A new `Workspace` model (list of `Tab` objects) replaces the singleton `LayoutSpec` at the app level; `PatchbaiApp` mounts a `TabbedContent` whose children are per-tab `Container#panel-area-<id>` slots. The existing `apply_layout` engine is reused per slot. A new `Tabs` node lives in the layout-spec union (leaf-only — each pane wraps one `Panel`). The current `LayoutSpec` "exactly one `OrchestratorChat`" invariant relaxes to "at most one"; `Workspace` enforces "at least one across all tabs."
+**Architecture:** A new `Workspace` model (list of `Tab` objects) replaces the singleton `LayoutSpec` at the app level; `PatchfeldApp` mounts a `TabbedContent` whose children are per-tab `Container#panel-area-<id>` slots. The existing `apply_layout` engine is reused per slot. A new `Tabs` node lives in the layout-spec union (leaf-only — each pane wraps one `Panel`). The current `LayoutSpec` "exactly one `OrchestratorChat`" invariant relaxes to "at most one"; `Workspace` enforces "at least one across all tabs."
 
 **Tech Stack:** Textual ≥ 8 (`TabbedContent`, `TabPane`), Pydantic v2 (discriminated unions), pytest with `pilot`-style integration tests.
 
@@ -15,11 +15,11 @@
 ## File map
 
 **New files:**
-- `patchbai/workspace/__init__.py` — package marker
-- `patchbai/workspace/spec.py` — `Tab` and `Workspace` Pydantic models
-- `patchbai/persistence/workspace_store.py` — `load_workspace` / `save_workspace`
-- `patchbai/orchestrator/tabs_tools.py` — `add_tab`, `close_tab`, `switch_tab`, `list_tabs` handlers
-- `patchbai/widgets/new_tab_screen.py` — small modal asking for a tab title
+- `patchfeld/workspace/__init__.py` — package marker
+- `patchfeld/workspace/spec.py` — `Tab` and `Workspace` Pydantic models
+- `patchfeld/persistence/workspace_store.py` — `load_workspace` / `save_workspace`
+- `patchfeld/orchestrator/tabs_tools.py` — `add_tab`, `close_tab`, `switch_tab`, `list_tabs` handlers
+- `patchfeld/widgets/new_tab_screen.py` — small modal asking for a tab title
 - `tests/test_workspace_spec.py`
 - `tests/test_workspace_store.py`
 - `tests/test_layout_engine_tabs.py`
@@ -27,12 +27,12 @@
 - `tests/test_app_smoke_tabs.py`
 
 **Modified files:**
-- `patchbai/layout/spec.py` — add `Tabs` node, switch to discriminated union, relax validator
-- `patchbai/layout/engine.py` — `_build` branch for `Tabs`, `_collect_panels` recurses into `Tabs`
-- `patchbai/events.py` — `TabAdded`/`TabClosed`/`TabSwitched`, optional `tab_id` on `LayoutApplied`/`LayoutFailed`
-- `patchbai/persistence/paths.py` — `project_workspace_path`
-- `patchbai/app.py` — compose `TabbedContent`, per-tab containers, migration, hotkeys
-- `patchbai/orchestrator/tools.py` — `set_layout`/`get_layout`/`save_layout`/`load_layout` accept `tab_id`; `load_layout` accepts `as_new_tab`; wire tab tools into `build_orchestrator_tools` and `build_orchestrator_mcp_server`
+- `patchfeld/layout/spec.py` — add `Tabs` node, switch to discriminated union, relax validator
+- `patchfeld/layout/engine.py` — `_build` branch for `Tabs`, `_collect_panels` recurses into `Tabs`
+- `patchfeld/events.py` — `TabAdded`/`TabClosed`/`TabSwitched`, optional `tab_id` on `LayoutApplied`/`LayoutFailed`
+- `patchfeld/persistence/paths.py` — `project_workspace_path`
+- `patchfeld/app.py` — compose `TabbedContent`, per-tab containers, migration, hotkeys
+- `patchfeld/orchestrator/tools.py` — `set_layout`/`get_layout`/`save_layout`/`load_layout` accept `tab_id`; `load_layout` accepts `as_new_tab`; wire tab tools into `build_orchestrator_tools` and `build_orchestrator_mcp_server`
 - `tests/test_layout_spec.py` — update for relaxed invariant + `Tabs`
 - `tests/test_layout_engine_diff.py` — diff descends into Tabs
 
@@ -41,7 +41,7 @@
 ## Task 1: `Tabs` node + discriminated union in layout spec
 
 **Files:**
-- Modify: `patchbai/layout/spec.py`
+- Modify: `patchfeld/layout/spec.py`
 - Test: `tests/test_layout_spec.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -49,7 +49,7 @@
 Append to `tests/test_layout_spec.py`:
 
 ```python
-from patchbai.layout.spec import Tabs
+from patchfeld.layout.spec import Tabs
 
 
 def test_tabs_node_parses_with_panel_children():
@@ -151,7 +151,7 @@ def test_container_with_horizontal_type_still_parses():
 Run: `uv run pytest tests/test_layout_spec.py -v -k "tabs_node or container_with_horizontal_type"`
 Expected: FAIL — `cannot import name 'Tabs'` and the new tests do not exist.
 
-- [ ] **Step 3: Replace the union definition in `patchbai/layout/spec.py`**
+- [ ] **Step 3: Replace the union definition in `patchfeld/layout/spec.py`**
 
 Replace the existing file contents with:
 
@@ -291,7 +291,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/layout/spec.py tests/test_layout_spec.py
+git add patchfeld/layout/spec.py tests/test_layout_spec.py
 git commit -m "feat(layout): add Tabs node + relax OrchestratorChat invariant to at-most-one"
 ```
 
@@ -300,8 +300,8 @@ git commit -m "feat(layout): add Tabs node + relax OrchestratorChat invariant to
 ## Task 2: `Workspace` and `Tab` Pydantic models
 
 **Files:**
-- Create: `patchbai/workspace/__init__.py`
-- Create: `patchbai/workspace/spec.py`
+- Create: `patchfeld/workspace/__init__.py`
+- Create: `patchfeld/workspace/spec.py`
 - Test: `tests/test_workspace_spec.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -311,8 +311,8 @@ Create `tests/test_workspace_spec.py`:
 ```python
 import pytest
 
-from patchbai.layout.spec import LayoutSpec
-from patchbai.workspace.spec import Tab, Workspace
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.workspace.spec import Tab, Workspace
 
 
 def _layout_with_chat(panel_id: str = "orch") -> dict:
@@ -432,11 +432,11 @@ def test_workspace_chat_in_panel_tabs_node_counts():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_workspace_spec.py -v`
-Expected: FAIL — module `patchbai.workspace` doesn't exist.
+Expected: FAIL — module `patchfeld.workspace` doesn't exist.
 
 - [ ] **Step 3: Create the package marker**
 
-Create `patchbai/workspace/__init__.py`:
+Create `patchfeld/workspace/__init__.py`:
 
 ```python
 ```
@@ -445,12 +445,12 @@ Create `patchbai/workspace/__init__.py`:
 
 - [ ] **Step 4: Implement `Workspace` and `Tab`**
 
-Create `patchbai/workspace/spec.py`:
+Create `patchfeld/workspace/spec.py`:
 
 ```python
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from patchbai.layout.spec import Container, LayoutSpec, Node, Panel, Tabs
+from patchfeld.layout.spec import Container, LayoutSpec, Node, Panel, Tabs
 
 
 class Tab(BaseModel):
@@ -515,7 +515,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/workspace/__init__.py patchbai/workspace/spec.py tests/test_workspace_spec.py
+git add patchfeld/workspace/__init__.py patchfeld/workspace/spec.py tests/test_workspace_spec.py
 git commit -m "feat(workspace): Tab and Workspace pydantic models with invariants"
 ```
 
@@ -524,8 +524,8 @@ git commit -m "feat(workspace): Tab and Workspace pydantic models with invariant
 ## Task 3: Workspace persistence store
 
 **Files:**
-- Modify: `patchbai/persistence/paths.py`
-- Create: `patchbai/persistence/workspace_store.py`
+- Modify: `patchfeld/persistence/paths.py`
+- Create: `patchfeld/persistence/workspace_store.py`
 - Test: `tests/test_workspace_store.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -536,11 +536,11 @@ Create `tests/test_workspace_store.py`:
 import json
 from pathlib import Path
 
-from patchbai.persistence.workspace_store import (
+from patchfeld.persistence.workspace_store import (
     load_workspace,
     save_workspace,
 )
-from patchbai.workspace.spec import Tab, Workspace
+from patchfeld.workspace.spec import Tab, Workspace
 
 
 def _ws(tmp_path: Path) -> Workspace:
@@ -572,7 +572,7 @@ def test_load_returns_none_when_no_file(tmp_path):
 
 
 def test_load_returns_none_for_corrupt_file(tmp_path):
-    target = tmp_path / ".patchbai" / "workspace.json"
+    target = tmp_path / ".patchfeld" / "workspace.json"
     target.parent.mkdir(parents=True)
     target.write_text("{not json")
     assert load_workspace(tmp_path) is None
@@ -580,7 +580,7 @@ def test_load_returns_none_for_corrupt_file(tmp_path):
 
 def test_save_writes_to_workspace_json(tmp_path):
     save_workspace(tmp_path, _ws(tmp_path))
-    target = tmp_path / ".patchbai" / "workspace.json"
+    target = tmp_path / ".patchfeld" / "workspace.json"
     assert target.exists()
     raw = json.loads(target.read_text())
     assert raw["active"] == "t1"
@@ -594,7 +594,7 @@ Expected: FAIL — `cannot import name 'load_workspace'`.
 
 - [ ] **Step 3: Add the workspace path helper**
 
-Edit `patchbai/persistence/paths.py` — add at the end of the file (after `project_layout_path`):
+Edit `patchfeld/persistence/paths.py` — add at the end of the file (after `project_layout_path`):
 
 ```python
 def project_workspace_path(cwd: Path) -> Path:
@@ -603,16 +603,16 @@ def project_workspace_path(cwd: Path) -> Path:
 
 - [ ] **Step 4: Implement the store**
 
-Create `patchbai/persistence/workspace_store.py`:
+Create `patchfeld/persistence/workspace_store.py`:
 
 ```python
 import json
 import logging
 from pathlib import Path
 
-from patchbai.persistence.atomic import write_json_atomic
-from patchbai.persistence.paths import project_workspace_path
-from patchbai.workspace.spec import Workspace
+from patchfeld.persistence.atomic import write_json_atomic
+from patchfeld.persistence.paths import project_workspace_path
+from patchfeld.workspace.spec import Workspace
 
 log = logging.getLogger(__name__)
 
@@ -641,7 +641,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/persistence/paths.py patchbai/persistence/workspace_store.py tests/test_workspace_store.py
+git add patchfeld/persistence/paths.py patchfeld/persistence/workspace_store.py tests/test_workspace_store.py
 git commit -m "feat(persistence): workspace_store with atomic save/load"
 ```
 
@@ -650,7 +650,7 @@ git commit -m "feat(persistence): workspace_store with atomic save/load"
 ## Task 4: Layout engine — `Tabs` build branch
 
 **Files:**
-- Modify: `patchbai/layout/engine.py`
+- Modify: `patchfeld/layout/engine.py`
 - Test: `tests/test_layout_engine_tabs.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -663,12 +663,12 @@ from textual.app import App, ComposeResult
 from textual.containers import Container as TxContainer
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.layout.engine import apply
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
-from patchbai.widgets.log_tail import LogTail
+from patchfeld.layout.engine import apply
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.placeholders import ActivityFeed
+from patchfeld.widgets.log_tail import LogTail
 
 
 def _registry() -> WidgetRegistry:
@@ -753,16 +753,16 @@ Expected: FAIL — `_build` doesn't handle the `Tabs` branch (panes not produced
 
 - [ ] **Step 3: Add the `Tabs` branch to `_build`**
 
-Edit `patchbai/layout/engine.py`. Add a new import near the top (with the other Textual imports):
+Edit `patchfeld/layout/engine.py`. Add a new import near the top (with the other Textual imports):
 
 ```python
 from textual.widgets import TabbedContent, TabPane
 ```
 
-Add `Tabs` to the import from `patchbai.layout.spec`:
+Add `Tabs` to the import from `patchfeld.layout.spec`:
 
 ```python
-from patchbai.layout.spec import Container, LayoutSpec, Panel, Tabs
+from patchfeld.layout.spec import Container, LayoutSpec, Panel, Tabs
 ```
 
 Replace the body of `_build` so it dispatches on all three node types:
@@ -822,7 +822,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/layout/engine.py tests/test_layout_engine_tabs.py
+git add patchfeld/layout/engine.py tests/test_layout_engine_tabs.py
 git commit -m "feat(engine): build Tabs node into TabbedContent with TabPanes"
 ```
 
@@ -831,7 +831,7 @@ git commit -m "feat(engine): build Tabs node into TabbedContent with TabPanes"
 ## Task 5: Layout engine — `diff` descends into `Tabs`
 
 **Files:**
-- Modify: `patchbai/layout/engine.py`
+- Modify: `patchfeld/layout/engine.py`
 - Test: `tests/test_layout_engine_diff.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -894,7 +894,7 @@ def test_panel_removed_from_tabs_is_unmounted():
 Run: `uv run pytest tests/test_layout_engine_diff.py -v -k "tabs"`
 Expected: FAIL — `_collect_panels` doesn't descend into `Tabs` children.
 
-- [ ] **Step 3: Update `_collect_panels` in `patchbai/layout/engine.py`**
+- [ ] **Step 3: Update `_collect_panels` in `patchfeld/layout/engine.py`**
 
 Replace the existing function:
 
@@ -918,7 +918,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/layout/engine.py tests/test_layout_engine_diff.py
+git add patchfeld/layout/engine.py tests/test_layout_engine_diff.py
 git commit -m "feat(engine): diff walks into Tabs.children for mount/unmount/update"
 ```
 
@@ -927,7 +927,7 @@ git commit -m "feat(engine): diff walks into Tabs.children for mount/unmount/upd
 ## Task 6: Tab events + `tab_id` on `LayoutApplied`/`LayoutFailed`
 
 **Files:**
-- Modify: `patchbai/events.py`
+- Modify: `patchfeld/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -935,7 +935,7 @@ git commit -m "feat(engine): diff walks into Tabs.children for mount/unmount/upd
 Append to `tests/test_events.py` (create it if it doesn't exist; check first with the snippet below):
 
 ```python
-from patchbai.events import (
+from patchfeld.events import (
     LayoutApplied,
     LayoutFailed,
     TabAdded,
@@ -961,7 +961,7 @@ def test_tab_switched_event_has_id_and_title():
 
 
 def test_layout_applied_includes_tab_id():
-    from patchbai.layout.spec import LayoutSpec
+    from patchfeld.layout.spec import LayoutSpec
     spec = LayoutSpec.model_validate({
         "version": 1,
         "layout": {"id": "orch", "widget": "OrchestratorChat"},
@@ -971,7 +971,7 @@ def test_layout_applied_includes_tab_id():
 
 
 def test_layout_applied_tab_id_defaults_to_none():
-    from patchbai.layout.spec import LayoutSpec
+    from patchfeld.layout.spec import LayoutSpec
     spec = LayoutSpec.model_validate({
         "version": 1,
         "layout": {"id": "orch", "widget": "OrchestratorChat"},
@@ -994,7 +994,7 @@ Expected: FAIL — `cannot import name 'TabAdded'` etc.
 
 - [ ] **Step 3: Add the events**
 
-In `patchbai/events.py`, modify `LayoutApplied` and `LayoutFailed` to add the optional `tab_id`, and append the three new dataclasses after `LayoutFailed`:
+In `patchfeld/events.py`, modify `LayoutApplied` and `LayoutFailed` to add the optional `tab_id`, and append the three new dataclasses after `LayoutFailed`:
 
 ```python
 @dataclass(frozen=True)
@@ -1044,16 +1044,16 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/events.py tests/test_events.py
+git add patchfeld/events.py tests/test_events.py
 git commit -m "feat(events): TabAdded/TabClosed/TabSwitched + tab_id on LayoutApplied/Failed"
 ```
 
 ---
 
-## Task 7: `PatchbaiApp` — compose with `TabbedContent` and per-tab containers
+## Task 7: `PatchfeldApp` — compose with `TabbedContent` and per-tab containers
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_tabs.py` (new)
 
 This is the largest single task: it threads the workspace concept through the App. We do it as one task because the changes are tightly coupled — partial states won't run.
@@ -1068,11 +1068,11 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.containers import Container as TxContainer
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -1092,7 +1092,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -1136,7 +1136,7 @@ async def test_app_writes_workspace_json_on_launch(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        ws_path = tmp_path / ".patchbai" / "workspace.json"
+        ws_path = tmp_path / ".patchfeld" / "workspace.json"
         assert ws_path.exists()
 ```
 
@@ -1147,7 +1147,7 @@ Expected: FAIL — `#app-tabs` doesn't exist.
 
 - [ ] **Step 3: Add a workspace-bootstrap helper**
 
-Append to `patchbai/workspace/spec.py`:
+Append to `patchfeld/workspace/spec.py`:
 
 ```python
 def workspace_from_layout(spec: LayoutSpec, *, tab_id: str = "default",
@@ -1162,28 +1162,28 @@ def workspace_from_layout(spec: LayoutSpec, *, tab_id: str = "default",
     )
 ```
 
-- [ ] **Step 4: Refactor `PatchbaiApp` to host a `TabbedContent`**
+- [ ] **Step 4: Refactor `PatchfeldApp` to host a `TabbedContent`**
 
-Edit `patchbai/app.py`:
+Edit `patchfeld/app.py`:
 
 1. Add imports near the top:
 
 ```python
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.persistence.workspace_store import (
+from patchfeld.persistence.workspace_store import (
     load_workspace as load_local_workspace,
     save_workspace as save_local_workspace,
 )
-from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout
+from patchfeld.workspace.spec import Tab, Workspace, workspace_from_layout
 ```
 
 2. Replace the legacy layout-store imports:
 
 ```python
 # REMOVE:
-# from patchbai.persistence.layout_store import load_layout as load_local_layout
-# from patchbai.persistence.layout_store import save_layout as save_local_layout
+# from patchfeld.persistence.layout_store import load_layout as load_local_layout
+# from patchfeld.persistence.layout_store import save_layout as save_local_layout
 ```
 
    …leaving only the workspace store imports.
@@ -1253,7 +1253,7 @@ def _load_or_seed_workspace(self) -> Workspace:
     if ws is not None:
         return ws
     # Migration: legacy layout.json -> single-tab workspace.
-    from patchbai.persistence.layout_store import load_layout as _load_legacy
+    from patchfeld.persistence.layout_store import load_layout as _load_legacy
     legacy = _load_legacy(self.cwd)
     if legacy is not None:
         return workspace_from_layout(legacy, tab_id="default", title="default")
@@ -1339,7 +1339,7 @@ Expected: all pass. If any test asserts on `#panel-area` directly (the old singl
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/app.py patchbai/workspace/spec.py tests/test_app_smoke_tabs.py tests/test_app_smoke*.py
+git add patchfeld/app.py patchfeld/workspace/spec.py tests/test_app_smoke_tabs.py tests/test_app_smoke*.py
 git commit -m "feat(app): mount Workspace as TabbedContent with per-tab panel-area containers"
 ```
 
@@ -1372,19 +1372,19 @@ async def test_legacy_layout_json_is_migrated_to_workspace(tmp_path):
         },
         "focus": "orch",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "layout.json").write_text(json.dumps(legacy))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "layout.json").write_text(json.dumps(legacy))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
         # workspace.json now exists, single tab, contains the legacy layout.
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         assert len(ws_raw["tabs"]) == 1
         assert ws_raw["active"] == "default"
         assert ws_raw["tabs"][0]["layout"]["focus"] == "orch"
         # And the legacy file is left in place for a release as a safety net.
-        assert (tmp_path / ".patchbai" / "layout.json").exists()
+        assert (tmp_path / ".patchfeld" / "layout.json").exists()
 ```
 
 - [ ] **Step 2: Run test to verify it passes**
@@ -1404,7 +1404,7 @@ git commit -m "test(app): legacy layout.json migrates to single-tab workspace"
 ## Task 9: `TabActivated` handler — saves workspace, fires event, restores focus
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_tabs.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1438,8 +1438,8 @@ async def test_tab_activation_updates_workspace_active(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
@@ -1448,7 +1448,7 @@ async def test_tab_activation_updates_workspace_active(tmp_path):
         tc.active = "tab-logs"
         await pilot.pause()
         assert app._active_tab_id == "logs"
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         assert ws_raw["active"] == "logs"
 
 
@@ -1464,12 +1464,12 @@ async def test_tab_activation_publishes_tab_switched_event(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     seen: list = []
-    from patchbai.events import TabSwitched
+    from patchfeld.events import TabSwitched
     app.event_bus.subscribe(TabSwitched, lambda e: seen.append(e))
 
     async with app.run_test() as pilot:
@@ -1500,8 +1500,8 @@ async def test_tab_widgets_persist_across_switches(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
@@ -1525,15 +1525,15 @@ async def test_tab_widgets_persist_across_switches(tmp_path):
 Run: `uv run pytest tests/test_app_smoke_tabs.py -v -k "activation or persist"`
 Expected: FAIL — `_active_tab_id` doesn't update on switch; no `TabSwitched` is published.
 
-- [ ] **Step 3: Wire the `TabActivated` handler in `patchbai/app.py`**
+- [ ] **Step 3: Wire the `TabActivated` handler in `patchfeld/app.py`**
 
 Add the import at the top:
 
 ```python
-from patchbai.events import LayoutApplied, TabAdded, TabClosed, TabSwitched
+from patchfeld.events import LayoutApplied, TabAdded, TabClosed, TabSwitched
 ```
 
-Add a handler method on `PatchbaiApp`:
+Add a handler method on `PatchfeldApp`:
 
 ```python
 def on_tabbed_content_tab_activated(
@@ -1584,7 +1584,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_smoke_tabs.py
+git add patchfeld/app.py tests/test_app_smoke_tabs.py
 git commit -m "feat(app): handle TabActivated — persist + publish TabSwitched + restore focus"
 ```
 
@@ -1593,10 +1593,10 @@ git commit -m "feat(app): handle TabActivated — persist + publish TabSwitched 
 ## Task 10: `add_tab` MCP tool
 
 **Files:**
-- Create: `patchbai/orchestrator/tabs_tools.py`
+- Create: `patchfeld/orchestrator/tabs_tools.py`
 - Test: `tests/test_orchestrator_tabs_tools.py`
 
-For all four tab-tool tasks (10–13) we route through a small workspace-mutation surface on `PatchbaiApp`. We add the first method here.
+For all four tab-tool tasks (10–13) we route through a small workspace-mutation surface on `PatchfeldApp`. We add the first method here.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1608,12 +1608,12 @@ import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tabs_tools import (
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tabs_tools import (
     add_tab_handler,
     close_tab_handler,
     list_tabs_handler,
@@ -1638,7 +1638,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -1703,7 +1703,7 @@ async def test_add_tab_with_named_layout_resolves(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         # Save a named layout, then ask add_tab to seed from it by name.
-        from patchbai.layout.spec import LayoutSpec
+        from patchfeld.layout.spec import LayoutSpec
         named = LayoutSpec.model_validate({
             "version": 1,
             "layout": {"id": "feed", "widget": "ActivityFeed"},
@@ -1733,7 +1733,7 @@ async def test_add_tab_does_not_activate_when_activate_false(tmp_path):
 async def test_add_tab_publishes_tab_added_event(tmp_path):
     app = _build_app(tmp_path)
     seen: list = []
-    from patchbai.events import TabAdded
+    from patchfeld.events import TabAdded
     app.event_bus.subscribe(TabAdded, lambda e: seen.append(e))
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -1748,14 +1748,14 @@ async def test_add_tab_publishes_tab_added_event(tmp_path):
 Run: `uv run pytest tests/test_orchestrator_tabs_tools.py -v -k "add_tab"`
 Expected: FAIL — module `tabs_tools` doesn't exist.
 
-- [ ] **Step 3: Add the workspace-mutation surface to `PatchbaiApp`**
+- [ ] **Step 3: Add the workspace-mutation surface to `PatchfeldApp`**
 
-In `patchbai/app.py`, add these methods on `PatchbaiApp`. They are the single source of truth that all four tab tools (and the hotkeys later) call into:
+In `patchfeld/app.py`, add these methods on `PatchfeldApp`. They are the single source of truth that all four tab tools (and the hotkeys later) call into:
 
 ```python
 import secrets
-from patchbai.events import TabAdded, TabClosed
-from patchbai.layout.spec import Panel as _Panel
+from patchfeld.events import TabAdded, TabClosed
+from patchfeld.layout.spec import Panel as _Panel
 
 
 def _generate_tab_id(self) -> str:
@@ -1775,7 +1775,7 @@ def _default_seed_layout(self) -> LayoutSpec:
     set_layout). Otherwise seed with an OrchestratorChat panel."""
     has_chat = False
     if self._workspace is not None:
-        from patchbai.workspace.spec import _contains_chat
+        from patchfeld.workspace.spec import _contains_chat
         has_chat = any(_contains_chat(t.layout.layout) for t in self._workspace.tabs)
     if has_chat:
         return LayoutSpec.model_validate({
@@ -1815,13 +1815,13 @@ async def add_tab(self, title: str, layout: LayoutSpec, *, activate: bool = True
 
 - [ ] **Step 4: Implement `add_tab_handler`**
 
-Create `patchbai/orchestrator/tabs_tools.py`:
+Create `patchfeld/orchestrator/tabs_tools.py`:
 
 ```python
 import json
 from typing import Any
 
-from patchbai.layout.spec import LayoutSpec
+from patchfeld.layout.spec import LayoutSpec
 
 
 def _ok(payload: dict) -> dict:
@@ -1900,7 +1900,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/app.py patchbai/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
+git add patchfeld/app.py patchfeld/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
 git commit -m "feat(orchestrator): add_tab MCP tool with default/inline/named layout seeding"
 ```
 
@@ -1909,8 +1909,8 @@ git commit -m "feat(orchestrator): add_tab MCP tool with default/inline/named la
 ## Task 11: `close_tab` MCP tool
 
 **Files:**
-- Modify: `patchbai/orchestrator/tabs_tools.py`
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/orchestrator/tabs_tools.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_orchestrator_tabs_tools.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1965,8 +1965,8 @@ async def test_close_tab_refuses_when_no_chat_remains(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -1992,7 +1992,7 @@ async def test_close_tab_unknown_id_returns_error(tmp_path):
 async def test_close_tab_publishes_tab_closed_event(tmp_path):
     app = _build_app(tmp_path)
     seen: list = []
-    from patchbai.events import TabClosed
+    from patchfeld.events import TabClosed
     app.event_bus.subscribe(TabClosed, lambda e: seen.append(e))
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -2029,12 +2029,12 @@ async def test_close_active_tab_falls_back_to_neighbor(tmp_path):
 Run: `uv run pytest tests/test_orchestrator_tabs_tools.py -v -k "close_tab"`
 Expected: FAIL — `close_tab_handler` raises `NotImplementedError`.
 
-- [ ] **Step 3: Add `close_tab` to `PatchbaiApp`**
+- [ ] **Step 3: Add `close_tab` to `PatchfeldApp`**
 
-In `patchbai/app.py`, add:
+In `patchfeld/app.py`, add:
 
 ```python
-from patchbai.workspace.spec import _contains_chat
+from patchfeld.workspace.spec import _contains_chat
 
 
 async def close_tab(self, tab_id: str) -> dict:
@@ -2076,7 +2076,7 @@ async def close_tab(self, tab_id: str) -> dict:
 
 - [ ] **Step 4: Implement `close_tab_handler`**
 
-Replace the stub in `patchbai/orchestrator/tabs_tools.py`:
+Replace the stub in `patchfeld/orchestrator/tabs_tools.py`:
 
 ```python
 def close_tab_handler(app):
@@ -2100,7 +2100,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/app.py patchbai/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
+git add patchfeld/app.py patchfeld/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
 git commit -m "feat(orchestrator): close_tab tool with chat-invariant + last-tab guards"
 ```
 
@@ -2109,7 +2109,7 @@ git commit -m "feat(orchestrator): close_tab tool with chat-invariant + last-tab
 ## Task 12: `switch_tab` MCP tool
 
 **Files:**
-- Modify: `patchbai/orchestrator/tabs_tools.py`
+- Modify: `patchfeld/orchestrator/tabs_tools.py`
 - Test: `tests/test_orchestrator_tabs_tools.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -2155,7 +2155,7 @@ Expected: FAIL — `switch_tab_handler` raises `NotImplementedError`.
 
 - [ ] **Step 3: Implement `switch_tab_handler`**
 
-Replace the stub in `patchbai/orchestrator/tabs_tools.py`:
+Replace the stub in `patchfeld/orchestrator/tabs_tools.py`:
 
 ```python
 def switch_tab_handler(app):
@@ -2182,7 +2182,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
+git add patchfeld/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
 git commit -m "feat(orchestrator): switch_tab tool"
 ```
 
@@ -2191,7 +2191,7 @@ git commit -m "feat(orchestrator): switch_tab tool"
 ## Task 13: `list_tabs` MCP tool
 
 **Files:**
-- Modify: `patchbai/orchestrator/tabs_tools.py`
+- Modify: `patchfeld/orchestrator/tabs_tools.py`
 - Test: `tests/test_orchestrator_tabs_tools.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -2253,11 +2253,11 @@ Expected: FAIL — `list_tabs_handler` raises `NotImplementedError`.
 
 - [ ] **Step 3: Implement `list_tabs_handler`**
 
-Replace the stub in `patchbai/orchestrator/tabs_tools.py`. Add this helper at the top of the module:
+Replace the stub in `patchfeld/orchestrator/tabs_tools.py`. Add this helper at the top of the module:
 
 ```python
 def _panel_ids(node) -> list[str]:
-    from patchbai.layout.spec import Container, Panel, Tabs
+    from patchfeld.layout.spec import Container, Panel, Tabs
     if isinstance(node, Panel):
         return [node.id]
     if isinstance(node, Tabs):
@@ -2271,7 +2271,7 @@ def _panel_ids(node) -> list[str]:
 
 
 def _has_chat(node) -> bool:
-    from patchbai.workspace.spec import _contains_chat
+    from patchfeld.workspace.spec import _contains_chat
     return _contains_chat(node)
 ```
 
@@ -2304,7 +2304,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
+git add patchfeld/orchestrator/tabs_tools.py tests/test_orchestrator_tabs_tools.py
 git commit -m "feat(orchestrator): list_tabs tool with chat + panel_ids metadata"
 ```
 
@@ -2313,14 +2313,14 @@ git commit -m "feat(orchestrator): list_tabs tool with chat + panel_ids metadata
 ## Task 14: Wire tab tools into `build_orchestrator_tools` and the MCP server
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py`
-- Modify: `patchbai/orchestrator/session.py` (only if it constructs tools — verify)
-- Modify: `patchbai/app.py` (pass `app` reference into orchestrator)
+- Modify: `patchfeld/orchestrator/tools.py`
+- Modify: `patchfeld/orchestrator/session.py` (only if it constructs tools — verify)
+- Modify: `patchfeld/app.py` (pass `app` reference into orchestrator)
 - Test: `tests/test_orchestrator_tools.py` or add a small registration test
 
-- [ ] **Step 1: Read `patchbai/orchestrator/session.py` to find how `build_orchestrator_tools` / `build_orchestrator_mcp_server` is called**
+- [ ] **Step 1: Read `patchfeld/orchestrator/session.py` to find how `build_orchestrator_tools` / `build_orchestrator_mcp_server` is called**
 
-Run: `grep -n "build_orchestrator" patchbai/orchestrator/session.py patchbai/app.py`
+Run: `grep -n "build_orchestrator" patchfeld/orchestrator/session.py patchfeld/app.py`
 
 Note the call site(s); the exact name of the parameter `OrchestratorSession.__init__` accepts (e.g. an `app` reference) determines what we pass through.
 
@@ -2330,12 +2330,12 @@ Append to `tests/test_orchestrator_tools.py` (the file exists; if not, create it
 
 ```python
 import pytest
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 @pytest.mark.asyncio
@@ -2343,7 +2343,7 @@ async def test_build_orchestrator_tools_includes_tab_tools(tmp_path):
     bus = EventBus()
     manager = AgentManager(cwd=tmp_path, bus=bus,
                            adapter_factory=lambda: FakeSDKAdapter(scripts=[]))
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     tools = build_orchestrator_tools(
         app.manager,
         apply_layout=app._orchestrator_apply_layout,
@@ -2366,12 +2366,12 @@ async def test_build_orchestrator_tools_includes_tab_tools(tmp_path):
 Run: `uv run pytest tests/test_orchestrator_tools.py::test_build_orchestrator_tools_includes_tab_tools -v`
 Expected: FAIL — `build_orchestrator_tools` doesn't accept `app=` kwarg.
 
-- [ ] **Step 4: Add the wiring in `patchbai/orchestrator/tools.py`**
+- [ ] **Step 4: Add the wiring in `patchfeld/orchestrator/tools.py`**
 
-At the top of `patchbai/orchestrator/tools.py`, add:
+At the top of `patchfeld/orchestrator/tools.py`, add:
 
 ```python
-from patchbai.orchestrator.tabs_tools import (
+from patchfeld.orchestrator.tabs_tools import (
     add_tab_handler,
     close_tab_handler,
     list_tabs_handler,
@@ -2458,7 +2458,7 @@ Mirror the addition in `build_orchestrator_mcp_server` — accept `app=None` and
 
 - [ ] **Step 5: Pass `app` from the `OrchestratorSession` construction site**
 
-In `patchbai/app.py`'s `__init__`, update the `OrchestratorSession(...)` call to also pass `app=self`. In `patchbai/orchestrator/session.py`, accept an `app` kwarg in `OrchestratorSession.__init__` and pass it through to `build_orchestrator_mcp_server` (and `build_orchestrator_tools` if it's also called there).
+In `patchfeld/app.py`'s `__init__`, update the `OrchestratorSession(...)` call to also pass `app=self`. In `patchfeld/orchestrator/session.py`, accept an `app` kwarg in `OrchestratorSession.__init__` and pass it through to `build_orchestrator_mcp_server` (and `build_orchestrator_tools` if it's also called there).
 
 (If `OrchestratorSession` doesn't currently take `app`, add the kwarg with a default of `None` and store it on `self._app`. Forward to whichever build call constructs the SDK tools.)
 
@@ -2475,7 +2475,7 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/orchestrator/tools.py patchbai/orchestrator/session.py patchbai/app.py tests/test_orchestrator_tools.py
+git add patchfeld/orchestrator/tools.py patchfeld/orchestrator/session.py patchfeld/app.py tests/test_orchestrator_tools.py
 git commit -m "feat(orchestrator): wire add_tab/close_tab/switch_tab/list_tabs into MCP server"
 ```
 
@@ -2484,8 +2484,8 @@ git commit -m "feat(orchestrator): wire add_tab/close_tab/switch_tab/list_tabs i
 ## Task 15: `set_layout` / `get_layout` / `save_layout` / `load_layout` accept `tab_id`; `load_layout` accepts `as_new_tab`
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py`
-- Modify: `patchbai/app.py` (extend `_orchestrator_apply_layout` to accept `tab_id`)
+- Modify: `patchfeld/orchestrator/tools.py`
+- Modify: `patchfeld/app.py` (extend `_orchestrator_apply_layout` to accept `tab_id`)
 - Test: `tests/test_orchestrator_tools_layout.py`, `tests/test_orchestrator_tools_get_layout.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -2496,13 +2496,13 @@ Append to `tests/test_orchestrator_tools_layout.py`:
 import json
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tabs_tools import add_tab_handler
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tabs_tools import add_tab_handler
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok():
@@ -2521,7 +2521,7 @@ def _build(tmp_path):
     bus = EventBus()
     manager = AgentManager(cwd=tmp_path, bus=bus,
                            adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]))
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -2622,7 +2622,7 @@ async def test_load_layout_as_new_tab_creates_a_tab(tmp_path):
     app = _build(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.layout.spec import LayoutSpec
+        from patchfeld.layout.spec import LayoutSpec
         named = LayoutSpec.model_validate({
             "version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"},
         })
@@ -2651,7 +2651,7 @@ Expected: FAIL — current implementation ignores `tab_id`, doesn't include tab 
 
 - [ ] **Step 3: Make `_orchestrator_apply_layout` accept `tab_id`**
 
-In `patchbai/app.py`:
+In `patchfeld/app.py`:
 
 ```python
 async def _orchestrator_apply_layout(
@@ -2664,11 +2664,11 @@ async def _orchestrator_apply_layout(
 
 - [ ] **Step 4: Update `_set_layout_handler` and `_get_layout_handler`**
 
-In `patchbai/orchestrator/tools.py`, replace `_set_layout_handler` to forward `tab_id`:
+In `patchfeld/orchestrator/tools.py`, replace `_set_layout_handler` to forward `tab_id`:
 
 ```python
 def _set_layout_handler(apply_layout, widget_registry=None):
-    from patchbai.layout.custom_widgets import register_custom_widget, CustomWidgetError
+    from patchfeld.layout.custom_widgets import register_custom_widget, CustomWidgetError
 
     async def set_layout_tool(args: dict) -> dict:
         try:
@@ -2694,7 +2694,7 @@ Replace `_get_layout_handler` to include tab metadata. Change its signature so i
 
 ```python
 def _get_layout_handler(current_layout, widget_registry: WidgetRegistry, app=None):
-    from patchbai.layout.titles import populate_effective_titles
+    from patchfeld.layout.titles import populate_effective_titles
 
     async def get_layout_tool(args: dict) -> dict:
         target_tab_id = (args or {}).get("tab_id")
@@ -2833,7 +2833,7 @@ And in `build_orchestrator_mcp_server`'s `layout_specs`:
 ```python
             (
                 "save_layout",
-                "Save a LayoutSpec under a name in ~/.config/patchbai/layouts/. "
+                "Save a LayoutSpec under a name in ~/.config/patchfeld/layouts/. "
                 "If `spec` is omitted, saves the active tab's current layout "
                 "(or the tab named by `tab_id`).",
                 {"name": str, "spec": dict, "tab_id": str},
@@ -2861,7 +2861,7 @@ Expected: all pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/app.py patchbai/orchestrator/tools.py tests/test_orchestrator_tools_layout.py tests/test_orchestrator_tools_get_layout.py
+git add patchfeld/app.py patchfeld/orchestrator/tools.py tests/test_orchestrator_tools_layout.py tests/test_orchestrator_tools_get_layout.py
 git commit -m "feat(orchestrator): tab-aware set_layout/get_layout/save_layout/load_layout"
 ```
 
@@ -2870,7 +2870,7 @@ git commit -m "feat(orchestrator): tab-aware set_layout/get_layout/save_layout/l
 ## Task 16: Hotkeys — `ctrl+pageup` / `ctrl+pagedown`, `ctrl+1`..`ctrl+9`
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_tabs.py`
 
 `ctrl+pageup` / `ctrl+pagedown` are handled by Textual's `TabbedContent` natively; the only thing to do is surface them in `?` help. The numeric ones are new.
@@ -2892,8 +2892,8 @@ async def test_ctrl_2_switches_to_second_tab(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -2918,7 +2918,7 @@ async def test_ctrl_5_with_only_two_tabs_is_noop(tmp_path):
 Run: `uv run pytest tests/test_app_smoke_tabs.py -v -k "ctrl_2 or ctrl_5"`
 Expected: FAIL — `ctrl+2` is unbound.
 
-- [ ] **Step 3: Add bindings + handler in `patchbai/app.py`**
+- [ ] **Step 3: Add bindings + handler in `patchfeld/app.py`**
 
 Append to the `BINDINGS` list:
 
@@ -2975,7 +2975,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_smoke_tabs.py
+git add patchfeld/app.py tests/test_app_smoke_tabs.py
 git commit -m "feat(app): ctrl+1..9 tab-switch hotkeys + help text"
 ```
 
@@ -2984,8 +2984,8 @@ git commit -m "feat(app): ctrl+1..9 tab-switch hotkeys + help text"
 ## Task 17: Hotkeys — `ctrl+t` (new tab modal) and `ctrl+w` (close active tab)
 
 **Files:**
-- Create: `patchbai/widgets/new_tab_screen.py`
-- Modify: `patchbai/app.py`
+- Create: `patchfeld/widgets/new_tab_screen.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_tabs.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -3031,8 +3031,8 @@ async def test_ctrl_w_closes_active_tab(tmp_path):
         ],
         "active": "logs",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -3049,7 +3049,7 @@ Expected: FAIL — bindings don't exist.
 
 - [ ] **Step 3: Implement the new-tab modal screen**
 
-Create `patchbai/widgets/new_tab_screen.py`:
+Create `patchfeld/widgets/new_tab_screen.py`:
 
 ```python
 from textual.app import ComposeResult
@@ -3085,7 +3085,7 @@ class NewTabScreen(ModalScreen[str | None]):
         self.dismiss(None)
 ```
 
-- [ ] **Step 4: Add `ctrl+t` and `ctrl+w` bindings + handlers in `patchbai/app.py`**
+- [ ] **Step 4: Add `ctrl+t` and `ctrl+w` bindings + handlers in `patchfeld/app.py`**
 
 Append to the `BINDINGS` list (after the tab-index entries):
 
@@ -3097,7 +3097,7 @@ Append to the `BINDINGS` list (after the tab-index entries):
 Add the handlers (and import the modal screen):
 
 ```python
-from patchbai.widgets.new_tab_screen import NewTabScreen
+from patchfeld.widgets.new_tab_screen import NewTabScreen
 
 
 def action_new_tab(self) -> None:
@@ -3134,7 +3134,7 @@ Expected: all pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/new_tab_screen.py patchbai/app.py tests/test_app_smoke_tabs.py
+git add patchfeld/widgets/new_tab_screen.py patchfeld/app.py tests/test_app_smoke_tabs.py
 git commit -m "feat(app): ctrl+t new-tab modal + ctrl+w close-active-tab hotkeys"
 ```
 
@@ -3159,7 +3159,7 @@ async def test_orchestrator_can_add_a_filetree_filviewer_tab(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.orchestrator.tabs_tools import add_tab_handler
+        from patchfeld.orchestrator.tabs_tools import add_tab_handler
         add = add_tab_handler(app)
         result = await add({
             "title": "Code",

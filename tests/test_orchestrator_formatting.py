@@ -1,6 +1,6 @@
 from claude_agent_sdk import AssistantMessage, TextBlock, ThinkingBlock, ToolUseBlock
 
-from patchbai.orchestrator.formatting import format_assistant_message
+from patchfeld.orchestrator.formatting import format_assistant_message
 
 
 def _msg(blocks: list) -> AssistantMessage:

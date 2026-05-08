@@ -1,12 +1,12 @@
-# Rename candidates after the patchbai.com conflict
+# Rename candidates after the patchfeld.com conflict
 
 **Date:** 2026-05-08
 **Status:** Research — recommendation only, no code changes proposed.
 *Addendum added later the same day after follow-up brainstorming surfaced four
 more candidates — see "Addendum" at the bottom. **Final pick was revised from
 Rookery to Patchfeld.***
-**Why:** `patchbai.com` is taken by an unrelated thing. The current PyPI / GitHub
-namespace (`jimmymills/patchbai`, `pipx install patchbai`) is technically still
+**Why:** `patchfeld.com` is taken by an unrelated thing. The current PyPI / GitHub
+namespace (`jimmymills/patchfeld`, `pipx install patchfeld`) is technically still
 clear, but if we're going to rename, now — before 1.0 and before the README's
 brand voice gets entrenched any further — is the right time.
 
@@ -53,8 +53,8 @@ timeouts — those are flagged `?` in the matrices below, not `✓`.
 
 I also did **prior-art GitHub searches** on the candidates I cared about, to
 catch dev-tool collisions that pure namespace-availability checks would miss
-(the trap that previously got us into "patchbai is fine on PyPI, oh wait
-patchbai.com is unrelated-thing").
+(the trap that previously got us into "patchfeld is fine on PyPI, oh wait
+patchfeld.com is unrelated-thing").
 
 ---
 
@@ -92,7 +92,7 @@ Each comes with a one-line rationale and a gut check on (M)emorability,
 |---|---|---|---|---|
 | **Tessera** | Latin for the small tile in a mosaic — each panel literally is one. | ✓✓✓ | ✓✓✓ | ✓✓✓ |
 | **Tessellate** | Verb-form of the same. Longer, more technical-sounding. | ✓✓ | ✓✓ | ✓ |
-| **Quilter** | Stitches patches into one fabric. Literal callback to patchbai. Cute. | ✓✓ | ✓✓✓ | ✓ |
+| **Quilter** | Stitches patches into one fabric. Literal callback to patchfeld. Cute. | ✓✓ | ✓✓✓ | ✓ |
 | **Lattice** | A grid you arrange things into. Common dev-tool name (collision risk). | ✓✓ | ✓✓✓ | ✓✓ |
 
 ### Multi-agent / many-things-gathered (the children dimension)
@@ -136,8 +136,8 @@ settle it).
   question is whether it's owned by an *active dev-adjacent product* — for
   most of these it's not, but **Podium.com is a $3B SaaS** and that's a hard
   no on its own.
-- The **dev-tool prior art** column is what burned `patchbai`'s domain (a
-  real product owns `patchbai.com`). Our PyPI namespace is fine — but a
+- The **dev-tool prior art** column is what burned `patchfeld`'s domain (a
+  real product owns `patchfeld.com`). Our PyPI namespace is fine — but a
   popular GitHub project with the same name will show up in every search and
   hurt SEO/disambiguation.
 
@@ -278,7 +278,7 @@ before committing the rename, but on every other axis it's the cleanest pick.
 - **Pronunciation in non-English locales.** Rookery's "rook" → English chess
   piece; in some languages the cognate is the same bird. Chorale is French-
   borrowed and travels well. Plenum is Latin and travels well.
-- **App store / npm / crates.io / Docker Hub namespaces.** Patchbai is
+- **App store / npm / crates.io / Docker Hub namespaces.** Patchfeld is
   Python-only today, so PyPI was the priority; if a Rust port is on the
   roadmap, also check `crates.io/crates/<name>`.
 
@@ -398,7 +398,7 @@ GitHub user/org free, zero existing GitHub repos. The metaphor is the most
 *precise* of any candidate: a Patchfeld is literally a physical routing
 matrix where one operator decides which inputs feed which outputs — that's
 not metaphor-as-vibe, it's metaphor-as-mechanical-description of the
-orchestrator's role with children + panels. Clean lineage from `patchbai`:
+orchestrator's role with children + panels. Clean lineage from `patchfeld`:
 the "patch" through-line is preserved while the rest is upgraded — a tidy
 rename narrative ("we sharpened the metaphor, we didn't start over"). No
 existing SEO to fight. Pronounceable and spellable for English speakers
@@ -421,7 +421,7 @@ After verifying the four follow-up candidates, the field has shifted. New
 ranking:
 
 1. **Patchfeld** — best availability of any candidate, sharpest metaphor,
-   cleanest lineage from `patchbai`. **Recommended.**
+   cleanest lineage from `patchfeld`. **Recommended.**
 2. **Rookery** — still the strongest non-German option; vivid imagery, no
    dev-tool collision, friendly verbal register. The original draft's pick.
 3. **reAIrrange** — equally clean availability to Patchfeld, but the
@@ -438,4 +438,4 @@ rename is ready to plan: PyPI registration, GitHub repo (and ideally the
 top-level `github.com/patchfeld` org reservation), CLI binary names
 (`patchfeld` plus a short alias — `pf`?), config dir
 (`~/.config/patchfeld/`), README rebrand, and the migration note linking
-`patchbai → patchfeld` for any users following the old name.
+`patchfeld → patchfeld` for any users following the old name.

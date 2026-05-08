@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 from textual.app import App
 
-from patchbai.widgets import system_usage as su
-from patchbai.widgets.system_usage import (
+from patchfeld.widgets import system_usage as su
+from patchfeld.widgets.system_usage import (
     SystemUsage,
     _bar,
     _color_for,
@@ -119,7 +119,7 @@ async def test_widget_surfaces_sample_errors_in_border_title(monkeypatch):
 
 def test_registry_includes_system_usage():
     # Built-in widgets should be discoverable via the default registry.
-    from patchbai.app import build_default_registry
+    from patchfeld.app import build_default_registry
 
     reg = build_default_registry()
     info = reg.describe("SystemUsage")

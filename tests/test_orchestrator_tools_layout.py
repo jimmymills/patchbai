@@ -3,13 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.spec import LayoutSpec
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
 
 
 def _make_manager(tmp_path, ok_script):
@@ -115,9 +115,9 @@ async def test_load_layout_missing_returns_error_text(tmp_path, ok_script):
 # Task 15: tab-aware layout tools
 # ---------------------------------------------------------------------------
 
-from patchbai.app import PatchbaiApp
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tabs_tools import add_tab_handler
+from patchfeld.app import PatchfeldApp
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tabs_tools import add_tab_handler
 
 
 def _ok():
@@ -136,7 +136,7 @@ def _build(tmp_path):
     bus = EventBus()
     manager = AgentManager(cwd=tmp_path, bus=bus,
                            adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]))
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -239,7 +239,7 @@ async def test_load_layout_as_new_tab_creates_a_tab(tmp_path):
     app = _build(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.layout.spec import LayoutSpec
+        from patchfeld.layout.spec import LayoutSpec
         named = LayoutSpec.model_validate({
             "version": 1, "layout": {"id": "feed", "widget": "ActivityFeed"},
         })

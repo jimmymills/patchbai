@@ -1,10 +1,10 @@
-# Patchbai
+# Patchfeld
 
 **A Textual TUI that turns N parallel Claude Code sessions into one
 orchestrator-managed workspace — and lets the agent reshape the UI to fit
 the work.**
 
-![patchbai — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchbai/main/docs/images/screenshot.png)
+![patchfeld — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchbai/main/docs/images/screenshot.png)
 
 ## The pitch
 
@@ -13,7 +13,7 @@ one's writing tests, one's doing a security pass. They live in three
 terminal tabs with three scrollbacks, and you're the one mentally juggling
 which is waiting on what.
 
-**Patchbai is the room you wish you had.** One TUI. One top-level Claude —
+**Patchfeld is the room you wish you had.** One TUI. One top-level Claude —
 the *orchestrator* — runs the show. You tell it what you want done in
 plain English; it spawns the right children with the right tool
 allowlists, watches their progress, and pulls them onscreen when they
@@ -84,7 +84,7 @@ the ideas.
   widgets let the orchestrator ship Python at runtime when the curated
   widget library isn't enough.
 - **Approve tool calls without leaving the room.** When a child wants
-  to use a tool that isn't auto-approved, a modal pops in patchbai with
+  to use a tool that isn't auto-approved, a modal pops in patchfeld with
   the tool name and full arguments. Approve once, deny once, always
   allow this tool for any agent named X (persisted to disk), or always
   deny. The agent's status flips to `awaiting permission` and the
@@ -139,7 +139,7 @@ exactly one panel — the agent can shrink it but cannot hide its own input.
 | `DiffViewer` | Unified-diff viewer (precomputed `diff` or `before` + `after`). |
 | `LogTail` | Tails an arbitrary file (250 ms poll). |
 | `Markdown` | Renders markdown from a string or file. |
-| `Notebook` | Editable scratch buffer; persists to `<cwd>/.patchbai/scratch/<name>.md`. |
+| `Notebook` | Editable scratch buffer; persists to `<cwd>/.patchfeld/scratch/<name>.md`. |
 | `Terminal` | Real PTY — drop into `claude`, `$SHELL`, or any command. Opaque to the orchestrator. |
 | `SystemUsage` | Compact CPU + RAM gauges with auto-refresh and threshold-colored bars. Uses `psutil` if installed; otherwise async `top` / `vm_stat` shell-out on macOS. |
 
@@ -150,16 +150,16 @@ apply back so a broken widget can't brick the app.
 
 ### Custom widgets
 
-Drop a `.py` file in `~/.config/patchbai/widgets/` and patchbai will pick
+Drop a `.py` file in `~/.config/patchfeld/widgets/` and patchfeld will pick
 it up at startup. One file = one widget. The stem of the filename is the
 default registered name (`token_chart.py` → `TokenChart`); override it
-with an optional module-level `__patchbai_widget__` dict. A minimal one
+with an optional module-level `__patchfeld_widget__` dict. A minimal one
 looks like:
 
 ```python
 from textual.widgets import Static
 
-__patchbai_widget__ = {
+__patchfeld_widget__ = {
     "name": "Hello",
     "description": "Says hi.",
     "props_schema": {"who": str},
@@ -172,19 +172,19 @@ class Hello(Static):
 
 Now ask the orchestrator: *"set a layout with a Hello panel where who is 'jimmy'."*
 
-> **Trust model.** Files in `~/.config/patchbai/widgets/` are imported
+> **Trust model.** Files in `~/.config/patchfeld/widgets/` are imported
 > in-process with full Python privileges on every launch. Only put
 > source there that you wrote (or audited). The orchestrator's
 > `save_widget` tool persists files into this same directory — review
 > what it generates before re-launching.
 
-Reload semantics are restart-only by design — patchbai does not watch
+Reload semantics are restart-only by design — patchfeld does not watch
 the directory. The exception is the `save_widget` MCP tool: when the
 orchestrator authors a widget through that tool, it's registered live
 into the running app so you can use it in the same conversation. To
 disable local-directory loading entirely (for security audits, or to
 hand the laptop to a colleague), set `widgets.local_dir_enabled = false`
-in `~/.config/patchbai/config.toml`. Built-in widgets always win on a
+in `~/.config/patchfeld/config.toml`. Built-in widgets always win on a
 name collision; the loader skips your file and surfaces the conflict
 in `list_widgets`'s `errors` array.
 
@@ -198,7 +198,7 @@ metadata reference — lives in
   `ctrl-pgup` / `ctrl-pgdn` to cycle. Each tab has its own `LayoutSpec` and
   remembers which panel was last focused.
 - **Named layouts.** `ctrl-l` opens the switcher. Layouts save to
-  `~/.config/patchbai/layouts/<name>.json`; the orchestrator can list /
+  `~/.config/patchfeld/layouts/<name>.json`; the orchestrator can list /
   load / save them via tools.
 - **Named themes.** `ctrl-shift-l` opens the theme switcher. Themes are a
   palette + extra Textual CSS; the orchestrator can author and apply them
@@ -245,7 +245,7 @@ All of these are rebindable from inside the app — ask the orchestrator to
 ## Persistence
 
 ```
-<cwd>/.patchbai/
+<cwd>/.patchfeld/
   workspace.json          # tabs + layouts for this directory
   agents.json             # every child agent ever spawned here
   transcripts/
@@ -253,13 +253,13 @@ All of these are rebindable from inside the app — ask the orchestrator to
     orchestrator.jsonl    # the orchestrator's own transcript
   scratch/                # for the Notebook widget
 
-~/.config/patchbai/
+~/.config/patchfeld/
   config.toml             # bindings, theme, default model, tool allowlist
   layouts/<name>.json     # named layout presets
   themes/<name>.json      # named themes
 ```
 
-All writes are atomic (temp + fsync + rename). `.patchbai/` is in this
+All writes are atomic (temp + fsync + rename). `.patchfeld/` is in this
 repo's `.gitignore` and you should add it to yours.
 
 ## Installation
@@ -267,39 +267,39 @@ repo's `.gitignore` and you should add it to yours.
 ### Requirements
 
 - **Python 3.11+**
-- The Claude CLI installed and authenticated (`claude --version`). patchbai
+- The Claude CLI installed and authenticated (`claude --version`). patchfeld
   uses your `~/.claude/settings.json` for permissions and tool allowlists.
 - A terminal with TrueColor support (any modern macOS / Linux terminal).
 
 ### From PyPI (recommended)
 
 ```bash
-pipx install patchbai    # isolated, on PATH
-patchbai                 # or: mt
+pipx install patchfeld    # isolated, on PATH
+patchfeld                 # or: mt
 ```
 
 Or with `uv`:
 
 ```bash
-uv tool install patchbai
-patchbai
+uv tool install patchfeld
+patchfeld
 ```
 
 Or with plain `pip` into a venv:
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install patchbai
-patchbai
+pip install patchfeld
+patchfeld
 ```
 
-### From source (for hacking on patchbai itself)
+### From source (for hacking on patchfeld itself)
 
 ```bash
 git clone https://github.com/jimmymills/patchbai.git
 cd patchbai
 uv sync --extra dev      # runtime + dev deps (pyright, pytest)
-uv run patchbai          # or: uv run mt
+uv run patchfeld          # or: uv run mt
 uv run pytest
 ./scripts/typecheck.sh   # canonical pyright invocation
 ```
@@ -307,11 +307,11 @@ uv run pytest
 ## Running
 
 ```bash
-patchbai               # use the current directory as the workspace cwd
+patchfeld               # use the current directory as the workspace cwd
 ```
 
 First launch in a directory seeds the built-in dashboard (orchestrator
-chat + agent table + activity feed) and creates `<cwd>/.patchbai/`. Type
+chat + agent table + activity feed) and creates `<cwd>/.patchfeld/`. Type
 in the orchestrator chat or hit `/` to focus the command bar and start
 talking to it.
 
@@ -359,7 +359,7 @@ the network.
 > *"Spawn three agents in parallel: `tests` running `pytest -x --ff`, `lint` running ruff + pyright, `format` running ruff format. Notify me when any of them fail."*
 
 Each child gets its own row in the `AgentTable`, its own JSONL transcript
-under `<cwd>/.patchbai/transcripts/<id>.jsonl`, and its own state
+under `<cwd>/.patchfeld/transcripts/<id>.jsonl`, and its own state
 machine. Token / cost totals roll up to the StatusBar so you can watch
 spend in aggregate.
 
@@ -420,9 +420,9 @@ plus your tweak.
 ### Resume orchestrator sessions
 
 The orchestrator's own conversation is journaled to
-`<cwd>/.patchbai/transcripts/orchestrator.jsonl`. `/resume` (or
+`<cwd>/.patchfeld/transcripts/orchestrator.jsonl`. `/resume` (or
 *"resume the session about the auth refactor"*) opens a picker; pick a
-past orchestrator session and patchbai loads the full message history.
+past orchestrator session and patchfeld loads the full message history.
 Children from that session are not auto-revived — they're listed in
 History so you can re-run any that still matter, deliberately.
 
@@ -499,7 +499,7 @@ widget at the same id swaps in place. Missing ids unmount.
 >
 > *"Reset the panel sizes on this tab to whatever I had saved."* &nbsp;(or hit `ctrl-shift-r`)
 
-Saved layouts live in `~/.config/patchbai/layouts/<name>.json` and survive
+Saved layouts live in `~/.config/patchfeld/layouts/<name>.json` and survive
 across cwds.
 
 ### Multi-agent dashboards

@@ -6,12 +6,12 @@ from claude_agent_sdk import (
     ToolUseBlock,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.widgets.agent_table import AgentTable
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.widgets.agent_table import AgentTable
 
 
 def _orchestrator_script() -> list:
@@ -69,7 +69,7 @@ async def test_orchestrator_can_spawn_agent_and_table_updates(tmp_path):
         manager=manager,
         adapter=FakeSDKAdapter(scripts=[_orchestrator_script()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, orchestrator=orchestrator)
     app.event_bus = bus
 
     async with app.run_test() as pilot:
@@ -78,7 +78,7 @@ async def test_orchestrator_can_spawn_agent_and_table_updates(tmp_path):
         # Drive the orchestrator. Because FakeSDKAdapter doesn't actually
         # execute MCP tool calls (the real SDK does that subprocess-side),
         # we invoke spawn_agent directly here as the orchestrator would.
-        from patchbai.orchestrator.tools import build_orchestrator_tools
+        from patchfeld.orchestrator.tools import build_orchestrator_tools
         tools = build_orchestrator_tools(manager)
         spawn = tools["spawn_agent"]
         await spawn({"name": "alpha", "prompt": "say hi"})

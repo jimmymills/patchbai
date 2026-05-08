@@ -36,7 +36,7 @@ node holding both the original `ActivityFeed` and a new `LogTail`.
 - **Tool surface:** discrete tab tools (`add_tab`, `close_tab`, `switch_tab`,
   `list_tabs`) plus active-tab-aware `set_layout` / `get_layout`.
 - **Workspace persistence:** the full workspace (tab list + per-tab layouts +
-  active-tab-id) is saved to `<cwd>/.patchbai/workspace.json` on every change
+  active-tab-id) is saved to `<cwd>/.patchfeld/workspace.json` on every change
   and restored on launch.
 - **Tab strip placement:** between `CommandBar` and the panel area.
 - **Rendering:** lean on Textual's built-in `TabbedContent` for both levels.
@@ -45,8 +45,8 @@ node holding both the original `ActivityFeed` and a new `LogTail`.
 
 ### Data model
 
-Two additions in `patchbai/layout/spec.py` and one new file
-`patchbai/workspace/spec.py`.
+Two additions in `patchfeld/layout/spec.py` and one new file
+`patchfeld/workspace/spec.py`.
 
 **Panel-level tabs** — new `Tabs` variant in the layout-node union:
 
@@ -82,7 +82,7 @@ removes the existing "load-bearing on extra=forbid" comment in
 
 The "at least one" half of the invariant moves up to `Workspace`.
 
-**App-level tabs** — new file `patchbai/workspace/spec.py`:
+**App-level tabs** — new file `patchfeld/workspace/spec.py`:
 
 ```python
 class Tab(BaseModel):
@@ -111,7 +111,7 @@ and returns `True` if any `Panel` has `widget == "OrchestratorChat"`.
 
 ### Persistence
 
-New module `patchbai/persistence/workspace_store.py`, modeled on the existing
+New module `patchfeld/persistence/workspace_store.py`, modeled on the existing
 `layout_store.py`:
 
 ```python
@@ -119,12 +119,12 @@ def load_workspace(cwd: Path) -> Workspace | None: ...
 def save_workspace(cwd: Path, ws: Workspace) -> None: ...
 ```
 
-- Path: `<cwd>/.patchbai/workspace.json`.
+- Path: `<cwd>/.patchfeld/workspace.json`.
 - Atomic write (temp file + `os.replace`), same pattern as today.
-- Save is called from a single internal `PatchbaiApp._save_workspace()` method
+- Save is called from a single internal `PatchfeldApp._save_workspace()` method
   invoked from every mutation path (orchestrator tools and hotkey actions).
 
-**Migration on launch** (in `PatchbaiApp.on_mount`):
+**Migration on launch** (in `PatchfeldApp.on_mount`):
 
 1. If `workspace.json` exists → `load_workspace`. Done.
 2. Else if legacy `layout.json` exists → wrap its `LayoutSpec` in
@@ -139,7 +139,7 @@ inline `LayoutSpec` dict or the *name* of a saved layout; resolution to a
 
 ### Composition
 
-`PatchbaiApp.compose` becomes:
+`PatchfeldApp.compose` becomes:
 
 ```
 CommandBar
@@ -174,7 +174,7 @@ handler:
 
 ### Engine changes for the `Tabs` node
 
-`patchbai/layout/engine.py` gets one extra branch in `_build`:
+`patchfeld/layout/engine.py` gets one extra branch in `_build`:
 
 ```python
 elif isinstance(node, Tabs):
@@ -200,7 +200,7 @@ Border-title resolution applies per `Panel` exactly as today; the
 
 ### MCP tools
 
-New file `patchbai/orchestrator/tabs_tools.py`:
+New file `patchfeld/orchestrator/tabs_tools.py`:
 
 - `add_tab(title: str, layout: dict | str | None = None, activate: bool = True)`
   Creates a new tab. `layout` may be an inline `LayoutSpec` dict, the
@@ -223,7 +223,7 @@ New file `patchbai/orchestrator/tabs_tools.py`:
 - `list_tabs()`
   Returns `[{id, title, active, has_chat, panel_ids}]` per tab.
 
-Revisions to existing tools in `patchbai/orchestrator/tools.py`:
+Revisions to existing tools in `patchfeld/orchestrator/tools.py`:
 
 - `set_layout` / `get_layout` operate on the active tab implicitly. Optional
   `tab_id` arg overrides target. Responses gain `tab_id` and `tab_title`.
@@ -240,7 +240,7 @@ use `add_tab`. To target a different tab, pass `tab_id`." `get_layout` and
 
 ### Keybindings
 
-Added to `PatchbaiApp.BINDINGS`:
+Added to `PatchfeldApp.BINDINGS`:
 
 - `ctrl+pageup` / `ctrl+pagedown` — previous / next tab (Textual's
   `TabbedContent` defaults; we surface them in `?` help).
@@ -252,12 +252,12 @@ Added to `PatchbaiApp.BINDINGS`:
 - `ctrl+1` … `ctrl+9` — switch by tab index.
 
 All four routes — MCP tool, `ctrl+t` modal, `ctrl+w`, `ctrl+pgup/pgdn` —
-hit the same `PatchbaiApp._mutate_workspace(...)` internal method so
+hit the same `PatchfeldApp._mutate_workspace(...)` internal method so
 persistence and event publishing live in one place.
 
 ### Events
 
-Additions to `patchbai/events.py`:
+Additions to `patchfeld/events.py`:
 
 ```python
 @dataclass(frozen=True)

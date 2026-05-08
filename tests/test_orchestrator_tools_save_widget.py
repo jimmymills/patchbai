@@ -1,16 +1,16 @@
 import pytest
 from textual.widgets import Static
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
 
 
 class _FakeApp:
-    """Minimal stand-in for PatchbaiApp — save_widget reads `_global_dir`
+    """Minimal stand-in for PatchfeldApp — save_widget reads `_global_dir`
     and `registry` from the app reference; list_widgets reads
     `_local_widget_outcomes` for its `errors` array."""
     def __init__(self, global_dir, registry):
@@ -144,7 +144,7 @@ async def test_save_widget_appears_in_list_widgets(tmp_path):
     tools = _tools(tmp_path, reg)
     src = (
         "from textual.widgets import Static\n"
-        "__patchbai_widget__ = {\n"
+        "__patchfeld_widget__ = {\n"
         "    'name': 'Sparkline',\n"
         "    'description': 'Token-rate sparkline.',\n"
         "    'props_schema': {'agent_id': str},\n"

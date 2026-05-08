@@ -2,7 +2,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
-from patchbai.widgets.change_cwd_screen import ChangeCwdScreen
+from patchfeld.widgets.change_cwd_screen import ChangeCwdScreen
 
 
 class _Host(App):

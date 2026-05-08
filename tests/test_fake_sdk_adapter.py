@@ -7,7 +7,7 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
 
 
 def _hello_response() -> list:

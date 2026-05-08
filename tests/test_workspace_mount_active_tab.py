@@ -13,11 +13,11 @@ import json
 import pytest
 from textual.widgets import TabbedContent
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
 
@@ -38,7 +38,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -102,8 +102,8 @@ async def test_mount_honors_saved_active_when_other_tab_has_focus_directive(tmp_
         ],
         "active": "middle",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
@@ -118,5 +118,5 @@ async def test_mount_honors_saved_active_when_other_tab_has_focus_directive(tmp_
 
         # And the persisted workspace shouldn't have been mutated to a
         # different active by mount-time activation churn.
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         assert ws_raw["active"] == "middle"

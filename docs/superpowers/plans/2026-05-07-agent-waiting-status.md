@@ -13,10 +13,10 @@
 ## File Structure
 
 **Modified:**
-- `patchbai/agents/request_inbox.py` — add `on_pending_changed: Callable[[int], None] | None` callback param; fire it from `register()` (after dict insert) and from `wait()` (after the `pop` in `finally`). Also fire from `resolve()` if the request_id was pre-popped (it never is today, so a no-op for resolve is fine — `wait` is the canonical drain point).
-- `patchbai/agents/session.py` — add `_pre_wait_state: AgentState | None` attribute, plus `_mark_waiting()` and `_mark_unwaiting()` methods that snapshot/restore state. Guard against re-entry (entering WAITING when already WAITING is a no-op; exiting WAITING when not WAITING is a no-op).
-- `patchbai/agents/manager.py` — pass an `on_pending_changed` lambda into `RequestInbox(...)` at spawn time; the lambda calls `session._mark_waiting()` / `session._mark_unwaiting()` based on the count.
-- `patchbai/widgets/agent_table.py` — render the status cell with a Rich Text style: yellow for WAITING, green for RUNNING, dim for IDLE, bold for DONE, red for ERROR. Centralize the styling in a small helper.
+- `patchfeld/agents/request_inbox.py` — add `on_pending_changed: Callable[[int], None] | None` callback param; fire it from `register()` (after dict insert) and from `wait()` (after the `pop` in `finally`). Also fire from `resolve()` if the request_id was pre-popped (it never is today, so a no-op for resolve is fine — `wait` is the canonical drain point).
+- `patchfeld/agents/session.py` — add `_pre_wait_state: AgentState | None` attribute, plus `_mark_waiting()` and `_mark_unwaiting()` methods that snapshot/restore state. Guard against re-entry (entering WAITING when already WAITING is a no-op; exiting WAITING when not WAITING is a no-op).
+- `patchfeld/agents/manager.py` — pass an `on_pending_changed` lambda into `RequestInbox(...)` at spawn time; the lambda calls `session._mark_waiting()` / `session._mark_unwaiting()` based on the count.
+- `patchfeld/widgets/agent_table.py` — render the status cell with a Rich Text style: yellow for WAITING, green for RUNNING, dim for IDLE, bold for DONE, red for ERROR. Centralize the styling in a small helper.
 
 **New tests:**
 - `tests/test_request_inbox.py` — extend with cases for the `on_pending_changed` callback firing on register / wait-drain / wait-timeout-drain, and NOT firing for redundant transitions.
@@ -26,11 +26,11 @@
 - `tests/test_app_smoke_plan3.py` — extend the existing round-trip test to assert state transitions RUNNING → WAITING → RUNNING across the ask/respond cycle.
 
 **Unchanged but reviewed:**
-- `patchbai/agents/state.py` — `WAITING = "waiting"` already exists; no change.
-- `patchbai/events.py` — no new event types; `AgentStateChanged` is sufficient.
-- `patchbai/orchestrator/tools.py` — `respond_to_agent_request` already calls `inbox.resolve` then `wait` drains; no change.
-- `patchbai/agents/child_tools.py` — `ask_orchestrator` already calls `inbox.register` and `inbox.wait`; no change.
-- `patchbai/app.py` — `_on_stats_changed` already counts non-terminal agents (which includes WAITING) for `active_agents`; no change.
+- `patchfeld/agents/state.py` — `WAITING = "waiting"` already exists; no change.
+- `patchfeld/events.py` — no new event types; `AgentStateChanged` is sufficient.
+- `patchfeld/orchestrator/tools.py` — `respond_to_agent_request` already calls `inbox.resolve` then `wait` drains; no change.
+- `patchfeld/agents/child_tools.py` — `ask_orchestrator` already calls `inbox.register` and `inbox.wait`; no change.
+- `patchfeld/app.py` — `_on_stats_changed` already counts non-terminal agents (which includes WAITING) for `active_agents`; no change.
 
 ---
 
@@ -111,11 +111,11 @@ Expected: FAIL with `TypeError: RequestInbox.__init__() got an unexpected keywor
 ### Task 2: `RequestInbox` callback — implement on register
 
 **Files:**
-- Modify: `patchbai/agents/request_inbox.py`
+- Modify: `patchfeld/agents/request_inbox.py`
 
 - [ ] **Step 1: Add `on_pending_changed` param and fire it from `register()`**
 
-Replace the file body of `patchbai/agents/request_inbox.py` with:
+Replace the file body of `patchfeld/agents/request_inbox.py` with:
 
 ```python
 import asyncio
@@ -198,7 +198,7 @@ Expected: all tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patchbai/agents/request_inbox.py tests/test_request_inbox.py
+git add patchfeld/agents/request_inbox.py tests/test_request_inbox.py
 git commit -m "feat(inbox): add on_pending_changed callback"
 ```
 
@@ -396,11 +396,11 @@ Expected: FAIL with `AttributeError: 'AgentSession' object has no attribute '_ma
 ### Task 5: `AgentSession` — implement `_mark_waiting` / `_mark_unwaiting`
 
 **Files:**
-- Modify: `patchbai/agents/session.py`
+- Modify: `patchfeld/agents/session.py`
 
 - [ ] **Step 1: Add `_pre_wait_state` field initialization**
 
-Edit `patchbai/agents/session.py`. In `AgentSession.__init__`, after the existing `self._send_lock = asyncio.Lock()` line, add:
+Edit `patchfeld/agents/session.py`. In `AgentSession.__init__`, after the existing `self._send_lock = asyncio.Lock()` line, add:
 
 ```python
         self._pre_wait_state: AgentState | None = None
@@ -455,7 +455,7 @@ Expected: all tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/session.py tests/test_agent_session.py
+git add patchfeld/agents/session.py tests/test_agent_session.py
 git commit -m "feat(session): add _mark_waiting / _mark_unwaiting helpers"
 ```
 
@@ -473,10 +473,10 @@ Open `tests/test_agent_manager.py`. Add this test (alongside existing tests, any
 ```python
 @pytest.mark.asyncio
 async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.agents.manager import AgentManager
-    from patchbai.agents.state import AgentState
-    from patchbai.events import AgentStateChanged, EventBus
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.agents.manager import AgentManager
+    from patchfeld.agents.state import AgentState
+    from patchfeld.events import AgentStateChanged, EventBus
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
     def _ok():
@@ -529,7 +529,7 @@ Expected: FAIL on `assert session.info.state == AgentState.WAITING` because noth
 
 - [ ] **Step 3: Wire the callback in `AgentManager.spawn`**
 
-Edit `patchbai/agents/manager.py`. Replace the current line:
+Edit `patchfeld/agents/manager.py`. Replace the current line:
 
 ```python
         self._inboxes[agent_id] = RequestInbox()
@@ -567,7 +567,7 @@ Expected: all tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/agents/manager.py tests/test_agent_manager.py
+git add patchfeld/agents/manager.py tests/test_agent_manager.py
 git commit -m "feat(manager): flip session to waiting on inbox register/drain"
 ```
 
@@ -583,8 +583,8 @@ git commit -m "feat(manager): flip session to waiting on inbox register/drain"
 Edit `tests/test_app_smoke_plan3.py`. At the top of the file, add to the imports:
 
 ```python
-from patchbai.agents.state import AgentState
-from patchbai.events import AgentStateChanged
+from patchfeld.agents.state import AgentState
+from patchfeld.events import AgentStateChanged
 ```
 
 In `test_ask_orchestrator_round_trip`, just after the existing line `await orchestrator.start()`, insert:
@@ -714,16 +714,16 @@ Expected: FAIL — the cells are currently rendered with no style, so `str(statu
 ### Task 9: AgentTable — render status cells with state-keyed colors
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py`
+- Modify: `patchfeld/widgets/agent_table.py`
 
 - [ ] **Step 1: Add a state-to-style mapping and use it in `_render_cells`**
 
-Edit `patchbai/widgets/agent_table.py`. Replace the existing `_render_cells` method with this version, and add the helper map at module scope just below the imports.
+Edit `patchfeld/widgets/agent_table.py`. Replace the existing `_render_cells` method with this version, and add the helper map at module scope just below the imports.
 
 Add at module scope (just below the imports, above `class AgentTable`):
 
 ```python
-from patchbai.agents.state import AgentState as _AgentState
+from patchfeld.agents.state import AgentState as _AgentState
 
 _STATUS_STYLES: dict[_AgentState, str] = {
     _AgentState.IDLE: "dim",
@@ -756,7 +756,7 @@ Replace the existing `_render_cells` method body with:
         )
 ```
 
-(Note: the import line `from patchbai.agents.state import AgentInfo` already exists at the top of the file — keep it. The new module-scope import aliases `AgentState` to `_AgentState` to keep the lookup table self-contained without changing the existing import names.)
+(Note: the import line `from patchfeld.agents.state import AgentInfo` already exists at the top of the file — keep it. The new module-scope import aliases `AgentState` to `_AgentState` to keep the lookup table self-contained without changing the existing import names.)
 
 - [ ] **Step 2: Run the new color tests**
 
@@ -771,7 +771,7 @@ Expected: all tests pass.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "feat(agent-table): color status cell by state (yellow=waiting)"
 ```
 
@@ -786,7 +786,7 @@ Expected: all tests pass.
 
 - [ ] **Step 2: If anything fails, debug; otherwise no commit needed**
 
-If failures appear, they're almost certainly in tests that imported from `patchbai.agents.request_inbox`, `patchbai.agents.session`, or `patchbai.agents.manager` and constructed the inbox/session in unusual ways. Fix forward: keep the new constructor signatures backwards-compatible (the `on_pending_changed` keyword has a `None` default, so any caller passing positional args still works).
+If failures appear, they're almost certainly in tests that imported from `patchfeld.agents.request_inbox`, `patchfeld.agents.session`, or `patchfeld.agents.manager` and constructed the inbox/session in unusual ways. Fix forward: keep the new constructor signatures backwards-compatible (the `on_pending_changed` keyword has a `None` default, so any caller passing positional args still works).
 
 ---
 

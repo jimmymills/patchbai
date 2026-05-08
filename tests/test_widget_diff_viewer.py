@@ -1,7 +1,7 @@
 import pytest
 from textual.app import App
 
-from patchbai.widgets.diff_viewer import DiffViewer
+from patchfeld.widgets.diff_viewer import DiffViewer
 
 
 class _Host(App):

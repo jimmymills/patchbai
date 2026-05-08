@@ -1,12 +1,12 @@
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.activity.log import ActivityLog
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, TabAdded
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.activity.log import ActivityLog
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, TabAdded
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -26,7 +26,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.activity_log = ActivityLog(bus)
     app.orchestrator = OrchestratorSession(
@@ -51,7 +51,7 @@ async def test_activity_feed_renders_backlog_on_mount(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         # Collect static text rows inside any ActivityFeed instance.
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feeds = list(app.query(ActivityFeed))
         assert feeds, "default dashboard layout should mount one ActivityFeed"
         rows = list(feeds[0].query(_ActivityRow))
@@ -66,7 +66,7 @@ async def test_activity_feed_appends_new_event_after_mount(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         before = len(list(feed.query(_ActivityRow)))
         app.event_bus.publish(TabAdded(tab_id="zzz", title="Surprise"))
@@ -100,8 +100,8 @@ async def test_mode_prop_filters_initial_render(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     # Pre-load: tab.added is filtered out in agents mode.
@@ -109,7 +109,7 @@ async def test_mode_prop_filters_initial_render(tmp_path):
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         labels = " ".join(r.text for r in rows)
@@ -141,13 +141,13 @@ async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ModeChip
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ModeChip
         feed = app.query(ActivityFeed).first()
         assert feed.mode == "audit"
         # Find the "agents" chip and click it.
@@ -158,7 +158,7 @@ async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
         await pilot.pause()  # let _apply_to_tab settle
         assert feed.mode == "agents"
         # Check that workspace.json now has props.mode == "agents".
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         children = ws_raw["tabs"][0]["layout"]["layout"]["children"]
         feed_node = next(c for c in children if c.get("widget") == "ActivityFeed")
         assert feed_node["props"]["mode"] == "agents"
@@ -169,12 +169,12 @@ async def test_card_variant_used_for_agent_ask(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentRequestedUserInput
+        from patchfeld.events import AgentRequestedUserInput
         app.event_bus.publish(AgentRequestedUserInput(
             agent_id="bot", question="ok?", request_id="r1",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         ask_row = next(r for r in rows if r.entry.kind == "agent.ask")
@@ -200,17 +200,17 @@ async def test_expanded_variant_used_for_agent_message(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentMessageAppended
+        from patchfeld.events import AgentMessageAppended
         app.event_bus.publish(AgentMessageAppended(
             agent_id="bot", role="assistant", text="hi",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         msg_row = next(r for r in rows if r.entry.kind == "agent.message")
@@ -223,7 +223,7 @@ async def test_compact_variant_used_for_tab_added(tmp_path):
     app.event_bus.publish(TabAdded(tab_id="t1", title="Files"))
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         tab_row = next(r for r in rows if r.entry.kind == "tab.added" and r.entry.tab_id == "t1")
@@ -249,19 +249,19 @@ async def test_clicking_agent_row_publishes_focus_request(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentMessageAppended, AgentFocusRequested
+        from patchfeld.events import AgentMessageAppended, AgentFocusRequested
         seen: list[AgentFocusRequested] = []
         app.event_bus.subscribe(AgentFocusRequested, lambda e: seen.append(e))
         app.event_bus.publish(AgentMessageAppended(
             agent_id="bot", role="assistant", text="hi",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         msg_row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "agent.message")
         await pilot.click(msg_row)
@@ -286,12 +286,12 @@ async def test_clicking_layout_failed_calls_notify(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import LayoutFailed
+        from patchfeld.events import LayoutFailed
         notified: list[tuple[str, str]] = []
         original_notify = app.notify
 
@@ -302,7 +302,7 @@ async def test_clicking_layout_failed_calls_notify(tmp_path):
         app.notify = _wrapped  # type: ignore[assignment]
         app.event_bus.publish(LayoutFailed(error="boom", tab_id="t1"))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "layout.failed")
         await pilot.click(row)
@@ -329,17 +329,17 @@ async def test_clicking_non_interactive_row_does_nothing(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import WorkspaceCwdChanged, AgentFocusRequested
+        from patchfeld.events import WorkspaceCwdChanged, AgentFocusRequested
         seen: list[AgentFocusRequested] = []
         app.event_bus.subscribe(AgentFocusRequested, lambda e: seen.append(e))
         app.event_bus.publish(WorkspaceCwdChanged(cwd="/tmp"))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         cwd_row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "workspace.cwd")
         before = len(seen)
@@ -367,12 +367,12 @@ async def test_new_event_scrolls_to_bottom_when_at_bottom(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed
+        from patchfeld.widgets.activity_feed import ActivityFeed
         from textual.containers import VerticalScroll
         feed = app.query(ActivityFeed).first()
         scroll = feed.query_one("#activity-rows", VerticalScroll)
@@ -403,12 +403,12 @@ async def test_user_scroll_up_pauses_autofollow(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed
+        from patchfeld.widgets.activity_feed import ActivityFeed
         from textual.containers import VerticalScroll
         feed = app.query(ActivityFeed).first()
         scroll = feed.query_one("#activity-rows", VerticalScroll)
@@ -447,14 +447,14 @@ async def test_all_four_mode_chips_fit_horizontally(tmp_path):
         }],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ModeChip, _ModeChips
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ModeChip, _ModeChips
         feed = app.query(ActivityFeed).first()
         strip = feed.query_one(_ModeChips)
         chips = list(strip.query(_ModeChip))

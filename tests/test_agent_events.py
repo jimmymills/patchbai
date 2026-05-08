@@ -1,5 +1,5 @@
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.events import (
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.events import (
     AgentMessageAppended,
     AgentNotifiedOrchestrator,
     AgentSpawned,

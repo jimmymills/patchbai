@@ -1,4 +1,4 @@
-from patchbai.config import Config, ConfigStore
+from patchfeld.config import Config, ConfigStore
 
 
 def test_widgets_section_defaults_to_enabled():

@@ -25,10 +25,10 @@ inner `AgentSession` under an `asyncio.Lock` and publish
 
 **New files:**
 
-- `patchbai/persistence/orchestrator_sessions.py` — `OrchestratorSessionEntry`
+- `patchfeld/persistence/orchestrator_sessions.py` — `OrchestratorSessionEntry`
   dataclass + `OrchestratorSessionsIndex` with `list()`, `upsert()`,
   `most_recent()`, `get(session_id)`, `migrate_legacy_if_needed()`.
-- `patchbai/widgets/resume_screen.py` — `ResumeScreen` modal listing past
+- `patchfeld/widgets/resume_screen.py` — `ResumeScreen` modal listing past
   sessions; returns picked `session_id` (or `None`).
 - `tests/test_orchestrator_sessions_index.py` — round-trip + migration tests.
 - `tests/test_orchestrator_session_resume.py` — `OrchestratorSession.start`
@@ -40,19 +40,19 @@ inner `AgentSession` under an `asyncio.Lock` and publish
 
 **Modified files:**
 
-- `patchbai/persistence/paths.py` — add `orchestrator_session_transcript_path`.
-- `patchbai/persistence/transcript_store.py` — `AgentTranscript.__init__`
+- `patchfeld/persistence/paths.py` — add `orchestrator_session_transcript_path`.
+- `patchfeld/persistence/transcript_store.py` — `AgentTranscript.__init__`
   accepts an optional `path` override.
-- `patchbai/agents/session.py` — add `session_id` property and optional
+- `patchfeld/agents/session.py` — add `session_id` property and optional
   `on_session_id` callback; capture `ResultMessage.session_id`.
-- `patchbai/orchestrator/session.py` — index integration on `start`, slash-command
+- `patchfeld/orchestrator/session.py` — index integration on `start`, slash-command
   parser, `reset()` and `resume()` methods, switching lock,
   `active_transcript_path` property.
-- `patchbai/events.py` — `OrchestratorSessionSwitched`, `OpenResumePicker`.
-- `patchbai/app.py` — subscribe to `OpenResumePicker`; update help text.
-- `patchbai/widgets/rich_transcript.py` — accept a `transcript_path` ctor arg;
+- `patchfeld/events.py` — `OrchestratorSessionSwitched`, `OpenResumePicker`.
+- `patchfeld/app.py` — subscribe to `OpenResumePicker`; update help text.
+- `patchfeld/widgets/rich_transcript.py` — accept a `transcript_path` ctor arg;
   `replace_source(path)` method; subscribe to `OrchestratorSessionSwitched`.
-- `patchbai/widgets/orchestrator_chat.py` — pass active path through; update
+- `patchfeld/widgets/orchestrator_chat.py` — pass active path through; update
   input placeholder.
 
 ---
@@ -60,7 +60,7 @@ inner `AgentSession` under an `asyncio.Lock` and publish
 ## Task 1: `AgentTranscript` accepts an optional `path` override
 
 **Files:**
-- Modify: `patchbai/persistence/transcript_store.py`
+- Modify: `patchfeld/persistence/transcript_store.py`
 - Test: `tests/test_transcript_store.py`
 
 The orchestrator needs to write to per-session JSONLs (`orchestrator.<session_id>.jsonl`)
@@ -70,7 +70,7 @@ cleanest decoupling is an explicit `path` argument that overrides the
 
 - [ ] **Step 1: Read the current `AgentTranscript` and the relevant tests**
 
-Run: `cat patchbai/persistence/transcript_store.py tests/test_transcript_store.py`
+Run: `cat patchfeld/persistence/transcript_store.py tests/test_transcript_store.py`
 
 Expected: confirms the current ctor signature `(cwd, agent_id)` and the path
 helper used internally.
@@ -85,7 +85,7 @@ def test_agent_transcript_path_override_uses_explicit_path(tmp_path):
     t = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=custom)
     t.append(TranscriptEntry(role="user", text="hi"))
     assert custom.exists()
-    assert (tmp_path / ".patchbai" / "transcripts" / "orchestrator.jsonl").exists() is False
+    assert (tmp_path / ".patchfeld" / "transcripts" / "orchestrator.jsonl").exists() is False
 
 
 def test_agent_transcript_path_override_creates_parents(tmp_path):
@@ -114,7 +114,7 @@ Expected: FAIL — `AgentTranscript.__init__` got unexpected kwarg `path`.
 
 Replace the `AgentTranscript.__init__` and update `append` to ensure the parent
 of `self._path` exists (the existing `project_transcripts_dir(cwd).mkdir`
-doesn't help when the path is outside `.patchbai/transcripts/`):
+doesn't help when the path is outside `.patchfeld/transcripts/`):
 
 ```python
 class AgentTranscript:
@@ -146,7 +146,7 @@ Expected: PASS for the three new tests; existing tests still pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/persistence/transcript_store.py tests/test_transcript_store.py
+git add patchfeld/persistence/transcript_store.py tests/test_transcript_store.py
 git commit -m "feat(transcript): AgentTranscript accepts explicit path override"
 ```
 
@@ -155,7 +155,7 @@ git commit -m "feat(transcript): AgentTranscript accepts explicit path override"
 ## Task 2: New path helper for per-session orchestrator transcripts
 
 **Files:**
-- Modify: `patchbai/persistence/paths.py`
+- Modify: `patchfeld/persistence/paths.py`
 - Test: `tests/test_paths.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -164,9 +164,9 @@ Append to `tests/test_paths.py`:
 
 ```python
 def test_orchestrator_session_transcript_path_uses_session_id(tmp_path):
-    from patchbai.persistence.paths import orchestrator_session_transcript_path
+    from patchfeld.persistence.paths import orchestrator_session_transcript_path
     p = orchestrator_session_transcript_path(tmp_path, "abc-123")
-    assert p == tmp_path / ".patchbai" / "transcripts" / "orchestrator.abc-123.jsonl"
+    assert p == tmp_path / ".patchfeld" / "transcripts" / "orchestrator.abc-123.jsonl"
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -177,7 +177,7 @@ Expected: FAIL — `cannot import name 'orchestrator_session_transcript_path'`.
 
 - [ ] **Step 3: Add the helper**
 
-Append to `patchbai/persistence/paths.py`:
+Append to `patchfeld/persistence/paths.py`:
 
 ```python
 def orchestrator_session_transcript_path(cwd: Path, session_id: str) -> Path:
@@ -193,7 +193,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/persistence/paths.py tests/test_paths.py
+git add patchfeld/persistence/paths.py tests/test_paths.py
 git commit -m "feat(paths): orchestrator_session_transcript_path helper"
 ```
 
@@ -202,7 +202,7 @@ git commit -m "feat(paths): orchestrator_session_transcript_path helper"
 ## Task 3: `AgentSession` exposes `session_id` and fires `on_session_id`
 
 **Files:**
-- Modify: `patchbai/agents/session.py`
+- Modify: `patchfeld/agents/session.py`
 - Test: `tests/test_agent_session.py`
 
 The first `ResultMessage` of a session carries the SDK's `session_id`. We need
@@ -272,7 +272,7 @@ no `session_id` attribute.
 
 - [ ] **Step 3: Implement**
 
-Edit `patchbai/agents/session.py`. Add `on_session_id` to the constructor and
+Edit `patchfeld/agents/session.py`. Add `on_session_id` to the constructor and
 capture the id in `_handle_message`:
 
 ```python
@@ -330,7 +330,7 @@ Expected: PASS for all three new tests + no regressions.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/session.py tests/test_agent_session.py
+git add patchfeld/agents/session.py tests/test_agent_session.py
 git commit -m "feat(agents): expose AgentSession.session_id + on_session_id callback"
 ```
 
@@ -339,7 +339,7 @@ git commit -m "feat(agents): expose AgentSession.session_id + on_session_id call
 ## Task 4: `OrchestratorSessionsIndex` data layer
 
 **Files:**
-- Create: `patchbai/persistence/orchestrator_sessions.py`
+- Create: `patchfeld/persistence/orchestrator_sessions.py`
 - Test: `tests/test_orchestrator_sessions_index.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -349,7 +349,7 @@ Create `tests/test_orchestrator_sessions_index.py`:
 ```python
 from pathlib import Path
 
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
@@ -358,7 +358,7 @@ from patchbai.persistence.orchestrator_sessions import (
 def _entry(sid: str = "s1", last: float = 100.0, legacy: bool = False) -> OrchestratorSessionEntry:
     return OrchestratorSessionEntry(
         session_id=sid,
-        transcript_path=f".patchbai/transcripts/orchestrator.{sid}.jsonl",
+        transcript_path=f".patchfeld/transcripts/orchestrator.{sid}.jsonl",
         started_at=last - 10,
         last_activity=last,
         first_user_message=None,
@@ -413,7 +413,7 @@ def test_get_returns_entry_by_session_id(tmp_path):
 
 
 def test_corrupt_file_is_treated_as_empty(tmp_path):
-    state = tmp_path / ".patchbai"
+    state = tmp_path / ".patchfeld"
     state.mkdir()
     (state / "orchestrator_sessions.json").write_text("not json {{")
     assert OrchestratorSessionsIndex(cwd=tmp_path).list() == []
@@ -422,7 +422,7 @@ def test_corrupt_file_is_treated_as_empty(tmp_path):
 def test_index_persists_to_expected_path(tmp_path):
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(_entry("a"))
-    assert (tmp_path / ".patchbai" / "orchestrator_sessions.json").exists()
+    assert (tmp_path / ".patchfeld" / "orchestrator_sessions.json").exists()
 ```
 
 - [ ] **Step 2: Run tests to verify failure**
@@ -433,7 +433,7 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the index**
 
-Create `patchbai/persistence/orchestrator_sessions.py`:
+Create `patchfeld/persistence/orchestrator_sessions.py`:
 
 ```python
 import json
@@ -441,8 +441,8 @@ import logging
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 
-from patchbai.persistence.atomic import write_json_atomic
-from patchbai.persistence.paths import project_state_dir
+from patchfeld.persistence.atomic import write_json_atomic
+from patchfeld.persistence.paths import project_state_dir
 
 log = logging.getLogger(__name__)
 
@@ -527,7 +527,7 @@ Expected: PASS for all 8 tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/persistence/orchestrator_sessions.py tests/test_orchestrator_sessions_index.py
+git add patchfeld/persistence/orchestrator_sessions.py tests/test_orchestrator_sessions_index.py
 git commit -m "feat(persistence): OrchestratorSessionsIndex"
 ```
 
@@ -536,10 +536,10 @@ git commit -m "feat(persistence): OrchestratorSessionsIndex"
 ## Task 5: Legacy migration
 
 **Files:**
-- Modify: `patchbai/persistence/orchestrator_sessions.py`
+- Modify: `patchfeld/persistence/orchestrator_sessions.py`
 - Test: `tests/test_orchestrator_sessions_index.py`
 
-If a legacy `.patchbai/transcripts/orchestrator.jsonl` exists with no
+If a legacy `.patchfeld/transcripts/orchestrator.jsonl` exists with no
 companion index, rename it to `orchestrator.legacy-<ts>.jsonl` and insert
 one `legacy=True` entry into the index. Idempotent.
 
@@ -549,7 +549,7 @@ Append to `tests/test_orchestrator_sessions_index.py`:
 
 ```python
 def test_migrate_legacy_when_old_jsonl_exists_no_index(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     legacy = transcripts / "orchestrator.jsonl"
     legacy.write_text('{"role": "user", "text": "old"}\n', encoding="utf-8")
@@ -568,7 +568,7 @@ def test_migrate_legacy_when_old_jsonl_exists_no_index(tmp_path):
 
 
 def test_migrate_legacy_is_idempotent(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     (transcripts / "orchestrator.jsonl").write_text("{}\n", encoding="utf-8")
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
@@ -586,7 +586,7 @@ def test_migrate_legacy_noop_when_no_legacy_file(tmp_path):
 
 
 def test_migrate_legacy_noop_when_index_already_exists(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     (transcripts / "orchestrator.jsonl").write_text("{}\n", encoding="utf-8")
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
@@ -611,12 +611,12 @@ Add to `OrchestratorSessionsIndex`:
 
 ```python
     def migrate_legacy_if_needed(self) -> None:
-        """One-time migration: rename .patchbai/transcripts/orchestrator.jsonl
+        """One-time migration: rename .patchfeld/transcripts/orchestrator.jsonl
         to orchestrator.legacy-<ts>.jsonl and register a legacy=True entry.
 
         No-op if the index already has any entries OR if no legacy file exists.
         """
-        from patchbai.persistence.paths import project_transcripts_dir
+        from patchfeld.persistence.paths import project_transcripts_dir
 
         if self._path.exists():
             return  # index already exists — don't touch
@@ -655,7 +655,7 @@ Expected: PASS for all migration tests + earlier tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/persistence/orchestrator_sessions.py tests/test_orchestrator_sessions_index.py
+git add patchfeld/persistence/orchestrator_sessions.py tests/test_orchestrator_sessions_index.py
 git commit -m "feat(persistence): one-time legacy orchestrator.jsonl migration"
 ```
 
@@ -664,7 +664,7 @@ git commit -m "feat(persistence): one-time legacy orchestrator.jsonl migration"
 ## Task 6: Add `OrchestratorSessionSwitched` and `OpenResumePicker` events
 
 **Files:**
-- Modify: `patchbai/events.py`
+- Modify: `patchfeld/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -673,14 +673,14 @@ Append to `tests/test_events.py`:
 
 ```python
 def test_orchestrator_session_switched_event_carries_id_and_path():
-    from patchbai.events import OrchestratorSessionSwitched
+    from patchfeld.events import OrchestratorSessionSwitched
     e = OrchestratorSessionSwitched(session_id="abc", transcript_path="/tmp/x.jsonl")
     assert e.session_id == "abc"
     assert e.transcript_path == "/tmp/x.jsonl"
 
 
 def test_open_resume_picker_event_is_constructible():
-    from patchbai.events import OpenResumePicker
+    from patchfeld.events import OpenResumePicker
     OpenResumePicker()  # smoke
 ```
 
@@ -692,7 +692,7 @@ Expected: FAIL — import errors.
 
 - [ ] **Step 3: Add events**
 
-Append to `patchbai/events.py` (under "Built-in event types"):
+Append to `patchfeld/events.py` (under "Built-in event types"):
 
 ```python
 @dataclass(frozen=True)
@@ -717,7 +717,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/events.py tests/test_events.py
+git add patchfeld/events.py tests/test_events.py
 git commit -m "feat(events): OrchestratorSessionSwitched + OpenResumePicker"
 ```
 
@@ -726,7 +726,7 @@ git commit -m "feat(events): OrchestratorSessionSwitched + OpenResumePicker"
 ## Task 7: `OrchestratorSession.start` consults the index
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_resume.py` (new)
 
 When the index has a non-legacy `most_recent()` entry, pass `resume=<id>` and
@@ -735,7 +735,7 @@ point the inner transcript at that session's JSONL. Otherwise mint a fresh
 
 - [ ] **Step 1: Read the current `OrchestratorSession.start` to understand what we're modifying**
 
-Run: `sed -n '40,110p' patchbai/orchestrator/session.py`
+Run: `sed -n '40,110p' patchfeld/orchestrator/session.py`
 
 Expected: confirms the current options-build flow and where the inner
 `AgentSession`/`AgentTranscript` are constructed.
@@ -752,11 +752,11 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
@@ -843,7 +843,7 @@ async def test_start_skips_legacy_entries_for_resume(tmp_path):
 
 @pytest.mark.asyncio
 async def test_start_runs_legacy_migration(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     legacy = transcripts / "orchestrator.jsonl"
     legacy.write_text('{"role": "user", "text": "old"}\n', encoding="utf-8")
@@ -868,16 +868,16 @@ Expected: FAIL — `adapter.last_options.resume` is `None` for the second test
 
 - [ ] **Step 4: Implement the index integration**
 
-Edit `patchbai/orchestrator/session.py`. Add imports:
+Edit `patchfeld/orchestrator/session.py`. Add imports:
 
 ```python
 import uuid
 
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
-from patchbai.persistence.paths import orchestrator_session_transcript_path
+from patchfeld.persistence.paths import orchestrator_session_transcript_path
 ```
 
 Add to `__init__` (after `self._app = app`):
@@ -951,7 +951,7 @@ existing `start`:
         )
         options_kwargs: dict = {
             "cwd": str(self._cwd),
-            "mcp_servers": {"patchbai_orchestrator": mcp_server},
+            "mcp_servers": {"patchfeld_orchestrator": mcp_server},
             "permission_mode": "bypassPermissions",
         }
         if resume is not None:
@@ -1053,7 +1053,7 @@ Expected: PASS. If anything fails, investigate before moving on — the
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session_resume.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session_resume.py
 git commit -m "feat(orchestrator): consult sessions index on start (resume vs new)"
 ```
 
@@ -1062,7 +1062,7 @@ git commit -m "feat(orchestrator): consult sessions index on start (resume vs ne
 ## Task 8: `active_transcript_path` accessor + index upsert on session_id
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_resume.py`
 
 When the first `ResultMessage` confirms the session_id, upsert an entry into
@@ -1095,7 +1095,7 @@ async def test_first_result_message_upserts_index(tmp_path):
     await orch.start()
     try:
         # Send one message so a ResultMessage flows.
-        from patchbai.events import UserMessageToOrchestrator
+        from patchfeld.events import UserMessageToOrchestrator
         orch._bus.publish(UserMessageToOrchestrator("hi"))
         await orch.wait_idle()
 
@@ -1177,7 +1177,7 @@ Expected: PASS for all tests in the file.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session_resume.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session_resume.py
 git commit -m "feat(orchestrator): upsert sessions index on first ResultMessage"
 ```
 
@@ -1186,7 +1186,7 @@ git commit -m "feat(orchestrator): upsert sessions index on first ResultMessage"
 ## Task 9: Slash-command parser intercepts `/reset` and `/resume`
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_resume.py`
 
 Parse `/reset`, `/resume`, `/resume <id>` in `_on_user_message` BEFORE
@@ -1217,7 +1217,7 @@ async def test_reset_does_not_send_literal_to_sdk(tmp_path):
 
     await orch.start()
     try:
-        from patchbai.events import UserMessageToOrchestrator
+        from patchfeld.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/reset"))
         await orch.wait_idle()
 
@@ -1231,7 +1231,7 @@ async def test_reset_does_not_send_literal_to_sdk(tmp_path):
 
 @pytest.mark.asyncio
 async def test_open_resume_picker_published_on_bare_resume(tmp_path):
-    from patchbai.events import OpenResumePicker, UserMessageToOrchestrator
+    from patchfeld.events import OpenResumePicker, UserMessageToOrchestrator
 
     adapter = _RecordingAdapter(scripts=[_ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
@@ -1253,7 +1253,7 @@ async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
     orch, bus = _build_orch(tmp_path, adapter=adapter)
     await orch.start()
     try:
-        from patchbai.events import UserMessageToOrchestrator
+        from patchfeld.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/help"))
         await orch.wait_idle()
         # Adapter saw the prompt as a query.
@@ -1357,7 +1357,7 @@ Add a `_swap_inner` stub that the next two tasks will use:
             self._adapter = self._next_adapter_factory()
             self._next_adapter_factory = None
         else:
-            from patchbai.agents.sdk_adapter import RealSDKAdapter
+            from patchfeld.agents.sdk_adapter import RealSDKAdapter
             self._adapter = RealSDKAdapter()
 
         await self._build_and_start_inner(
@@ -1388,7 +1388,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session_resume.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session_resume.py
 git commit -m "feat(orchestrator): /reset and /resume slash-command parser + swap scaffolding"
 ```
 
@@ -1397,7 +1397,7 @@ git commit -m "feat(orchestrator): /reset and /resume slash-command parser + swa
 ## Task 10: `/reset` keeps old transcript, creates a new one
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_resume.py`
 
 After the previous task `reset()` already swaps. This task verifies the
@@ -1412,7 +1412,7 @@ Append to `tests/test_orchestrator_session_resume.py`:
 ```python
 @pytest.mark.asyncio
 async def test_reset_preserves_old_transcript_creates_new(tmp_path):
-    from patchbai.events import (
+    from patchfeld.events import (
         OrchestratorSessionSwitched, UserMessageToOrchestrator,
     )
 
@@ -1453,7 +1453,7 @@ async def test_reset_preserves_old_transcript_creates_new(tmp_path):
 @pytest.mark.asyncio
 async def test_concurrent_resets_serialize(tmp_path):
     """Two /reset calls fired back-to-back must both complete cleanly."""
-    from patchbai.events import UserMessageToOrchestrator
+    from patchfeld.events import UserMessageToOrchestrator
 
     adapter1 = _RecordingAdapter(scripts=[_ok_script(session_id="first")])
     adapter2 = _RecordingAdapter(scripts=[_ok_script(session_id="second")])
@@ -1512,7 +1512,7 @@ git commit -m "test(orchestrator): /reset durability + concurrent-reset serializ
 ## Task 11: `/resume <id>` with SDK-rejection fallback
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_resume.py`
 
 `resume(session_id)` should:
@@ -1532,12 +1532,12 @@ Append to `tests/test_orchestrator_session_resume.py`:
 ```python
 @pytest.mark.asyncio
 async def test_resume_known_session_passes_resume_to_sdk(tmp_path):
-    from patchbai.events import OrchestratorSessionSwitched
+    from patchfeld.events import OrchestratorSessionSwitched
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
         session_id="target",
-        transcript_path=str(tmp_path / ".patchbai" / "transcripts" / "orchestrator.target.jsonl"),
+        transcript_path=str(tmp_path / ".patchfeld" / "transcripts" / "orchestrator.target.jsonl"),
         started_at=100.0, last_activity=200.0,
     ))
 
@@ -1564,7 +1564,7 @@ async def test_resume_known_session_passes_resume_to_sdk(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_unknown_session_is_noop_with_notice(tmp_path):
-    from patchbai.events import OrchestratorReply
+    from patchfeld.events import OrchestratorReply
 
     adapter = _RecordingAdapter(scripts=[_ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
@@ -1583,7 +1583,7 @@ async def test_resume_unknown_session_is_noop_with_notice(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resume_legacy_falls_back_to_reset(tmp_path):
-    from patchbai.events import OrchestratorReply
+    from patchfeld.events import OrchestratorReply
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
@@ -1625,7 +1625,7 @@ class _RejectingAdapter(_RecordingAdapter):
 
 @pytest.mark.asyncio
 async def test_resume_falls_back_when_sdk_rejects(tmp_path):
-    from patchbai.events import OrchestratorReply
+    from patchfeld.events import OrchestratorReply
 
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(OrchestratorSessionEntry(
@@ -1715,7 +1715,7 @@ Expected: PASS for the four new tests + no regressions.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session_resume.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session_resume.py
 git commit -m "feat(orchestrator): /resume with legacy + SDK-rejection fallback"
 ```
 
@@ -1724,7 +1724,7 @@ git commit -m "feat(orchestrator): /resume with legacy + SDK-rejection fallback"
 ## Task 12: `RichTranscript` accepts a path override and reacts to switches
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Create: `tests/test_rich_transcript_replace_source.py`
 
 The widget currently reads from a path derived from `agent_id`. We need:
@@ -1746,16 +1746,16 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.events import (
+from patchfeld.events import (
     AgentMessageAppended,
     EventBus,
     OrchestratorSessionSwitched,
 )
-from patchbai.persistence.transcript_store import (
+from patchfeld.persistence.transcript_store import (
     AgentTranscript as Store,
     TranscriptEntry,
 )
-from patchbai.widgets.rich_transcript import RichTranscript
+from patchfeld.widgets.rich_transcript import RichTranscript
 
 
 class _HostApp(App):
@@ -1856,7 +1856,7 @@ Expected: FAIL — `RichTranscript.__init__` got unexpected kwarg `transcript_pa
 
 - [ ] **Step 3: Implement**
 
-Edit `patchbai/widgets/rich_transcript.py`:
+Edit `patchfeld/widgets/rich_transcript.py`:
 
 ```python
 class RichTranscript(Vertical):
@@ -1884,7 +1884,7 @@ the new event:
 
 ```python
     def on_mount(self) -> None:
-        from patchbai.events import OrchestratorSessionSwitched
+        from patchfeld.events import OrchestratorSessionSwitched
         cwd: Path | None = getattr(self.app, "cwd", None)
         if self._transcript_path is not None:
             store = TranscriptStore(
@@ -1961,7 +1961,7 @@ Expected: PASS — existing `RichTranscript` tests should be untouched
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript_replace_source.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript_replace_source.py
 git commit -m "feat(transcript): RichTranscript replace_source + path override"
 ```
 
@@ -1970,7 +1970,7 @@ git commit -m "feat(transcript): RichTranscript replace_source + path override"
 ## Task 13: `OrchestratorChat` resolves the active path on mount
 
 **Files:**
-- Modify: `patchbai/widgets/orchestrator_chat.py`
+- Modify: `patchfeld/widgets/orchestrator_chat.py`
 - Test: `tests/test_orchestrator_session_resume.py`
 
 `OrchestratorChat` currently passes only `agent_id="orchestrator"` to
@@ -1988,16 +1988,16 @@ async def test_orchestrator_chat_uses_active_transcript_path(tmp_path):
     """Smoke: the chat panel renders with the per-session transcript path."""
     from textual.app import App
 
-    from patchbai.widgets.orchestrator_chat import OrchestratorChat
-    from patchbai.widgets.rich_transcript import RichTranscript
-    from patchbai.persistence.transcript_store import (
+    from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+    from patchfeld.widgets.rich_transcript import RichTranscript
+    from patchfeld.persistence.transcript_store import (
         AgentTranscript, TranscriptEntry,
     )
 
     # Pre-seed an index entry + transcript file so start() resumes.
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     sid = "preseeded"
-    transcript_path = tmp_path / ".patchbai" / "transcripts" / f"orchestrator.{sid}.jsonl"
+    transcript_path = tmp_path / ".patchfeld" / "transcripts" / f"orchestrator.{sid}.jsonl"
     transcript_path.parent.mkdir(parents=True, exist_ok=True)
     AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=transcript_path).append(
         TranscriptEntry(role="user", text="from-preseed"),
@@ -2079,7 +2079,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/orchestrator_chat.py tests/test_orchestrator_session_resume.py
+git add patchfeld/widgets/orchestrator_chat.py tests/test_orchestrator_session_resume.py
 git commit -m "feat(chat): OrchestratorChat uses active transcript path"
 ```
 
@@ -2088,7 +2088,7 @@ git commit -m "feat(chat): OrchestratorChat uses active transcript path"
 ## Task 14: `ResumeScreen` modal
 
 **Files:**
-- Create: `patchbai/widgets/resume_screen.py`
+- Create: `patchfeld/widgets/resume_screen.py`
 - Create: `tests/test_resume_screen.py`
 
 A modal listing past sessions. Esc dismisses with `None`; Enter dismisses
@@ -2102,11 +2102,11 @@ Create `tests/test_resume_screen.py`:
 import pytest
 from textual.app import App
 
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
-from patchbai.widgets.resume_screen import ResumeScreen
+from patchfeld.widgets.resume_screen import ResumeScreen
 
 
 def _seed(tmp_path):
@@ -2186,7 +2186,7 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement**
 
-Create `patchbai/widgets/resume_screen.py`:
+Create `patchfeld/widgets/resume_screen.py`:
 
 ```python
 import time
@@ -2196,7 +2196,7 @@ from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Footer, Label
 
-from patchbai.persistence.orchestrator_sessions import OrchestratorSessionsIndex
+from patchfeld.persistence.orchestrator_sessions import OrchestratorSessionsIndex
 
 
 class ResumeScreen(ModalScreen[str | None]):
@@ -2301,7 +2301,7 @@ Expected: PASS for all three tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/resume_screen.py tests/test_resume_screen.py
+git add patchfeld/widgets/resume_screen.py tests/test_resume_screen.py
 git commit -m "feat(widgets): ResumeScreen modal for picking past sessions"
 ```
 
@@ -2310,7 +2310,7 @@ git commit -m "feat(widgets): ResumeScreen modal for picking past sessions"
 ## Task 15: App handles `OpenResumePicker`
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_plan2.py` (add a test) or new file
   `tests/test_app_resume_picker.py`
 
@@ -2327,16 +2327,16 @@ Create `tests/test_app_resume_picker.py`:
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, OpenResumePicker
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, OpenResumePicker
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
-from patchbai.widgets.resume_screen import ResumeScreen
+from patchfeld.widgets.resume_screen import ResumeScreen
 
 
 def _ok():
@@ -2363,7 +2363,7 @@ async def test_open_resume_picker_pushes_resume_screen(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -2385,14 +2385,14 @@ Expected: FAIL — `app.screen` is the default screen, not `ResumeScreen`.
 
 - [ ] **Step 3: Implement**
 
-Edit `patchbai/app.py`. Add an import:
+Edit `patchfeld/app.py`. Add an import:
 
 ```python
-from patchbai.events import (
+from patchfeld.events import (
     EventBus, OpenResumePicker, TabAdded, TabClosed, TabSwitched,
 )
-from patchbai.persistence.orchestrator_sessions import OrchestratorSessionsIndex
-from patchbai.widgets.resume_screen import ResumeScreen
+from patchfeld.persistence.orchestrator_sessions import OrchestratorSessionsIndex
+from patchfeld.widgets.resume_screen import ResumeScreen
 ```
 
 In `on_mount`, after the orchestrator starts, subscribe:
@@ -2442,7 +2442,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_resume_picker.py
+git add patchfeld/app.py tests/test_app_resume_picker.py
 git commit -m "feat(app): handle OpenResumePicker + update help text"
 ```
 
@@ -2466,10 +2466,10 @@ Create `tests/test_orchestrator_resume_e2e.py`:
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus, UserMessageToOrchestrator
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus, UserMessageToOrchestrator
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 class _RecordingAdapter(FakeSDKAdapter):
@@ -2554,12 +2554,12 @@ git commit -m "test(orchestrator): end-to-end auto-resume across simulated resta
 **Files:** none (manual verification)
 
 Before declaring the feature done, exercise the code path that automated
-tests cannot — actually launch `patchbai`, send a turn, exit, relaunch, and
+tests cannot — actually launch `patchfeld`, send a turn, exit, relaunch, and
 verify the agent remembers.
 
 - [ ] **Step 1: Launch the app, send a turn, quit**
 
-Run: `uv run patchbai` (or whatever the project's launch command is —
+Run: `uv run patchfeld` (or whatever the project's launch command is —
 check `pyproject.toml` for the entry point if unsure).
 
 In the orchestrator chat: type `Remember the number 42 for me.` and press
@@ -2567,7 +2567,7 @@ Enter. Wait for the assistant to acknowledge. Press `ctrl-q` to quit.
 
 - [ ] **Step 2: Re-launch and verify recall**
 
-Run: `uv run patchbai` again.
+Run: `uv run patchfeld` again.
 
 In the orchestrator chat: type `What number did I ask you to remember?` —
 the agent should answer `42`. If it asks "what number?" or hallucinates,
@@ -2587,13 +2587,13 @@ session. Chat repopulates with the original conversation. Type the
 
 - [ ] **Step 5: Verify legacy migration (optional)**
 
-In a separate cwd that has only an old `.patchbai/transcripts/orchestrator.jsonl`
-and no `orchestrator_sessions.json`, launch `patchbai` once. Confirm:
+In a separate cwd that has only an old `.patchfeld/transcripts/orchestrator.jsonl`
+and no `orchestrator_sessions.json`, launch `patchfeld` once. Confirm:
 
 ```bash
-ls .patchbai/transcripts/
+ls .patchfeld/transcripts/
 # expect: orchestrator.legacy-<ts>.jsonl   orchestrator.<new_id>.jsonl
-ls .patchbai/orchestrator_sessions.json
+ls .patchfeld/orchestrator_sessions.json
 # expect: file exists, with one legacy entry and one fresh entry
 ```
 

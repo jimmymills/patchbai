@@ -1,9 +1,9 @@
-from patchbai.layout.spec import Panel
-from patchbai.layout.titles import resolve_title
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.diff_viewer import DiffViewer
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.layout.spec import Panel
+from patchfeld.layout.titles import resolve_title
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.diff_viewer import DiffViewer
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.activity_feed import ActivityFeed
 
 
 class _Bare:
@@ -34,14 +34,14 @@ def test_resolver_swallows_classmethod_exceptions():
     assert resolve_title(Panel(id="x", widget="Boom"), Boom) == "Boom"
 
 
-from patchbai.widgets.agent_transcript import AgentTranscript
-from patchbai.widgets.file_tree import FileTree
-from patchbai.widgets.file_viewer import FileViewer
-from patchbai.widgets.log_tail import LogTail
-from patchbai.widgets.markdown import Markdown
-from patchbai.widgets.notebook import Notebook
-from patchbai.widgets.rich_transcript import RichTranscript
-from patchbai.widgets.terminal import Terminal
+from patchfeld.widgets.agent_transcript import AgentTranscript
+from patchfeld.widgets.file_tree import FileTree
+from patchfeld.widgets.file_viewer import FileViewer
+from patchfeld.widgets.log_tail import LogTail
+from patchfeld.widgets.markdown import Markdown
+from patchfeld.widgets.notebook import Notebook
+from patchfeld.widgets.rich_transcript import RichTranscript
+from patchfeld.widgets.terminal import Terminal
 
 
 def test_file_tree_default_title_uses_path():

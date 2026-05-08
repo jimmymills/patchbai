@@ -3,12 +3,12 @@ from textual.app import App, ComposeResult
 from textual.containers import Container as TxContainer
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.layout.engine import apply
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.activity_feed import ActivityFeed
-from patchbai.widgets.log_tail import LogTail
+from patchfeld.layout.engine import apply
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.activity_feed import ActivityFeed
+from patchfeld.widgets.log_tail import LogTail
 
 
 def _registry() -> WidgetRegistry:

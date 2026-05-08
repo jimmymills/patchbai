@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def _make_manager(tmp_path, ok_script):
@@ -26,7 +26,7 @@ def _spec_dict(primary: str = "#112233") -> dict:
 
 class _StubApp(App):
     """Bare App used as the `app` arg for tool wiring. Avoids spinning up
-    the full PatchbaiApp."""
+    the full PatchfeldApp."""
 
 
 @pytest.mark.asyncio
@@ -41,7 +41,7 @@ async def test_set_theme_invokes_apply_theme(tmp_path, ok_script):
         )
         out = await tools["set_theme"]({"spec": _spec_dict("#aabbcc")})
         assert "applied" in out["content"][0]["text"].lower()
-        assert host.theme.startswith("patchbai:")
+        assert host.theme.startswith("patchfeld:")
 
 
 @pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_load_theme_applies_saved(tmp_path, ok_script):
         )
         out = await tools["load_theme"]({"name": "alpha", "persist": False})
         assert "loaded" in out["content"][0]["text"].lower()
-        assert host.theme == "patchbai:alpha"
+        assert host.theme == "patchfeld:alpha"
 
 
 @pytest.mark.asyncio
@@ -203,7 +203,7 @@ async def test_get_theme_no_name_returns_active(tmp_path, ok_script):
 @pytest.mark.asyncio
 async def test_load_theme_persist_global_writes_config(tmp_path, ok_script):
     """persist=True, scope=global writes the active theme to config_store."""
-    from patchbai.config import ConfigStore
+    from patchfeld.config import ConfigStore
 
     manager = _make_manager(tmp_path, ok_script)
     store = NamedThemesStore(global_dir=tmp_path)

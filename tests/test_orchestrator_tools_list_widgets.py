@@ -5,12 +5,12 @@ from types import SimpleNamespace
 import pytest
 from textual.widget import Widget
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.layout.local_widgets import LoadOutcome
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.layout.local_widgets import LoadOutcome
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 class _W(Widget):

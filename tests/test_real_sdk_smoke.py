@@ -2,9 +2,9 @@ import os
 
 import pytest
 
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.sdk_adapter import RealSDKAdapter
-from patchbai.events import EventBus
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.sdk_adapter import RealSDKAdapter
+from patchfeld.events import EventBus
 
 
 pytestmark = pytest.mark.skipif(

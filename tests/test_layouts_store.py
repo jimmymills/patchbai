@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.layout.spec import LayoutSpec
-from patchbai.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
 
 
 def _spec() -> LayoutSpec:

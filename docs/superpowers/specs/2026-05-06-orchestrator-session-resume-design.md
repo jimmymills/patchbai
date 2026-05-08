@@ -2,7 +2,7 @@
 
 ## Goal
 
-When the user reloads `patchbai`, the orchestrator agent should remember the
+When the user reloads `patchfeld`, the orchestrator agent should remember the
 previous conversation. Today the chat panel *visually* shows past turns
 (replayed from `orchestrator.jsonl`), but the underlying Claude Agent SDK
 session is a brand-new one — the agent has no memory of any of it.
@@ -34,7 +34,7 @@ project. `/reset` is the explicit way to start fresh.
   per launch as today. The hook design here does not preclude adopting the
   same mechanism for child `AgentSession`s in a follow-up.
 - A cross-project session list. The index is per-cwd, like every other
-  state file under `.patchbai/`.
+  state file under `.patchfeld/`.
 - Editing or deleting past sessions from the picker (read-only).
 - A standalone `/sessions` listing command — the picker covers it.
 - Token/cost backfill for legacy sessions (we never captured those).
@@ -56,13 +56,13 @@ project. `/reset` is the explicit way to start fresh.
 
 ### Data model
 
-#### Per-cwd index — `.patchbai/orchestrator_sessions.json`
+#### Per-cwd index — `.patchfeld/orchestrator_sessions.json`
 
 ```json
 [
   {
     "session_id": "9c4f1a8e-…",
-    "transcript_path": ".patchbai/transcripts/orchestrator.9c4f1a8e-….jsonl",
+    "transcript_path": ".patchfeld/transcripts/orchestrator.9c4f1a8e-….jsonl",
     "started_at": 1714939200.12,
     "last_activity": 1714942800.55,
     "first_user_message": "Help me design the resume feature",
@@ -88,15 +88,15 @@ falls through to `/reset` semantics with a user-visible notice.
 Each session's transcript lives at:
 
 ```
-.patchbai/transcripts/orchestrator.<session_id>.jsonl
+.patchfeld/transcripts/orchestrator.<session_id>.jsonl
 ```
 
-This replaces today's single `.patchbai/transcripts/orchestrator.jsonl`.
+This replaces today's single `.patchfeld/transcripts/orchestrator.jsonl`.
 The active session's path is resolved through the index, never hard-coded.
 
 #### Migration (one-time, on first launch after this lands)
 
-If `.patchbai/transcripts/orchestrator.jsonl` exists and no
+If `.patchfeld/transcripts/orchestrator.jsonl` exists and no
 `orchestrator_sessions.json` is present:
 
 1. Generate `legacy_id = f"legacy-{int(started_at_or_mtime)}"`.
@@ -114,19 +114,19 @@ explaining why. The legacy JSONL stays on disk for manual inspection.
 
 | Path | Purpose |
 | --- | --- |
-| `patchbai/persistence/orchestrator_sessions.py` | `OrchestratorSessionEntry` dataclass + `OrchestratorSessionsIndex(cwd)` with `list()`, `upsert(entry)`, `most_recent()`, `migrate_legacy_if_needed()`. |
-| `patchbai/widgets/resume_screen.py` | `ResumeScreen` modal — `DataTable` of entries, Enter selects, Esc cancels. Returns `session_id` to the caller. |
-| `patchbai/persistence/paths.py` | New helper `orchestrator_session_transcript_path(cwd, session_id) -> Path` returning `<cwd>/.patchbai/transcripts/orchestrator.<session_id>.jsonl`. |
-| `patchbai/persistence/transcript_store.py` | `AgentTranscript.__init__` gains an optional `path: Path \| None = None` override. When provided, it bypasses the `agent_id`-derived path. `agent_id` is retained only for diagnostics/logging in this case. |
+| `patchfeld/persistence/orchestrator_sessions.py` | `OrchestratorSessionEntry` dataclass + `OrchestratorSessionsIndex(cwd)` with `list()`, `upsert(entry)`, `most_recent()`, `migrate_legacy_if_needed()`. |
+| `patchfeld/widgets/resume_screen.py` | `ResumeScreen` modal — `DataTable` of entries, Enter selects, Esc cancels. Returns `session_id` to the caller. |
+| `patchfeld/persistence/paths.py` | New helper `orchestrator_session_transcript_path(cwd, session_id) -> Path` returning `<cwd>/.patchfeld/transcripts/orchestrator.<session_id>.jsonl`. |
+| `patchfeld/persistence/transcript_store.py` | `AgentTranscript.__init__` gains an optional `path: Path \| None = None` override. When provided, it bypasses the `agent_id`-derived path. `agent_id` is retained only for diagnostics/logging in this case. |
 
 ### Modified modules
 
-- `patchbai/agents/session.py`
+- `patchfeld/agents/session.py`
   - New optional ctor arg `on_session_id: Callable[[str], None] \| None`.
   - In `_handle_message` for `ResultMessage`: capture `msg.session_id`,
     store on `self._session_id`, fire `on_session_id` exactly once.
   - Public read-only `session_id` property.
-- `patchbai/orchestrator/session.py`
+- `patchfeld/orchestrator/session.py`
   - `start()` now consults the index, decides `resume=<id>` vs new
     `session_id=<uuid>`, points the inner `AgentTranscript` at the
     appropriate per-session JSONL, and registers the session in the
@@ -139,14 +139,14 @@ explaining why. The legacy JSONL stays on disk for manual inspection.
   - New methods `reset()` and `resume(session_id)` plus a private
     `_swap_inner(...)` helper guarded by `asyncio.Lock`.
   - On every send/result, refresh `last_activity` / counts in the index.
-- `patchbai/events.py`
+- `patchfeld/events.py`
   - `OrchestratorSessionSwitched(session_id: str, transcript_path: str)`
   - `OpenResumePicker()`
-- `patchbai/app.py`
+- `patchfeld/app.py`
   - Subscribe to `OpenResumePicker` and `push_screen(ResumeScreen)`,
     on dismiss call `orchestrator.resume(<picked_id>)` (or no-op).
   - Update `action_show_help` to mention `/reset` and `/resume`.
-- `patchbai/widgets/rich_transcript.py`
+- `patchfeld/widgets/rich_transcript.py`
   - New `replace_source(transcript_path: Path)` that clears the
     `VerticalScroll`, drops the current turn, and replays from the
     new path. Live event filtering still keys off `agent_id`, which
@@ -156,14 +156,14 @@ explaining why. The legacy JSONL stays on disk for manual inspection.
     override. When provided, replay reads from that path instead of
     deriving one from `agent_id`. `OrchestratorChat` resolves the
     active path through the orchestrator and passes it down.
-- `patchbai/widgets/orchestrator_chat.py`
+- `patchfeld/widgets/orchestrator_chat.py`
   - Update placeholder to hint at `/reset` and `/resume`.
 
 ### Control flow
 
 #### Launch
 
-1. `PatchbaiApp.on_mount` calls `orchestrator.start()` as today.
+1. `PatchfeldApp.on_mount` calls `orchestrator.start()` as today.
 2. `OrchestratorSession.start()`:
    - Calls `OrchestratorSessionsIndex.migrate_legacy_if_needed()`.
    - Loads the index. If `most_recent()` exists with `legacy=False`,
@@ -209,7 +209,7 @@ explaining why. The legacy JSONL stays on disk for manual inspection.
 
 1. Parser publishes `OpenResumePicker()` and returns — does NOT send
    the literal `/resume` to the agent.
-2. `PatchbaiApp` `push_screen(ResumeScreen, on_picked)`.
+2. `PatchfeldApp` `push_screen(ResumeScreen, on_picked)`.
 3. `ResumeScreen` reads from `OrchestratorSessionsIndex.list()`,
    sorts by `last_activity` desc, displays up to 50 rows. Columns:
    when (relative), first_user_message (truncated to 60 chars),
@@ -298,7 +298,7 @@ because it already holds a direct reference (`self.orchestrator`).
 ## Testing
 
 TDD-first, with `FakeSDKAdapter` (already in
-`patchbai/agents/fake_sdk_adapter.py`). Concrete coverage:
+`patchfeld/agents/fake_sdk_adapter.py`). Concrete coverage:
 
 1. **`OrchestratorSessionsIndex` round-trip** — write, read,
    atomic-write semantics, corrupt-file → empty list with WARN.

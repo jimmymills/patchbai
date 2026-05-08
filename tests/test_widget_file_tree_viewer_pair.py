@@ -3,9 +3,9 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.events import EventBus, FileSelected
-from patchbai.widgets.file_tree import FileTree
-from patchbai.widgets.file_viewer import FileViewer
+from patchfeld.events import EventBus, FileSelected
+from patchfeld.widgets.file_tree import FileTree
+from patchfeld.widgets.file_viewer import FileViewer
 
 
 class _Pair(App):

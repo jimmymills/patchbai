@@ -6,10 +6,10 @@ from claude_agent_sdk import (
     PermissionResultAllow, PermissionResultDeny, ToolPermissionContext,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.events import EventBus, PermissionRequested, PermissionResolved
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.events import EventBus, PermissionRequested, PermissionResolved
 
 
 def _ok_script():

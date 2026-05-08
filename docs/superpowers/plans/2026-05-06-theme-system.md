@@ -4,7 +4,7 @@
 
 **Goal:** Give the orchestrator a saved-theme system that mirrors the existing saved-layout system: ThemeSpec, NamedThemesStore, set/save/load/list/get tools, a switcher modal, and a `default` theme seeded from the live look on first boot.
 
-**Architecture:** Near-mirror of the layouts subsystem. A `ThemeSpec` (palette + extra_css) is stored at `~/.config/patchbai/themes/<name>.json`. `apply_theme(app, spec, theme_name=...)` registers a Textual `Theme`, sets it active, and (re)installs `extra_css` as a single named source on `app.stylesheet`. Built-in Textual themes (nord, gruvbox, dracula, …) are reachable through `load_theme` via a fall-through path. Active theme name is persisted in `workspace.active_theme` (project) → `config.ui.active_theme` (global) → `"default"`.
+**Architecture:** Near-mirror of the layouts subsystem. A `ThemeSpec` (palette + extra_css) is stored at `~/.config/patchfeld/themes/<name>.json`. `apply_theme(app, spec, theme_name=...)` registers a Textual `Theme`, sets it active, and (re)installs `extra_css` as a single named source on `app.stylesheet`. Built-in Textual themes (nord, gruvbox, dracula, …) are reachable through `load_theme` via a fall-through path. Active theme name is persisted in `workspace.active_theme` (project) → `config.ui.active_theme` (global) → `"default"`.
 
 **Tech Stack:** Python 3.12, Textual (with `textual.theme.Theme`, `App.register_theme`, `App.stylesheet`), Pydantic v2, pytest + pytest-asyncio, `uv` for env management.
 
@@ -17,13 +17,13 @@
 ## Task 1: ThemeSpec data model
 
 **Files:**
-- Create: `patchbai/theme/__init__.py`
-- Create: `patchbai/theme/spec.py`
+- Create: `patchfeld/theme/__init__.py`
+- Create: `patchfeld/theme/spec.py`
 - Test: `tests/test_theme_spec.py`
 
 - [ ] **Step 1: Create empty package `__init__`**
 
-Create `patchbai/theme/__init__.py` with no content (empty file).
+Create `patchfeld/theme/__init__.py` with no content (empty file).
 
 - [ ] **Step 2: Write failing tests for ThemeSpec**
 
@@ -33,7 +33,7 @@ Create `tests/test_theme_spec.py`:
 import pytest
 from pydantic import ValidationError
 
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def test_theme_palette_requires_primary():
@@ -100,9 +100,9 @@ def test_theme_spec_extra_forbidden():
 - [ ] **Step 3: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_theme_spec.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'patchbai.theme.spec'` or import errors.
+Expected: FAIL with `ModuleNotFoundError: No module named 'patchfeld.theme.spec'` or import errors.
 
-- [ ] **Step 4: Implement `patchbai/theme/spec.py`**
+- [ ] **Step 4: Implement `patchfeld/theme/spec.py`**
 
 ```python
 from pydantic import BaseModel, ConfigDict, Field
@@ -146,7 +146,7 @@ Expected: PASS, all 5 tests green.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/theme/__init__.py patchbai/theme/spec.py tests/test_theme_spec.py
+git add patchfeld/theme/__init__.py patchfeld/theme/spec.py tests/test_theme_spec.py
 git commit -m "feat(theme): ThemeSpec/ThemePalette pydantic models"
 ```
 
@@ -155,7 +155,7 @@ git commit -m "feat(theme): ThemeSpec/ThemePalette pydantic models"
 ## Task 2: NamedThemesStore persistence
 
 **Files:**
-- Create: `patchbai/persistence/themes_store.py`
+- Create: `patchfeld/persistence/themes_store.py`
 - Test: `tests/test_themes_store.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -167,8 +167,8 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def _spec() -> ThemeSpec:
@@ -223,7 +223,7 @@ def test_save_rejects_invalid_name(tmp_path: Path):
 Run: `uv run pytest tests/test_themes_store.py -v`
 Expected: FAIL with import error.
 
-- [ ] **Step 3: Implement `patchbai/persistence/themes_store.py`**
+- [ ] **Step 3: Implement `patchfeld/persistence/themes_store.py`**
 
 ```python
 import json
@@ -231,8 +231,8 @@ import logging
 import re
 from pathlib import Path
 
-from patchbai.persistence.atomic import write_json_atomic
-from patchbai.theme.spec import ThemeSpec
+from patchfeld.persistence.atomic import write_json_atomic
+from patchfeld.theme.spec import ThemeSpec
 
 log = logging.getLogger(__name__)
 
@@ -280,7 +280,7 @@ Expected: PASS, all 6 tests green.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/persistence/themes_store.py tests/test_themes_store.py
+git add patchfeld/persistence/themes_store.py tests/test_themes_store.py
 git commit -m "feat(persistence): NamedThemesStore mirroring NamedLayoutsStore"
 ```
 
@@ -289,13 +289,13 @@ git commit -m "feat(persistence): NamedThemesStore mirroring NamedLayoutsStore"
 ## Task 3: Replace `ui.theme` with `ui.active_theme` in Config
 
 **Files:**
-- Modify: `patchbai/config.py`
+- Modify: `patchfeld/config.py`
 - Test: `tests/test_config_general.py` (read-only — verify how field is exercised)
 - Test: `tests/test_config_store.py` (modify if it asserts on `theme`)
 
 - [ ] **Step 1: Find existing assertions on `ui.theme`**
 
-Run: `grep -rn "ui\.theme\|ui_theme\|theme.*=.*['\"]dark['\"]\|UISection" /Users/jimmy.mills/Developer/patchbai/tests /Users/jimmy.mills/Developer/patchbai/patchbai --include="*.py"`
+Run: `grep -rn "ui\.theme\|ui_theme\|theme.*=.*['\"]dark['\"]\|UISection" /Users/jimmy.mills/Developer/patchfeld/tests /Users/jimmy.mills/Developer/patchfeld/patchfeld --include="*.py"`
 
 Note any tests that assert on the `theme` field.
 
@@ -306,7 +306,7 @@ Append to `tests/test_config_store.py` (or create if absent — but it should ex
 ```python
 from pathlib import Path
 
-from patchbai.config import ConfigStore
+from patchfeld.config import ConfigStore
 
 
 def test_active_theme_defaults_to_default(tmp_path: Path):
@@ -342,9 +342,9 @@ def test_legacy_ui_theme_key_silently_ignored(tmp_path: Path):
 Run: `uv run pytest tests/test_config_store.py -v -k "active_theme or legacy_ui_theme"`
 Expected: FAIL — `active_theme` attribute does not exist.
 
-- [ ] **Step 4: Update `patchbai/config.py`**
+- [ ] **Step 4: Update `patchfeld/config.py`**
 
-In `patchbai/config.py`, replace the `UISection` dataclass and the `load`/`save` TOML logic:
+In `patchfeld/config.py`, replace the `UISection` dataclass and the `load`/`save` TOML logic:
 
 ```python
 @dataclass
@@ -395,7 +395,7 @@ Expected: PASS — all new tests green, no regressions.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/config.py tests/test_config_store.py
+git add patchfeld/config.py tests/test_config_store.py
 # Also include tests/test_config_general.py if you modified it.
 git commit -m "feat(config): replace ui.theme with ui.active_theme (default 'default')"
 ```
@@ -405,7 +405,7 @@ git commit -m "feat(config): replace ui.theme with ui.active_theme (default 'def
 ## Task 4: Add `Workspace.active_theme` field
 
 **Files:**
-- Modify: `patchbai/workspace/spec.py`
+- Modify: `patchfeld/workspace/spec.py`
 - Test: `tests/test_workspace_spec.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -444,7 +444,7 @@ Expected: FAIL — field does not exist (Pydantic forbids extra).
 
 - [ ] **Step 3: Add the field to `Workspace`**
 
-In `patchbai/workspace/spec.py`, modify the `Workspace` class to add `active_theme`:
+In `patchfeld/workspace/spec.py`, modify the `Workspace` class to add `active_theme`:
 
 ```python
 class Workspace(BaseModel):
@@ -472,7 +472,7 @@ Expected: PASS — all tests green, including pre-existing ones.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/workspace/spec.py tests/test_workspace_spec.py
+git add patchfeld/workspace/spec.py tests/test_workspace_spec.py
 git commit -m "feat(workspace): add optional active_theme override field"
 ```
 
@@ -481,7 +481,7 @@ git commit -m "feat(workspace): add optional active_theme override field"
 ## Task 5: Theme engine (apply_theme)
 
 **Files:**
-- Create: `patchbai/theme/engine.py`
+- Create: `patchfeld/theme/engine.py`
 - Test: `tests/test_theme_engine.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -492,8 +492,8 @@ Create `tests/test_theme_engine.py`:
 import pytest
 from textual.app import App
 
-from patchbai.theme.engine import apply_theme
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.theme.engine import apply_theme
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def _spec(primary: str = "#005577", extra_css: str = "") -> ThemeSpec:
@@ -508,8 +508,8 @@ async def test_apply_theme_registers_and_activates():
     host = _Host()
     async with host.run_test():
         await apply_theme(host, _spec(primary="#112233"), theme_name="alpha")
-        assert host.theme == "patchbai:alpha"
-        assert "patchbai:alpha" in host.available_themes
+        assert host.theme == "patchfeld:alpha"
+        assert "patchfeld:alpha" in host.available_themes
 
 
 @pytest.mark.asyncio
@@ -524,7 +524,7 @@ async def test_apply_theme_replaces_existing_registration():
         await apply_theme(host, _spec(primary="#111111"), theme_name="alpha")
         # Mutate palette and re-apply with same name.
         await apply_theme(host, _spec(primary="#222222"), theme_name="alpha")
-        assert host.theme == "patchbai:alpha"
+        assert host.theme == "patchfeld:alpha"
 
 
 @pytest.mark.asyncio
@@ -540,7 +540,7 @@ async def test_apply_theme_installs_extra_css_source():
             theme_name="alpha",
         )
         keys = list(host.stylesheet.source.keys())
-        assert ("patchbai_theme", "extra_css") in keys
+        assert ("patchfeld_theme", "extra_css") in keys
 
 
 @pytest.mark.asyncio
@@ -559,7 +559,7 @@ async def test_apply_theme_swaps_extra_css_source():
             host, _spec(extra_css="B { color: $accent; }"),
             theme_name="alpha",
         )
-        key = ("patchbai_theme", "extra_css")
+        key = ("patchfeld_theme", "extra_css")
         assert key in host.stylesheet.source
         css = host.stylesheet.source[key].content
         assert "B {" in css
@@ -578,7 +578,7 @@ async def test_apply_theme_drops_extra_css_when_empty():
             theme_name="alpha",
         )
         await apply_theme(host, _spec(extra_css=""), theme_name="alpha")
-        assert ("patchbai_theme", "extra_css") not in host.stylesheet.source
+        assert ("patchfeld_theme", "extra_css") not in host.stylesheet.source
 
 
 @pytest.mark.asyncio
@@ -612,7 +612,7 @@ async def test_apply_theme_bad_css_raises_before_mutating_app_theme():
                 host, _spec(extra_css=bad_css), theme_name="alpha",
             )
         assert host.theme == original_theme
-        assert "patchbai:alpha" not in host.available_themes
+        assert "patchfeld:alpha" not in host.available_themes
 
 
 @pytest.mark.asyncio
@@ -632,9 +632,9 @@ async def test_apply_theme_bad_palette_color_raises():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_theme_engine.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'patchbai.theme.engine'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'patchfeld.theme.engine'`.
 
-- [ ] **Step 3: Implement `patchbai/theme/engine.py`**
+- [ ] **Step 3: Implement `patchfeld/theme/engine.py`**
 
 ```python
 """Apply a ThemeSpec to a live Textual App.
@@ -650,10 +650,10 @@ from textual.app import App
 from textual.css.stylesheet import Stylesheet
 from textual.theme import Theme
 
-from patchbai.theme.spec import ThemeSpec
+from patchfeld.theme.spec import ThemeSpec
 
-_EXTRA_CSS_KEY = ("patchbai_theme", "extra_css")
-_THEME_NAME_PREFIX = "patchbai:"
+_EXTRA_CSS_KEY = ("patchfeld_theme", "extra_css")
+_THEME_NAME_PREFIX = "patchfeld:"
 
 
 async def apply_theme(app: App, spec: ThemeSpec, *, theme_name: str) -> None:
@@ -702,7 +702,7 @@ If `test_apply_theme_bad_palette_color_raises` does not raise (Textual may accep
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/theme/engine.py tests/test_theme_engine.py
+git add patchfeld/theme/engine.py tests/test_theme_engine.py
 git commit -m "feat(theme): apply_theme engine with extra_css source management"
 ```
 
@@ -711,11 +711,11 @@ git commit -m "feat(theme): apply_theme engine with extra_css source management"
 ## Task 6: Initialize `_active_theme_extra_css` cache on App
 
 **Files:**
-- Modify: `patchbai/app.py:153-194` (the `__init__` method)
+- Modify: `patchfeld/app.py:153-194` (the `__init__` method)
 
-- [ ] **Step 1: Add the field initializer to `PatchbaiApp.__init__`**
+- [ ] **Step 1: Add the field initializer to `PatchfeldApp.__init__`**
 
-In `patchbai/app.py`, near the top of `__init__` after `super().__init__()` (line 162), add:
+In `patchfeld/app.py`, near the top of `__init__` after `super().__init__()` (line 162), add:
 
 ```python
         # Cache for the currently-applied theme's extra_css. Initialized to
@@ -733,7 +733,7 @@ Expected: PASS (no behavior change yet).
 - [ ] **Step 3: Commit**
 
 ```bash
-git add patchbai/app.py
+git add patchfeld/app.py
 git commit -m "chore(app): init _active_theme_extra_css cache slot"
 ```
 
@@ -742,7 +742,7 @@ git commit -m "chore(app): init _active_theme_extra_css cache slot"
 ## Task 7: Orchestrator tools (5 new handlers)
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py` (handler functions + `_SPECS`-style wiring + `build_orchestrator_tools` + `build_orchestrator_mcp_server`)
+- Modify: `patchfeld/orchestrator/tools.py` (handler functions + `_SPECS`-style wiring + `build_orchestrator_tools` + `build_orchestrator_mcp_server`)
 - Test: `tests/test_orchestrator_tools_theme.py`
 
 - [ ] **Step 1: Write failing tests for the 5 tools (handler-level)**
@@ -756,12 +756,12 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def _make_manager(tmp_path, ok_script):
@@ -778,7 +778,7 @@ def _spec_dict(primary: str = "#112233") -> dict:
 
 class _StubApp(App):
     """Bare App used as the `app` arg for tool wiring. Avoids spinning up
-    the full PatchbaiApp."""
+    the full PatchfeldApp."""
 
 
 @pytest.mark.asyncio
@@ -793,7 +793,7 @@ async def test_set_theme_invokes_apply_theme(tmp_path, ok_script):
         )
         out = await tools["set_theme"]({"spec": _spec_dict("#aabbcc")})
         assert "applied" in out["content"][0]["text"].lower()
-        assert host.theme.startswith("patchbai:")
+        assert host.theme.startswith("patchfeld:")
 
 
 @pytest.mark.asyncio
@@ -863,7 +863,7 @@ async def test_load_theme_applies_saved(tmp_path, ok_script):
         )
         out = await tools["load_theme"]({"name": "alpha", "persist": False})
         assert "loaded" in out["content"][0]["text"].lower()
-        assert host.theme == "patchbai:alpha"
+        assert host.theme == "patchfeld:alpha"
 
 
 @pytest.mark.asyncio
@@ -955,14 +955,14 @@ async def test_get_theme_no_name_returns_active(tmp_path, ok_script):
 Run: `uv run pytest tests/test_orchestrator_tools_theme.py -v`
 Expected: FAIL — `themes_store` kwarg is unknown to `build_orchestrator_tools`.
 
-- [ ] **Step 3: Add the 5 handler builders to `patchbai/orchestrator/tools.py`**
+- [ ] **Step 3: Add the 5 handler builders to `patchfeld/orchestrator/tools.py`**
 
-Open `patchbai/orchestrator/tools.py`. Add this import near the existing imports:
+Open `patchfeld/orchestrator/tools.py`. Add this import near the existing imports:
 
 ```python
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.engine import apply_theme
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.engine import apply_theme
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 ```
 
 Add helper at module level (just below `_get_layout_handler` is fine):
@@ -1054,7 +1054,7 @@ def _load_theme_handler(themes_store: NamedThemesStore, app, config_store=None):
             if name not in available:
                 return {"content": [{"type": "text", "text": f"Theme not found: {name}"}]}
             # Built-in pass-through: clear our extra_css source, set theme directly.
-            from patchbai.theme.engine import _EXTRA_CSS_KEY
+            from patchfeld.theme.engine import _EXTRA_CSS_KEY
             if _EXTRA_CSS_KEY in app.stylesheet.source:
                 del app.stylesheet.source[_EXTRA_CSS_KEY]
             app._active_theme_extra_css = ""
@@ -1071,7 +1071,7 @@ def _load_theme_handler(themes_store: NamedThemesStore, app, config_store=None):
                 cfg.ui.active_theme = name
                 config_store.save(cfg)
             elif scope == "project" and getattr(app, "_workspace", None) is not None:
-                from patchbai.persistence.workspace_store import save_workspace
+                from patchfeld.persistence.workspace_store import save_workspace
                 ws = app._workspace.model_copy(update={"active_theme": name})
                 app._workspace = ws
                 save_workspace(app.cwd, ws)
@@ -1086,15 +1086,15 @@ def _list_themes_handler(themes_store: NamedThemesStore, app):
         try:
             builtin = sorted(
                 n for n in app.available_themes.keys()
-                if not n.startswith("patchbai:")
+                if not n.startswith("patchfeld:")
             )
         except Exception:
             builtin = []
         active = getattr(app, "theme", None) or ""
-        # Strip the "patchbai:" prefix from active for user-facing display
+        # Strip the "patchfeld:" prefix from active for user-facing display
         # so a saved theme named "alpha" reads back as "alpha".
-        if active.startswith("patchbai:"):
-            active_display = active[len("patchbai:"):]
+        if active.startswith("patchfeld:"):
+            active_display = active[len("patchfeld:"):]
         else:
             active_display = active
         payload = {"saved": saved, "builtin": builtin, "active": active_display}
@@ -1116,8 +1116,8 @@ def _get_theme_handler(themes_store: NamedThemesStore, app):
         except Exception as e:
             return {"content": [{"type": "text", "text": f"Cannot read active theme: {e}"}]}
         active = getattr(app, "theme", "") or ""
-        if active.startswith("patchbai:"):
-            active = active[len("patchbai:"):]
+        if active.startswith("patchfeld:"):
+            active = active[len("patchfeld:"):]
         extra = getattr(app, "_active_theme_extra_css", "") or ""
         payload = {"name": active, "palette": palette, "extra_css": extra}
         return {"content": [{"type": "text", "text": json.dumps(payload)}]}
@@ -1126,7 +1126,7 @@ def _get_theme_handler(themes_store: NamedThemesStore, app):
 
 - [ ] **Step 4: Wire the new handlers into `build_orchestrator_tools`**
 
-In `build_orchestrator_tools` (`patchbai/orchestrator/tools.py:401`), add a `themes_store` kwarg and a new gating block. The full updated signature:
+In `build_orchestrator_tools` (`patchfeld/orchestrator/tools.py:401`), add a `themes_store` kwarg and a new gating block. The full updated signature:
 
 ```python
 def build_orchestrator_tools(
@@ -1166,7 +1166,7 @@ If `test_save_theme_without_spec_snapshots_active` fails because `app.current_th
 
 - [ ] **Step 6: Wire the new handlers into `build_orchestrator_mcp_server`**
 
-In `build_orchestrator_mcp_server` (`patchbai/orchestrator/tools.py:452`), add the same `themes_store` kwarg and an `if themes_store is not None and app is not None:` block that registers each tool with `tool(name, desc, schema)(handler)`. Use these descriptions:
+In `build_orchestrator_mcp_server` (`patchfeld/orchestrator/tools.py:452`), add the same `themes_store` kwarg and an `if themes_store is not None and app is not None:` block that registers each tool with `tool(name, desc, schema)(handler)`. Use these descriptions:
 
 ```python
     if themes_store is not None and app is not None:
@@ -1188,7 +1188,7 @@ In `build_orchestrator_mcp_server` (`patchbai/orchestrator/tools.py:452`), add t
             ),
             (
                 "save_theme",
-                "Save a ThemeSpec to ~/.config/patchbai/themes/<name>.json. "
+                "Save a ThemeSpec to ~/.config/patchfeld/themes/<name>.json. "
                 "If `spec` is omitted, snapshots the currently-active palette "
                 "and the last applied extra_css. Use this to capture the "
                 "live look as a named theme.",
@@ -1201,7 +1201,7 @@ In `build_orchestrator_mcp_server` (`patchbai/orchestrator/tools.py:452`), add t
                 "Textual built-ins (textual-dark, nord, gruvbox, dracula, "
                 "catppuccin-*, …) if the name is not in the saved store. "
                 "When `persist` (default true) the active-theme pointer is "
-                "written: `scope='global'` writes ~/.config/patchbai/config.toml "
+                "written: `scope='global'` writes ~/.config/patchfeld/config.toml "
                 "ui.active_theme; `scope='project'` writes workspace.json's "
                 "active_theme. Default scope is 'global'.",
                 {"name": str, "persist": bool, "scope": str},
@@ -1212,7 +1212,7 @@ In `build_orchestrator_mcp_server` (`patchbai/orchestrator/tools.py:452`), add t
                 "Return {saved, builtin, active}. `saved` is the user's "
                 "named themes; `builtin` is Textual's built-in themes "
                 "(read-only); `active` is the current theme name (without "
-                "the internal patchbai: prefix).",
+                "the internal patchfeld: prefix).",
                 {},
                 _list_themes_handler(themes_store, app),
             ),
@@ -1238,7 +1238,7 @@ Expected: PASS, no regressions.
 - [ ] **Step 8: Commit**
 
 ```bash
-git add patchbai/orchestrator/tools.py tests/test_orchestrator_tools_theme.py
+git add patchfeld/orchestrator/tools.py tests/test_orchestrator_tools_theme.py
 git commit -m "feat(orchestrator): set/save/load/list/get_theme MCP tools"
 ```
 
@@ -1247,11 +1247,11 @@ git commit -m "feat(orchestrator): set/save/load/list/get_theme MCP tools"
 ## Task 8: Wire `themes_store` through `OrchestratorSession`
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py:60-89` (the `__init__` and `_build_and_start_inner`)
+- Modify: `patchfeld/orchestrator/session.py:60-89` (the `__init__` and `_build_and_start_inner`)
 
 - [ ] **Step 1: Add `themes_store` kwarg to `OrchestratorSession.__init__`**
 
-In `patchbai/orchestrator/session.py`, modify the `__init__` signature and store the new kwarg:
+In `patchfeld/orchestrator/session.py`, modify the `__init__` signature and store the new kwarg:
 
 ```python
     def __init__(
@@ -1307,7 +1307,7 @@ Expected: PASS — kwarg is optional and defaults to None, so no existing tests 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py
+git add patchfeld/orchestrator/session.py
 git commit -m "chore(orchestrator): forward themes_store kwarg to MCP build"
 ```
 
@@ -1316,7 +1316,7 @@ git commit -m "chore(orchestrator): forward themes_store kwarg to MCP build"
 ## Task 9: Theme switcher modal
 
 **Files:**
-- Create: `patchbai/widgets/theme_switcher.py`
+- Create: `patchfeld/widgets/theme_switcher.py`
 - Test: `tests/test_theme_switcher.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -1328,9 +1328,9 @@ import pytest
 from textual.app import App
 from textual.widgets import ListView
 
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.spec import ThemePalette, ThemeSpec
-from patchbai.widgets.theme_switcher import ThemeSwitcherScreen
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.widgets.theme_switcher import ThemeSwitcherScreen
 
 
 def _spec() -> ThemeSpec:
@@ -1453,7 +1453,7 @@ async def test_switcher_dismisses_with_none_on_escape(tmp_path):
 Run: `uv run pytest tests/test_theme_switcher.py -v`
 Expected: FAIL with import error.
 
-- [ ] **Step 3: Implement `patchbai/widgets/theme_switcher.py`**
+- [ ] **Step 3: Implement `patchfeld/widgets/theme_switcher.py`**
 
 ```python
 from textual.binding import Binding
@@ -1461,7 +1461,7 @@ from textual.containers import Container
 from textual.screen import ModalScreen
 from textual.widgets import Footer, Label, ListItem, ListView
 
-from patchbai.persistence.themes_store import NamedThemesStore
+from patchfeld.persistence.themes_store import NamedThemesStore
 
 
 class ThemeSwitcherScreen(ModalScreen[str | None]):
@@ -1531,7 +1531,7 @@ If `test_switcher_marks_active_theme` fails because the label-walking technique 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/theme_switcher.py tests/test_theme_switcher.py
+git add patchfeld/widgets/theme_switcher.py tests/test_theme_switcher.py
 git commit -m "feat(widgets): ThemeSwitcherScreen modal mirroring layout switcher"
 ```
 
@@ -1540,22 +1540,22 @@ git commit -m "feat(widgets): ThemeSwitcherScreen modal mirroring layout switche
 ## Task 10: App boot wiring — store, seed, resolve, apply, action, key
 
 **Files:**
-- Modify: `patchbai/app.py` (multiple locations: imports, `__init__`, `_register_actions`, `BINDINGS`, `action_show_help`, `on_mount`, plus a new helper `_apply_theme_by_name`)
+- Modify: `patchfeld/app.py` (multiple locations: imports, `__init__`, `_register_actions`, `BINDINGS`, `action_show_help`, `on_mount`, plus a new helper `_apply_theme_by_name`)
 
 - [ ] **Step 1: Add imports**
 
-In `patchbai/app.py`, add to the imports section (alongside the existing `from patchbai.persistence.layouts_store import NamedLayoutsStore`):
+In `patchfeld/app.py`, add to the imports section (alongside the existing `from patchfeld.persistence.layouts_store import NamedLayoutsStore`):
 
 ```python
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.engine import _EXTRA_CSS_KEY, apply_theme
-from patchbai.theme.spec import ThemePalette, ThemeSpec
-from patchbai.widgets.theme_switcher import ThemeSwitcherScreen
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.engine import _EXTRA_CSS_KEY, apply_theme
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.widgets.theme_switcher import ThemeSwitcherScreen
 ```
 
 - [ ] **Step 2: Construct the themes store and forward to OrchestratorSession**
 
-In `PatchbaiApp.__init__` (`app.py:153`), after `self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)` (line 172), add:
+In `PatchfeldApp.__init__` (`app.py:153`), after `self.layouts_store = NamedLayoutsStore(global_dir=self._global_dir)` (line 172), add:
 
 ```python
         self.themes_store = NamedThemesStore(global_dir=self._global_dir)
@@ -1601,7 +1601,7 @@ In `_register_actions` (`app.py:198`), after the existing `open_layout_switcher`
 
 - [ ] **Step 5: Implement `action_open_theme_switcher` and `_apply_theme_by_name`**
 
-Add these methods to `PatchbaiApp` (anywhere in the class — adjacent to `action_open_layout_switcher` is natural):
+Add these methods to `PatchfeldApp` (anywhere in the class — adjacent to `action_open_layout_switcher` is natural):
 
 ```python
     def action_open_theme_switcher(self) -> None:
@@ -1610,13 +1610,13 @@ Add these methods to `PatchbaiApp` (anywhere in the class — adjacent to `actio
         try:
             builtins = sorted(
                 n for n in self.available_themes.keys()
-                if not n.startswith("patchbai:")
+                if not n.startswith("patchfeld:")
             )
         except Exception:
             builtins = []
         active = self.theme or ""
-        if active.startswith("patchbai:"):
-            active = active[len("patchbai:"):]
+        if active.startswith("patchfeld:"):
+            active = active[len("patchfeld:"):]
 
         def _on_picked(name: str | None) -> None:
             if not name:
@@ -1662,7 +1662,7 @@ Add these methods to `PatchbaiApp` (anywhere in the class — adjacent to `actio
         elif scope == "project" and self._workspace is not None:
             ws = self._workspace.model_copy(update={"active_theme": name})
             self._workspace = ws
-            from patchbai.persistence.workspace_store import save_workspace
+            from patchfeld.persistence.workspace_store import save_workspace
             save_workspace(self.cwd, ws)
 ```
 
@@ -1702,7 +1702,7 @@ In `on_mount` (`app.py:595`), modify so that AFTER the existing `if self.layouts
         # Theme seed: snapshot the current Textual theme as "default" if not present.
         if self.themes_store.load("default") is None:
             try:
-                from patchbai.orchestrator.tools import _palette_from_textual_theme
+                from patchfeld.orchestrator.tools import _palette_from_textual_theme
                 pal = _palette_from_textual_theme(self.current_theme)
                 self.themes_store.save(
                     "default", ThemeSpec(palette=pal, extra_css=""),
@@ -1728,7 +1728,7 @@ In `on_mount` (`app.py:595`), modify so that AFTER the existing `if self.layouts
                 pass  # last-resort: leave Textual default in place.
 ```
 
-(Note: `_palette_from_textual_theme` was added to `patchbai/orchestrator/tools.py` in Task 7. Importing from there is fine; alternatively move it to `patchbai/theme/engine.py` if you prefer no orchestrator-tools import inside `app.py`.)
+(Note: `_palette_from_textual_theme` was added to `patchfeld/orchestrator/tools.py` in Task 7. Importing from there is fine; alternatively move it to `patchfeld/theme/engine.py` if you prefer no orchestrator-tools import inside `app.py`.)
 
 - [ ] **Step 8: Run app smoke tests**
 
@@ -1740,7 +1740,7 @@ If a smoke test fails because `self.current_theme` returns `None` early in mount
 - [ ] **Step 9: Commit**
 
 ```bash
-git add patchbai/app.py
+git add patchfeld/app.py
 git commit -m "feat(app): construct themes store, seed default, apply on boot, ctrl+shift+l switcher"
 ```
 
@@ -1761,21 +1761,21 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.app import PatchbaiApp
-from patchbai.config import ConfigStore
-from patchbai.persistence.paths import project_workspace_path
-from patchbai.persistence.themes_store import NamedThemesStore
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.app import PatchfeldApp
+from patchfeld.config import ConfigStore
+from patchfeld.persistence.paths import project_workspace_path
+from patchfeld.persistence.themes_store import NamedThemesStore
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 @pytest.mark.asyncio
 async def test_boot_seeds_default_theme(tmp_path: Path):
-    """First-run boot writes a 'default' theme to ~/.config/patchbai/themes/."""
+    """First-run boot writes a 'default' theme to ~/.config/patchfeld/themes/."""
     global_dir = tmp_path / "config"
     cwd = tmp_path / "project"
     cwd.mkdir()
 
-    app = PatchbaiApp(cwd=cwd, global_dir=global_dir)
+    app = PatchfeldApp(cwd=cwd, global_dir=global_dir)
     async with app.run_test() as pilot:
         await pilot.pause()
 
@@ -1798,7 +1798,7 @@ async def test_boot_does_not_overwrite_existing_default(tmp_path: Path):
         ThemeSpec(palette=ThemePalette(primary="#deadbe")),
     )
 
-    app = PatchbaiApp(cwd=cwd, global_dir=global_dir)
+    app = PatchfeldApp(cwd=cwd, global_dir=global_dir)
     async with app.run_test() as pilot:
         await pilot.pause()
 
@@ -1812,7 +1812,7 @@ async def test_boot_with_workspace_active_theme_applies_builtin(tmp_path: Path):
     cwd = tmp_path / "project"
     cwd.mkdir()
     # Pre-seed workspace.json with active_theme="nord".
-    project_state = cwd / ".patchbai"
+    project_state = cwd / ".patchfeld"
     project_state.mkdir()
     (project_state / "workspace.json").write_text(json.dumps({
         "version": 1,
@@ -1826,7 +1826,7 @@ async def test_boot_with_workspace_active_theme_applies_builtin(tmp_path: Path):
         "active_theme": "nord",
     }))
 
-    app = PatchbaiApp(cwd=cwd, global_dir=global_dir)
+    app = PatchfeldApp(cwd=cwd, global_dir=global_dir)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.theme == "nord"
@@ -1843,7 +1843,7 @@ async def test_boot_with_global_active_theme_applies_builtin(tmp_path: Path):
     cfg.ui.active_theme = "gruvbox"
     cfg_store.save(cfg)
 
-    app = PatchbaiApp(cwd=cwd, global_dir=global_dir)
+    app = PatchfeldApp(cwd=cwd, global_dir=global_dir)
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.theme == "gruvbox"
@@ -1860,7 +1860,7 @@ async def test_boot_with_corrupted_active_theme_falls_back(tmp_path: Path):
     cfg.ui.active_theme = "no-such-theme-xyz"
     cfg_store.save(cfg)
 
-    app = PatchbaiApp(cwd=cwd, global_dir=global_dir)
+    app = PatchfeldApp(cwd=cwd, global_dir=global_dir)
     async with app.run_test() as pilot:
         await pilot.pause()
         # App is alive; theme was either left at Textual default or
@@ -1898,11 +1898,11 @@ This task is not test-driven — it's a sanity check. The unit + smoke tests are
 - [ ] **Step 1: Boot the app in a scratch dir**
 
 ```bash
-cd /tmp && mkdir -p patchbai_smoke && cd patchbai_smoke
-uv --project /Users/jimmy.mills/Developer/patchbai run python -m patchbai
+cd /tmp && mkdir -p patchfeld_smoke && cd patchfeld_smoke
+uv --project /Users/jimmy.mills/Developer/patchfeld run python -m patchfeld
 ```
 
-(If the launcher invocation differs, check `patchbai/__main__.py` for the right entry point.)
+(If the launcher invocation differs, check `patchfeld/__main__.py` for the right entry point.)
 
 - [ ] **Step 2: Verify visual baseline matches before/after**
 
@@ -1951,7 +1951,7 @@ Spec coverage check:
 - Manual sanity check → Task 12 ✓
 
 Type/name consistency:
-- `_EXTRA_CSS_KEY = ("patchbai_theme", "extra_css")` is defined in Task 5 (engine), referenced in Task 7 (tool), Task 10 (app helper). ✓
+- `_EXTRA_CSS_KEY = ("patchfeld_theme", "extra_css")` is defined in Task 5 (engine), referenced in Task 7 (tool), Task 10 (app helper). ✓
 - `_palette_from_textual_theme` defined in Task 7 (tools.py), reused in Task 10 (`on_mount`). ✓
 - `_apply_theme_by_name(name, *, persist=False, scope="global")` signature consistent across Task 10 (defined) and Task 7's `load_theme` handler (which inlines its own resolution rather than calling the helper, to avoid orchestrator → app coupling). ✓
-- `themes_store` kwarg name consistent across Task 7 (`build_orchestrator_tools`, `build_orchestrator_mcp_server`), Task 8 (`OrchestratorSession.__init__`), Task 10 (`PatchbaiApp.__init__`). ✓
+- `themes_store` kwarg name consistent across Task 7 (`build_orchestrator_tools`, `build_orchestrator_mcp_server`), Task 8 (`OrchestratorSession.__init__`), Task 10 (`PatchfeldApp.__init__`). ✓

@@ -1,10 +1,10 @@
 import json
 
-from patchbai.persistence.workspace_store import (
+from patchfeld.persistence.workspace_store import (
     load_workspace,
     save_workspace,
 )
-from patchbai.workspace.spec import Workspace
+from patchfeld.workspace.spec import Workspace
 
 
 def _ws() -> Workspace:
@@ -36,7 +36,7 @@ def test_load_returns_none_when_no_file(tmp_path):
 
 
 def test_load_returns_none_for_corrupt_file(tmp_path):
-    target = tmp_path / ".patchbai" / "workspace.json"
+    target = tmp_path / ".patchfeld" / "workspace.json"
     target.parent.mkdir(parents=True)
     target.write_text("{not json")
     assert load_workspace(tmp_path) is None
@@ -44,7 +44,7 @@ def test_load_returns_none_for_corrupt_file(tmp_path):
 
 def test_save_writes_to_workspace_json(tmp_path):
     save_workspace(tmp_path, _ws())
-    target = tmp_path / ".patchbai" / "workspace.json"
+    target = tmp_path / ".patchfeld" / "workspace.json"
     assert target.exists()
     raw = json.loads(target.read_text())
     assert raw["active"] == "t1"

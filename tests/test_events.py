@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from patchbai.events import EventBus
+from patchfeld.events import EventBus
 
 
 @dataclass
@@ -105,7 +105,7 @@ def test_unsubscribe_during_publish_does_not_skip_other_handlers():
 
 
 def test_agent_message_appended_has_optional_tool_fields():
-    from patchbai.events import AgentMessageAppended
+    from patchfeld.events import AgentMessageAppended
 
     # Backwards-compatible default — old call sites still work.
     e1 = AgentMessageAppended(agent_id="a", role="assistant", text="hi")
@@ -121,7 +121,7 @@ def test_agent_message_appended_has_optional_tool_fields():
     assert e2.tool_name == "bash"
 
 
-from patchbai.events import (
+from patchfeld.events import (
     LayoutApplied,
     LayoutFailed,
     TabAdded,
@@ -147,7 +147,7 @@ def test_tab_switched_event_has_id_and_title():
 
 
 def test_layout_applied_includes_tab_id():
-    from patchbai.layout.spec import LayoutSpec
+    from patchfeld.layout.spec import LayoutSpec
     spec = LayoutSpec.model_validate({
         "version": 1,
         "layout": {"id": "orch", "widget": "OrchestratorChat"},
@@ -157,7 +157,7 @@ def test_layout_applied_includes_tab_id():
 
 
 def test_layout_applied_tab_id_defaults_to_none():
-    from patchbai.layout.spec import LayoutSpec
+    from patchfeld.layout.spec import LayoutSpec
     spec = LayoutSpec.model_validate({
         "version": 1,
         "layout": {"id": "orch", "widget": "OrchestratorChat"},
@@ -174,19 +174,19 @@ def test_layout_failed_includes_tab_id():
 
 
 def test_orchestrator_session_switched_event_carries_id_and_path():
-    from patchbai.events import OrchestratorSessionSwitched
+    from patchfeld.events import OrchestratorSessionSwitched
     e = OrchestratorSessionSwitched(session_id="abc", transcript_path="/tmp/x.jsonl")
     assert e.session_id == "abc"
     assert e.transcript_path == "/tmp/x.jsonl"
 
 
 def test_open_resume_picker_event_is_constructible():
-    from patchbai.events import OpenResumePicker
+    from patchfeld.events import OpenResumePicker
     OpenResumePicker()  # smoke
 
 
 def test_permission_request_events_carry_required_fields():
-    from patchbai.events import PermissionRequested, PermissionResolved
+    from patchfeld.events import PermissionRequested, PermissionResolved
     req = PermissionRequested(
         agent_id="a1", agent_name="researcher",
         request_id="r1", tool_name="Read", tool_input={"path": "x"},

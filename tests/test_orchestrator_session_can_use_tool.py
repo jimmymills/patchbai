@@ -7,11 +7,11 @@ from claude_agent_sdk import (
     ResultMessage, TextBlock, ToolPermissionContext,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.events import EventBus, PermissionRequested
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.events import EventBus, PermissionRequested
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -65,12 +65,12 @@ async def test_grants_provided_attaches_callback_and_inbox(tmp_path: Path):
 
     grants.remember(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
         behavior="allow",
     )
     ctx = ToolPermissionContext(tool_use_id="t1")
     result = await callback(
-        "mcp__patchbai_orchestrator__list_widgets", {}, ctx,
+        "mcp__patchfeld_orchestrator__list_widgets", {}, ctx,
     )
     assert isinstance(result, PermissionResultAllow)
     await orch.stop()

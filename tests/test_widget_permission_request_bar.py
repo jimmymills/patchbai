@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from textual.app import App, ComposeResult
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import EventBus, PermissionRequested, PermissionResolved
-from patchbai.widgets.agent_transcript import AgentTranscript
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import EventBus, PermissionRequested, PermissionResolved
+from patchfeld.widgets.agent_transcript import AgentTranscript
 
 
 class _Host(App):
@@ -42,7 +42,7 @@ async def test_bar_appears_on_request_for_this_agent(tmp_path: Path):
         await pilot.pause()
         bus.publish(_request(rid=rid))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         bars = app.query(PermissionRequestBar)
         assert len(bars) == 1
 
@@ -61,7 +61,7 @@ async def test_bar_does_not_appear_for_other_agents(tmp_path: Path):
             tool_name="Read", tool_input={},
         ))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         assert len(app.query(PermissionRequestBar)) == 0
 
 
@@ -94,7 +94,7 @@ async def test_bar_clears_when_resolution_comes_externally(tmp_path: Path):
         await pilot.pause()
         bus.publish(_request(rid=rid))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         assert len(app.query(PermissionRequestBar)) == 1
         bus.publish(PermissionResolved(
             agent_id="a1", request_id=rid, behavior="allow",

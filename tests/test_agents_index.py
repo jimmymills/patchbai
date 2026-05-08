@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.persistence.agents_index import AgentsIndex
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.persistence.agents_index import AgentsIndex
 
 
 def _info(id: str = "a1", state: AgentState = AgentState.IDLE) -> AgentInfo:
@@ -23,7 +23,7 @@ def test_save_then_load_round_trips(tmp_path: Path):
 def test_save_creates_state_dir(tmp_path: Path):
     idx = AgentsIndex(cwd=tmp_path)
     idx.save([_info()])
-    assert (tmp_path / ".patchbai" / "agents.json").exists()
+    assert (tmp_path / ".patchfeld" / "agents.json").exists()
 
 
 def test_upsert_replaces_existing_by_id(tmp_path: Path):
@@ -43,7 +43,7 @@ def test_upsert_appends_when_new(tmp_path: Path):
 
 
 def test_load_corrupted_file_returns_empty(tmp_path: Path):
-    state = tmp_path / ".patchbai"
+    state = tmp_path / ".patchfeld"
     state.mkdir()
     (state / "agents.json").write_text("not json {{")
     assert AgentsIndex(cwd=tmp_path).load() == []
@@ -94,8 +94,8 @@ def test_reconcile_orphans_skips_orchestrator(tmp_path: Path):
 def test_reconcile_orphans_no_changes_when_all_terminal(tmp_path: Path):
     idx = AgentsIndex(cwd=tmp_path)
     idx.save([_info("a", state=AgentState.DONE)])
-    mtime_before = (tmp_path / ".patchbai" / "agents.json").stat().st_mtime_ns
+    mtime_before = (tmp_path / ".patchfeld" / "agents.json").stat().st_mtime_ns
     idx.reconcile_orphans()
     # No write should happen; mtime unchanged.
-    mtime_after = (tmp_path / ".patchbai" / "agents.json").stat().st_mtime_ns
+    mtime_after = (tmp_path / ".patchfeld" / "agents.json").stat().st_mtime_ns
     assert mtime_after == mtime_before

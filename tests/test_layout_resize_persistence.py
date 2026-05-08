@@ -4,17 +4,17 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import (
-    PatchbaiApp,
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import (
+    PatchfeldApp,
     _apply_resize,
     _cells_to_percentages,
     _normalize_layout_percentages,
 )
-from patchbai.events import EventBus, LayoutResized
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.persistence.paths import project_workspace_path
+from patchfeld.events import EventBus, LayoutResized
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.persistence.paths import project_workspace_path
 
 
 def _ok_script() -> list:
@@ -30,7 +30,7 @@ def _ok_script() -> list:
     ]
 
 
-def _build_test_app(tmp_path: Path) -> PatchbaiApp:
+def _build_test_app(tmp_path: Path) -> PatchfeldApp:
     bus = EventBus()
     manager = AgentManager(
         cwd=tmp_path,
@@ -43,7 +43,7 @@ def _build_test_app(tmp_path: Path) -> PatchbaiApp:
         manager=manager,
         adapter=FakeSDKAdapter(scripts=[_ok_script()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, orchestrator=orch)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, orchestrator=orch)
     app.event_bus = bus
     return app
 
@@ -268,7 +268,7 @@ async def test_reset_panel_sizes_restores_named_layout(tmp_path: Path):
 async def test_drifted_workspace_is_repaired_on_app_load(tmp_path: Path):
     """A workspace.json saved by the buggy splitter (sums < 100%) should be
     auto-repaired to sum to 100% on launch and re-persisted."""
-    from patchbai.persistence.paths import project_workspace_path
+    from patchfeld.persistence.paths import project_workspace_path
     drifted = {
         "version": 1,
         "tabs": [

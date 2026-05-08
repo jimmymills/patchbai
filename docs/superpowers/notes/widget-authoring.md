@@ -8,18 +8,18 @@ between layouts.
 ## Where they live
 
 ```
-~/.config/patchbai/widgets/<name>.py
+~/.config/patchfeld/widgets/<name>.py
 ```
 
-If `~/.config/patchbai/widgets/` doesn't exist, patchbai won't create
-it for you — `mkdir -p ~/.config/patchbai/widgets` before dropping your
+If `~/.config/patchfeld/widgets/` doesn't exist, patchfeld won't create
+it for you — `mkdir -p ~/.config/patchfeld/widgets` before dropping your
 first file. (The `save_widget` MCP tool will create the directory on
 first save.) Files starting with `_` or `.` are skipped (handy for
 staging `_wip.py` or vendoring deps under `_helpers.py`). One file per
 widget; the loader does not recurse into subdirectories.
 
 The directory is resolved through `local_widgets_dir()` in
-`patchbai/persistence/paths.py`, which honors `XDG_CONFIG_HOME`.
+`patchfeld/persistence/paths.py`, which honors `XDG_CONFIG_HOME`.
 
 ## Shape of a widget file
 
@@ -29,12 +29,12 @@ A widget file is a normal Python module that:
    `Container`, `DataTable`, etc.).
 2. Defines exactly one `Widget` subclass at module scope (or uses
    one of the disambiguators below).
-3. Optionally declares a `__patchbai_widget__` dict at module scope.
+3. Optionally declares a `__patchfeld_widget__` dict at module scope.
 
 ```python
 from textual.widgets import Static
 
-__patchbai_widget__ = {
+__patchfeld_widget__ = {
     "name": "Sparkline",
     "description": "Compact unicode sparkline of a numeric series.",
     "props_schema": {"values": list, "width": int},
@@ -65,7 +65,7 @@ class Sparkline(Static):
         self.update("".join(chars))
 ```
 
-Drop that into `~/.config/patchbai/widgets/sparkline.py`, restart, and
+Drop that into `~/.config/patchfeld/widgets/sparkline.py`, restart, and
 ask: *"set a layout with a Sparkline showing values=[1,2,3,5,8,13,21]
 on the right at 25%."*
 
@@ -74,7 +74,7 @@ on the right at 25%."*
 When a file defines multiple classes (helpers, base classes, etc.) the
 loader walks four rules in order and stops at the first match:
 
-1. **`entry_point` in `__patchbai_widget__`.** If you set
+1. **`entry_point` in `__patchfeld_widget__`.** If you set
    `"entry_point": MyWidget`, the loader registers exactly that class.
    This wins over everything else.
 2. **Module-level `WIDGET_CLASS = ...` sentinel.** Same idea, no dict
@@ -137,7 +137,7 @@ The response is an envelope:
      "props_schema": {...}, "source": "builtin"}
   ],
   "errors": [
-    {"path": "/Users/me/.config/patchbai/widgets/broken.py",
+    {"path": "/Users/me/.config/patchfeld/widgets/broken.py",
      "name": "Broken", "status": "import_error",
      "error": "ModuleNotFoundError: No module named 'foo'\n  File ..."}
   ]
@@ -158,12 +158,12 @@ them.
 1. Read the `error` field — it's the last 2 frames of the traceback,
    usually enough to spot a missing `from textual.widgets import ...`
    or a typo.
-2. Run the file standalone: `uv run python ~/.config/patchbai/widgets/yourname.py`.
+2. Run the file standalone: `uv run python ~/.config/patchfeld/widgets/yourname.py`.
    This won't instantiate the widget, but it *will* surface SyntaxErrors
    and import problems.
 3. If the file imports a third-party package (anything beyond
    `textual` and the stdlib), make sure it's installed in the same
-   environment patchbai runs from. If you launched with `uv run patchbai`,
+   environment patchfeld runs from. If you launched with `uv run patchfeld`,
    that's the project's `.venv`. `uv add <pkg>` if you need it.
 
 ## When to write the file vs. ask the orchestrator
@@ -172,7 +172,7 @@ The orchestrator has a `save_widget` MCP tool that:
 
 - Validates the source via the same class-detection precedence above
   (in a temp directory — no side-effects on failure).
-- Atomically writes the file to `~/.config/patchbai/widgets/<name>.py`.
+- Atomically writes the file to `~/.config/patchfeld/widgets/<name>.py`.
 - Registers it into the live registry, so you can put it in the next
   `set_layout` call without restarting.
 
@@ -182,14 +182,14 @@ orchestrator in the loop* — it's strictly better than asking it to
 restart).
 
 Write the file yourself when you're authoring offline (in your editor,
-without a running patchbai session), or when the source is large
+without a running patchfeld session), or when the source is large
 enough that you'd rather not paste it through chat. After saving,
-restart patchbai and the loader picks it up.
+restart patchfeld and the loader picks it up.
 
 The orchestrator will not silently re-author your file — `save_widget`
 is the single channel for orchestrator-authored persistence.
 
-## `__patchbai_widget__` reference
+## `__patchfeld_widget__` reference
 
 | Key            | Type                | Purpose                                                                                                                                                |
 | -------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -207,7 +207,7 @@ For security review, or when handing the laptop to someone else,
 disable the loader entirely:
 
 ```toml
-# ~/.config/patchbai/config.toml
+# ~/.config/patchfeld/config.toml
 [widgets]
 local_dir_enabled = false
 ```

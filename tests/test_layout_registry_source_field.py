@@ -1,6 +1,6 @@
 from textual.widget import Widget
 
-from patchbai.layout.registry import WidgetRegistry
+from patchfeld.layout.registry import WidgetRegistry
 
 
 class _W(Widget):

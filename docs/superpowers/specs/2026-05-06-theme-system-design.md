@@ -48,12 +48,12 @@ The design is a near-mirror of the layouts subsystem:
 | `layout/spec.py` → `LayoutSpec`      | `theme/spec.py` → `ThemeSpec`               |
 | `layout/engine.py` → `apply`         | `theme/engine.py` → `apply_theme`           |
 | `persistence/layouts_store.py`       | `persistence/themes_store.py`               |
-| `~/.config/patchbai/layouts/*.json`   | `~/.config/patchbai/themes/*.json`           |
+| `~/.config/patchfeld/layouts/*.json`   | `~/.config/patchfeld/themes/*.json`           |
 | `set/save/load/list_layout(s)`       | `set/save/load/list_theme(s) + get_theme`   |
 | `LayoutSwitcherScreen` on `ctrl+l`   | `ThemeSwitcherScreen` on `ctrl+shift+l`     |
 | `default` seeded from `dashboard_layout()` | `default` seeded from current `app.current_theme` |
 
-## Data model — `patchbai/theme/spec.py`
+## Data model — `patchfeld/theme/spec.py`
 
 ```python
 class ThemePalette(BaseModel):
@@ -92,7 +92,7 @@ Name validation regex (matching `NamedLayoutsStore`): `^[A-Za-z0-9_\-]+$`.
 
 ## Persistence
 
-### `patchbai/persistence/themes_store.py` — `NamedThemesStore`
+### `patchfeld/persistence/themes_store.py` — `NamedThemesStore`
 
 Direct copy of `NamedLayoutsStore`:
 
@@ -106,19 +106,19 @@ Direct copy of `NamedLayoutsStore`:
 Resolution order on boot: `workspace.active_theme` →
 `config.ui.active_theme` → `"default"`.
 
-#### Config (`patchbai/config.py`)
+#### Config (`patchfeld/config.py`)
 
 `UISection.theme: str = "dark"` is **dropped** and replaced with
 `active_theme: str = "default"`. The `set_path` / `get_path` schema and the
 TOML round-trip are updated. Pre-existing TOML files with the old
 `ui.theme` key are loaded silently (the key is ignored, no migration).
 
-#### Workspace (`patchbai/workspace/spec.py`)
+#### Workspace (`patchfeld/workspace/spec.py`)
 
 Add `active_theme: str | None = None` on `Workspace`. `None` means "fall
 through to global config."
 
-## Engine — `patchbai/theme/engine.py`
+## Engine — `patchfeld/theme/engine.py`
 
 ```python
 async def apply_theme(app: App, spec: ThemeSpec, *, theme_name: str) -> None:
@@ -132,16 +132,16 @@ Steps in order:
    parse error, raise before touching `app.theme` so the previous theme
    stays active.
 2. **Build the Textual `Theme`.** Construct
-   `Theme(name=f"patchbai:{theme_name}", **spec.palette.model_dump())`.
+   `Theme(name=f"patchfeld:{theme_name}", **spec.palette.model_dump())`.
 3. **Replace any prior registration of the same name.** If
-   `f"patchbai:{theme_name}"` is already in `app.available_themes`, call
+   `f"patchfeld:{theme_name}"` is already in `app.available_themes`, call
    `app.unregister_theme(...)` first — Textual's `register_theme` does not
    replace.
 4. **Register and activate.** `app.register_theme(theme); app.theme = theme.name`.
    Textual's reactive watcher recomputes `$primary` / `$surface` / etc. and
    refreshes widgets.
 5. **Swap the named CSS source.** Maintain a single named source
-   `"patchbai:theme"` on `app.stylesheet`. On every apply: drop the old source
+   `"patchfeld:theme"` on `app.stylesheet`. On every apply: drop the old source
    if present, add the new `spec.extra_css` (skip if empty), call
    `app.stylesheet.parse()` and `app.refresh_css()`.
 6. **Cache the applied `extra_css`** on `app._active_theme_extra_css` so
@@ -155,7 +155,7 @@ Steps in order:
 `apply_theme` always takes a `ThemeSpec`. The built-in pass-through lives in
 the **tool layer** (see below): if `load_theme(name)` finds no saved theme,
 and `name` is in `app.available_themes`, the tool sets
-`app.theme = name` directly, drops any `patchbai:theme` CSS source, and
+`app.theme = name` directly, drops any `patchfeld:theme` CSS source, and
 clears `app._active_theme_extra_css`. No `Theme` is registered.
 
 ### Failure mode
@@ -164,7 +164,7 @@ If `Theme(...)` raises (invalid color), or stylesheet parsing raises
 (malformed CSS), `apply_theme` raises. Callers (the tool, the modal,
 boot) catch and surface the error.
 
-## Orchestrator tools — `patchbai/orchestrator/tools.py`
+## Orchestrator tools — `patchfeld/orchestrator/tools.py`
 
 Five new handlers, gated on `themes_store is not None and app is not None`:
 
@@ -193,10 +193,10 @@ Match the layout tools' tone (`tools.py:471-515`). The `set_theme` /
 attaches when both `themes_store` and `app` are non-None, mirroring the
 layouts gating.
 
-`OrchestratorSession.__init__` (`patchbai/orchestrator/session.py`) gains
+`OrchestratorSession.__init__` (`patchfeld/orchestrator/session.py`) gains
 the same kwarg and forwards it through.
 
-## Theme switcher modal — `patchbai/widgets/theme_switcher.py`
+## Theme switcher modal — `patchfeld/widgets/theme_switcher.py`
 
 `ThemeSwitcherScreen(ModalScreen[str | None])` — near copy of
 `LayoutSwitcherScreen`:
@@ -208,7 +208,7 @@ the same kwarg and forwards it through.
 
 ### Action and key binding
 
-- New action `open_theme_switcher` in `PatchbaiApp._register_actions`
+- New action `open_theme_switcher` in `PatchfeldApp._register_actions`
   (`app.py:198`).
 - Default class binding: `Binding("ctrl+shift+l", "open_theme_switcher",
   "themes")` (added to the `BINDINGS` list at `app.py:134`). Users can
@@ -227,7 +227,7 @@ new async helper `App._apply_theme_by_name(name, *, scope="global")` that:
 
 This is the same helper `load_theme` calls.
 
-## App boot wiring — `patchbai/app.py`
+## App boot wiring — `patchfeld/app.py`
 
 In `__init__`:
 
@@ -266,7 +266,7 @@ New files mirroring the layout test suite:
 - `tests/test_theme_engine.py` — `apply_theme` registers + activates;
   re-apply replaces; bad CSS raises *before* mutating `app.theme` (assert
   pre-call theme is still active); built-in pass-through clears the
-  `patchbai:theme` source.
+  `patchfeld:theme` source.
 - `tests/test_orchestrator_tools_theme.py` — one test per tool plus error
   paths (unknown saved name → falls through to built-in, unknown built-in
   → returns error; invalid spec → returns error).
@@ -290,20 +290,20 @@ Existing tests touched:
 
 ### New
 
-- `patchbai/theme/__init__.py`
-- `patchbai/theme/spec.py`
-- `patchbai/theme/engine.py`
-- `patchbai/persistence/themes_store.py`
-- `patchbai/widgets/theme_switcher.py`
+- `patchfeld/theme/__init__.py`
+- `patchfeld/theme/spec.py`
+- `patchfeld/theme/engine.py`
+- `patchfeld/persistence/themes_store.py`
+- `patchfeld/widgets/theme_switcher.py`
 - 6 test files listed above
 
 ### Modified
 
-- `patchbai/config.py` — replace `ui.theme` with `ui.active_theme`.
-- `patchbai/workspace/spec.py` — add optional `active_theme`.
-- `patchbai/orchestrator/tools.py` — 5 new handlers + MCP specs, new kwarg.
-- `patchbai/orchestrator/session.py` — forward `themes_store` kwarg.
-- `patchbai/app.py` — construct store, boot-apply, modal action, key
+- `patchfeld/config.py` — replace `ui.theme` with `ui.active_theme`.
+- `patchfeld/workspace/spec.py` — add optional `active_theme`.
+- `patchfeld/orchestrator/tools.py` — 5 new handlers + MCP specs, new kwarg.
+- `patchfeld/orchestrator/session.py` — forward `themes_store` kwarg.
+- `patchfeld/app.py` — construct store, boot-apply, modal action, key
   binding, help text.
 
 ## Open questions
@@ -315,7 +315,7 @@ None.
 - **Stylesheet API stability.** Textual's `App.stylesheet.add_source` /
   `parse` is used at runtime here. If a future Textual rework breaks this,
   the fallback is to wrap `extra_css` in a CSS layer
-  (`@layer patchbai_theme { … }`) and rebuild via the screen-refresh path.
+  (`@layer patchfeld_theme { … }`) and rebuild via the screen-refresh path.
   Not a v1 concern.
 - **`extra_css` as a hostile surface.** A malicious theme could hide chrome
   or invert text. Documented in the tool description; same trust posture
@@ -323,4 +323,4 @@ None.
 - **Boot-time fallback chain.** If both `workspace.active_theme` and
   `config.ui.active_theme` are corrupted, and `default` is also corrupt,
   boot proceeds with raw Textual defaults. The user can recover by deleting
-  `~/.config/patchbai/themes/`.
+  `~/.config/patchfeld/themes/`.

@@ -1,4 +1,4 @@
-from patchbai.events import ActivityLogged, AgentFocusRequested
+from patchfeld.events import ActivityLogged, AgentFocusRequested
 
 
 def test_activity_logged_carries_entry():

@@ -4,7 +4,7 @@
 
 **Goal:** Replace the flat-line transcript rendering in `OrchestratorChat` and `AgentTranscript` with a shared `RichTranscript` widget that groups output by turn, surfaces thinking + tool activity live, and collapses the intermediate steps when the turn finishes so the final response stands out — Claude-Code-style.
 
-**Architecture:** A new `RichTranscript(Vertical)` widget lives in `patchbai/widgets/rich_transcript.py` and subscribes to `AgentMessageAppended` (filtered by `agent_id`) and `AgentStateChanged`. It mounts one `_TurnContainer` per user prompt and fills it with `_ThinkingGroup` and `_ToolCall` sub-widgets (both `Collapsible`) that auto-expand while running and auto-collapse on completion. The two existing widgets become thin shells that compose `RichTranscript` + `Input` and keep their public API intact. Two upstream pieces shift to make tool↔result pairing reliable: `AgentMessageAppended` and `TranscriptEntry` gain optional `tool_id` / `tool_name` fields, and `AgentSession._handle_message` populates them from the SDK's `ToolUseBlock.id` / `ToolResultBlock.tool_use_id`.
+**Architecture:** A new `RichTranscript(Vertical)` widget lives in `patchfeld/widgets/rich_transcript.py` and subscribes to `AgentMessageAppended` (filtered by `agent_id`) and `AgentStateChanged`. It mounts one `_TurnContainer` per user prompt and fills it with `_ThinkingGroup` and `_ToolCall` sub-widgets (both `Collapsible`) that auto-expand while running and auto-collapse on completion. The two existing widgets become thin shells that compose `RichTranscript` + `Input` and keep their public API intact. Two upstream pieces shift to make tool↔result pairing reliable: `AgentMessageAppended` and `TranscriptEntry` gain optional `tool_id` / `tool_name` fields, and `AgentSession._handle_message` populates them from the SDK's `ToolUseBlock.id` / `ToolResultBlock.tool_use_id`.
 
 **Tech Stack:** Python 3, Textual (`Collapsible`, `Vertical`, `VerticalScroll`, `Static`, `Input`), Rich `Text` (markup-safe rendering), `claude-agent-sdk` (`ToolUseBlock`, `ToolResultBlock`, `ThinkingBlock`), `pytest` + `pytest-asyncio`.
 
@@ -15,26 +15,26 @@
 ## File Structure
 
 **New files:**
-- `patchbai/widgets/rich_transcript.py` — the `RichTranscript` widget plus its three module-private sub-widgets (`_TurnContainer`, `_ThinkingGroup`, `_ToolCall`) and the `_SpinnerTitle` helper.
+- `patchfeld/widgets/rich_transcript.py` — the `RichTranscript` widget plus its three module-private sub-widgets (`_TurnContainer`, `_ThinkingGroup`, `_ToolCall`) and the `_SpinnerTitle` helper.
 - `tests/test_rich_transcript.py` — unit + Textual `pilot` integration tests for the new widget.
 - `tests/test_rich_transcript_replay.py` — focused tests for history-replay-on-mount behavior (kept separate so the file stays under ~250 lines).
 
 **Modified files:**
-- `patchbai/events.py` — extend `AgentMessageAppended` with optional `tool_id` / `tool_name` fields.
-- `patchbai/persistence/transcript_store.py` — extend `TranscriptEntry` with optional `tool_id` / `tool_name` fields, and tolerate old transcripts that lack them.
-- `patchbai/agents/session.py` — populate the new fields in `_handle_message`.
-- `patchbai/orchestrator/session.py` — drop the `[tool use]` / `[tool result]` `OrchestratorReply` re-publishes; keep the assistant-text one.
-- `patchbai/widgets/orchestrator_chat.py` — collapse to a thin shell that owns a `RichTranscript` + `Input`.
-- `patchbai/widgets/agent_transcript.py` — same shell treatment; preserve `rendered_text()` as a façade over `RichTranscript`.
+- `patchfeld/events.py` — extend `AgentMessageAppended` with optional `tool_id` / `tool_name` fields.
+- `patchfeld/persistence/transcript_store.py` — extend `TranscriptEntry` with optional `tool_id` / `tool_name` fields, and tolerate old transcripts that lack them.
+- `patchfeld/agents/session.py` — populate the new fields in `_handle_message`.
+- `patchfeld/orchestrator/session.py` — drop the `[tool use]` / `[tool result]` `OrchestratorReply` re-publishes; keep the assistant-text one.
+- `patchfeld/widgets/orchestrator_chat.py` — collapse to a thin shell that owns a `RichTranscript` + `Input`.
+- `patchfeld/widgets/agent_transcript.py` — same shell treatment; preserve `rendered_text()` as a façade over `RichTranscript`.
 
-**No changes (verify they still work):** `patchbai/app.py`, the layout registry, layout YAMLs, `patchbai/orchestrator/formatting.py` (still used by anything? — verify; no caller changes either way).
+**No changes (verify they still work):** `patchfeld/app.py`, the layout registry, layout YAMLs, `patchfeld/orchestrator/formatting.py` (still used by anything? — verify; no caller changes either way).
 
 ---
 
 ## Task 1: Extend `AgentMessageAppended` with `tool_id` / `tool_name`
 
 **Files:**
-- Modify: `patchbai/events.py:57-62`
+- Modify: `patchfeld/events.py:57-62`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -43,7 +43,7 @@ Append to `tests/test_events.py`:
 
 ```python
 def test_agent_message_appended_has_optional_tool_fields():
-    from patchbai.events import AgentMessageAppended
+    from patchfeld.events import AgentMessageAppended
 
     # Backwards-compatible default — old call sites still work.
     e1 = AgentMessageAppended(agent_id="a", role="assistant", text="hi")
@@ -66,7 +66,7 @@ Expected: FAIL with `TypeError: __init__() got an unexpected keyword argument 't
 
 - [ ] **Step 3: Add the optional fields**
 
-Edit `patchbai/events.py:57-62`. Replace the existing `AgentMessageAppended` dataclass with:
+Edit `patchfeld/events.py:57-62`. Replace the existing `AgentMessageAppended` dataclass with:
 
 ```python
 @dataclass(frozen=True)
@@ -89,7 +89,7 @@ Expected: all PASS, including the new test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/events.py tests/test_events.py
+git add patchfeld/events.py tests/test_events.py
 git commit -m "feat(events): add tool_id/tool_name to AgentMessageAppended"
 ```
 
@@ -98,7 +98,7 @@ git commit -m "feat(events): add tool_id/tool_name to AgentMessageAppended"
 ## Task 2: Extend `TranscriptEntry` with `tool_id` / `tool_name`
 
 **Files:**
-- Modify: `patchbai/persistence/transcript_store.py:14-17`
+- Modify: `patchfeld/persistence/transcript_store.py:14-17`
 - Test: `tests/test_per_agent_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -107,7 +107,7 @@ Append to `tests/test_per_agent_transcript.py`:
 
 ```python
 def test_transcript_entry_round_trips_tool_fields(tmp_path):
-    from patchbai.persistence.transcript_store import AgentTranscript, TranscriptEntry
+    from patchfeld.persistence.transcript_store import AgentTranscript, TranscriptEntry
 
     t = AgentTranscript(cwd=tmp_path, agent_id="x")
     t.append(TranscriptEntry(role="tool_use", text="ls /tmp",
@@ -125,10 +125,10 @@ def test_transcript_entry_round_trips_tool_fields(tmp_path):
 def test_transcript_entry_reads_old_records_without_tool_fields(tmp_path):
     """Records written before tool_id/tool_name existed must still load."""
     import json
-    from patchbai.persistence.paths import (
+    from patchfeld.persistence.paths import (
         project_transcript_path, project_transcripts_dir,
     )
-    from patchbai.persistence.transcript_store import AgentTranscript
+    from patchfeld.persistence.transcript_store import AgentTranscript
 
     project_transcripts_dir(tmp_path).mkdir(parents=True, exist_ok=True)
     path = project_transcript_path(tmp_path, "old")
@@ -150,7 +150,7 @@ Expected: both new tests FAIL with `TypeError: __init__() got an unexpected keyw
 
 - [ ] **Step 3: Add the optional fields**
 
-Edit `patchbai/persistence/transcript_store.py:14-17`. Replace the existing `TranscriptEntry` dataclass with:
+Edit `patchfeld/persistence/transcript_store.py:14-17`. Replace the existing `TranscriptEntry` dataclass with:
 
 ```python
 @dataclass(frozen=True)
@@ -195,7 +195,7 @@ Expected: all PASS, including both new tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/persistence/transcript_store.py tests/test_per_agent_transcript.py
+git add patchfeld/persistence/transcript_store.py tests/test_per_agent_transcript.py
 git commit -m "feat(transcript): add tool_id/tool_name with forward+back compat"
 ```
 
@@ -204,7 +204,7 @@ git commit -m "feat(transcript): add tool_id/tool_name with forward+back compat"
 ## Task 3: Populate `tool_id` / `tool_name` in `AgentSession._handle_message`
 
 **Files:**
-- Modify: `patchbai/agents/session.py:103-138`
+- Modify: `patchfeld/agents/session.py:103-138`
 - Test: `tests/test_agent_session.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -218,11 +218,11 @@ async def test_tool_use_and_tool_result_carry_tool_id(tmp_path):
     from claude_agent_sdk import (
         AssistantMessage, ResultMessage, ToolResultBlock, ToolUseBlock, UserMessage,
     )
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.agents.session import AgentSession
-    from patchbai.agents.state import AgentInfo
-    from patchbai.events import AgentMessageAppended, EventBus
-    from patchbai.persistence.transcript_store import AgentTranscript
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.agents.session import AgentSession
+    from patchfeld.agents.state import AgentInfo
+    from patchfeld.events import AgentMessageAppended, EventBus
+    from patchfeld.persistence.transcript_store import AgentTranscript
 
     bus = EventBus()
     received: list[AgentMessageAppended] = []
@@ -270,7 +270,7 @@ Expected: FAIL — `tool_uses[0].tool_id` is `None` (handler doesn't pass it thr
 
 - [ ] **Step 3: Pass `tool_id` / `tool_name` through `_record`**
 
-Edit `patchbai/agents/session.py`. Update `_handle_message` (lines 103-131) and `_record` (lines 133-139):
+Edit `patchfeld/agents/session.py`. Update `_handle_message` (lines 103-131) and `_record` (lines 133-139):
 
 Replace the `ToolUseBlock` branch (lines 108-112):
 
@@ -327,7 +327,7 @@ Expected: all PASS, including the new test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/session.py tests/test_agent_session.py
+git add patchfeld/agents/session.py tests/test_agent_session.py
 git commit -m "feat(agents): forward tool_id/tool_name from SDK blocks to bus"
 ```
 
@@ -336,7 +336,7 @@ git commit -m "feat(agents): forward tool_id/tool_name from SDK blocks to bus"
 ## Task 4: Drop the `[tool use]` / `[tool result]` `OrchestratorReply` re-publishes
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py:138-152`
+- Modify: `patchfeld/orchestrator/session.py:138-152`
 - Test: `tests/test_orchestrator_session.py`
 
 The widget will subscribe to `AgentMessageAppended` directly for richer rendering (Task 5+), so the prefixed/truncated `OrchestratorReply` strings for tool use/result are dead weight. Keep the assistant-text re-publish — existing tests assert on it as the public "the orchestrator said something" signal.
@@ -404,7 +404,7 @@ Expected: FAIL — replies currently include `[tool use] …` and `[tool result]
 
 - [ ] **Step 3: Drop the tool-related re-publishes**
 
-Edit `patchbai/orchestrator/session.py:138-152`. Replace the `_on_message_appended` method:
+Edit `patchfeld/orchestrator/session.py:138-152`. Replace the `_on_message_appended` method:
 
 ```python
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
@@ -425,7 +425,7 @@ Expected: all PASS, including the new test.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session.py
 git commit -m "refactor(orch): drop tool use/result re-publishes; widget reads raw events"
 ```
 
@@ -436,7 +436,7 @@ git commit -m "refactor(orch): drop tool use/result re-publishes; widget reads r
 This task lays down the widget shape and proves the event subscription / history replay paths work, before introducing any of the foldable / spinner logic. We keep flat-line rendering temporarily; foldables come in Tasks 6–9.
 
 **Files:**
-- Create: `patchbai/widgets/rich_transcript.py`
+- Create: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -448,9 +448,9 @@ import pytest
 from textual.app import App
 from textual.widgets import Static
 
-from patchbai.events import AgentMessageAppended, EventBus
-from patchbai.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
-from patchbai.widgets.rich_transcript import RichTranscript
+from patchfeld.events import AgentMessageAppended, EventBus
+from patchfeld.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
+from patchfeld.widgets.rich_transcript import RichTranscript
 
 
 class _HostApp(App):
@@ -509,11 +509,11 @@ async def test_rich_transcript_ignores_other_agents(tmp_path):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_rich_transcript.py -v`
-Expected: all 3 FAIL with `ModuleNotFoundError: No module named 'patchbai.widgets.rich_transcript'`.
+Expected: all 3 FAIL with `ModuleNotFoundError: No module named 'patchfeld.widgets.rich_transcript'`.
 
 - [ ] **Step 3: Implement the skeleton widget**
 
-Create `patchbai/widgets/rich_transcript.py`:
+Create `patchfeld/widgets/rich_transcript.py`:
 
 ```python
 from __future__ import annotations
@@ -525,8 +525,8 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Static
 
-from patchbai.events import AgentMessageAppended, EventBus
-from patchbai.persistence.transcript_store import (
+from patchfeld.events import AgentMessageAppended, EventBus
+from patchfeld.persistence.transcript_store import (
     AgentTranscript as TranscriptStore,
     TranscriptEntry,
 )
@@ -620,7 +620,7 @@ Expected: all 3 PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): add RichTranscript skeleton with history replay"
 ```
 
@@ -631,7 +631,7 @@ git commit -m "feat(widgets): add RichTranscript skeleton with history replay"
 Now we replace the flat-line renderer inside `RichTranscript` with a turn-grouping renderer: each `user` event opens a new `_TurnContainer`; subsequent events route into its sub-widgets. We still render thinking / tool / text as plain `Static`s inside the container — foldables come in Task 7.
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -641,7 +641,7 @@ Append to `tests/test_rich_transcript.py`:
 ```python
 @pytest.mark.asyncio
 async def test_each_user_message_opens_a_new_turn(tmp_path):
-    from patchbai.widgets.rich_transcript import _TurnContainer
+    from patchfeld.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -666,7 +666,7 @@ async def test_each_user_message_opens_a_new_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_assistant_text_routes_to_current_turn(tmp_path):
-    from patchbai.widgets.rich_transcript import _TurnContainer
+    from patchfeld.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -703,7 +703,7 @@ Expected: 2 FAILs — `_TurnContainer` doesn't exist; existing tests still pass.
 
 - [ ] **Step 3: Add `_TurnContainer` and route events through it**
 
-Edit `patchbai/widgets/rich_transcript.py`. Add after the imports (before `class RichTranscript`):
+Edit `patchfeld/widgets/rich_transcript.py`. Add after the imports (before `class RichTranscript`):
 
 ```python
 class _TurnContainer(Vertical):
@@ -867,7 +867,7 @@ Expected: all PASS — both new tests *and* the three skeleton tests from Task 5
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): RichTranscript groups output into per-turn containers"
 ```
 
@@ -878,7 +878,7 @@ git commit -m "feat(widgets): RichTranscript groups output into per-turn contain
 This task introduces the first `Collapsible` sub-widget. We render tool calls as expanded foldables while running, and collapse them when the matching `tool_result` arrives. No spinner animation yet (Task 9 adds that); we use a static `…` placeholder while running and `✓` / `✗` after the result lands.
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -890,7 +890,7 @@ Append to `tests/test_rich_transcript.py`:
 async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
     from textual.widgets import Collapsible
 
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -917,7 +917,7 @@ async def test_tool_use_renders_as_expanded_collapsible(tmp_path):
 
 @pytest.mark.asyncio
 async def test_tool_result_pairs_by_tool_id_and_collapses(tmp_path):
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -964,7 +964,7 @@ async def test_tool_result_pairs_by_tool_id_and_collapses(tmp_path):
 @pytest.mark.asyncio
 async def test_tool_args_with_brackets_render_literally(tmp_path):
     """[type=int_parsing] in args must NOT trip Rich markup parsing."""
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -992,7 +992,7 @@ Expected: 3 FAILs — `_ToolCall` doesn't exist yet.
 
 - [ ] **Step 3: Implement `_ToolCall`**
 
-Edit `patchbai/widgets/rich_transcript.py`. Add `Collapsible` to the textual imports:
+Edit `patchfeld/widgets/rich_transcript.py`. Add `Collapsible` to the textual imports:
 
 ```python
 from textual.widgets import Collapsible, Static
@@ -1127,7 +1127,7 @@ Expected: all PASS — both the 3 new tests and all earlier ones.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): tool calls render as auto-expanding Collapsibles"
 ```
 
@@ -1138,7 +1138,7 @@ git commit -m "feat(widgets): tool calls render as auto-expanding Collapsibles"
 Adjacent thinking blocks merge into one foldable group. A new thinking block after a non-thinking step opens a fresh group.
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1148,7 +1148,7 @@ Append to `tests/test_rich_transcript.py`:
 ```python
 @pytest.mark.asyncio
 async def test_consecutive_thinking_blocks_merge_into_one_group(tmp_path):
-    from patchbai.widgets.rich_transcript import _ThinkingGroup
+    from patchfeld.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1170,7 +1170,7 @@ async def test_consecutive_thinking_blocks_merge_into_one_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_thinking_after_tool_opens_new_group(tmp_path):
-    from patchbai.widgets.rich_transcript import _ThinkingGroup
+    from patchfeld.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1193,7 +1193,7 @@ async def test_thinking_after_tool_opens_new_group(tmp_path):
 
 @pytest.mark.asyncio
 async def test_thinking_group_starts_expanded(tmp_path):
-    from patchbai.widgets.rich_transcript import _ThinkingGroup
+    from patchfeld.widgets.rich_transcript import _ThinkingGroup
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1216,7 +1216,7 @@ Expected: 3 FAILs — `_ThinkingGroup` doesn't exist.
 
 - [ ] **Step 3: Implement `_ThinkingGroup` and route thinking events into it**
 
-Edit `patchbai/widgets/rich_transcript.py`. Add a `time` import at the top:
+Edit `patchfeld/widgets/rich_transcript.py`. Add a `time` import at the top:
 
 ```python
 import time
@@ -1320,7 +1320,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): thinking blocks merge into one Collapsible group"
 ```
 
@@ -1331,7 +1331,7 @@ git commit -m "feat(widgets): thinking blocks merge into one Collapsible group"
 When the agent transitions to `DONE` or `ERROR`, the current turn closes: all `_ToolCall` and `_ThinkingGroup` widgets collapse and re-title; the turn's CSS class flips.
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1342,9 +1342,9 @@ Append to `tests/test_rich_transcript.py`:
 @pytest.mark.asyncio
 async def test_agent_state_done_collapses_current_turn(tmp_path):
     import dataclasses
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.events import AgentStateChanged
-    from patchbai.widgets.rich_transcript import (
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.events import AgentStateChanged
+    from patchfeld.widgets.rich_transcript import (
         _ThinkingGroup, _TurnContainer,
     )
 
@@ -1374,9 +1374,9 @@ async def test_agent_state_done_collapses_current_turn(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_state_error_marks_turn_error(tmp_path):
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.events import AgentStateChanged
-    from patchbai.widgets.rich_transcript import _TurnContainer
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.events import AgentStateChanged
+    from patchfeld.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1397,9 +1397,9 @@ async def test_agent_state_error_marks_turn_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_state_change_for_other_agent_is_ignored(tmp_path):
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.events import AgentStateChanged
-    from patchbai.widgets.rich_transcript import _TurnContainer
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.events import AgentStateChanged
+    from patchfeld.widgets.rich_transcript import _TurnContainer
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1426,11 +1426,11 @@ Expected: 3 FAILs — `RichTranscript` doesn't subscribe to `AgentStateChanged` 
 
 - [ ] **Step 3: Subscribe to `AgentStateChanged` and dispatch**
 
-Edit `patchbai/widgets/rich_transcript.py`. Add to imports:
+Edit `patchfeld/widgets/rich_transcript.py`. Add to imports:
 
 ```python
-from patchbai.agents.state import AgentState
-from patchbai.events import AgentMessageAppended, AgentStateChanged, EventBus
+from patchfeld.agents.state import AgentState
+from patchfeld.events import AgentMessageAppended, AgentStateChanged, EventBus
 ```
 
 Update `__init__` to add the new unsubscribe slot:
@@ -1477,7 +1477,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): close turn on AgentStateChanged DONE/ERROR"
 ```
 
@@ -1488,7 +1488,7 @@ git commit -m "feat(widgets): close turn on AgentStateChanged DONE/ERROR"
 On mount, `RichTranscript` replays the on-disk transcript by walking entries and routing them through `_dispatch_entry`. The result so far: every replayed turn is left in the `running` state because no state event fires during replay. We need a final `mark_done()` on the last turn after the walk completes (and a `mark_done()` on each prior turn the moment a *new* `user` entry opens a fresh one).
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Create: `tests/test_rich_transcript_replay.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1499,9 +1499,9 @@ Create `tests/test_rich_transcript_replay.py`:
 import pytest
 from textual.app import App
 
-from patchbai.events import EventBus
-from patchbai.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
-from patchbai.widgets.rich_transcript import RichTranscript, _TurnContainer
+from patchfeld.events import EventBus
+from patchfeld.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
+from patchfeld.widgets.rich_transcript import RichTranscript, _TurnContainer
 
 
 class _HostApp(App):
@@ -1538,7 +1538,7 @@ async def test_replay_marks_all_turns_done(tmp_path):
 @pytest.mark.asyncio
 async def test_old_transcript_without_tool_id_still_pairs(tmp_path):
     """tool_result without tool_id falls back to most-recent-pending pairing."""
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     store = Store(cwd=tmp_path, agent_id="a1")
     store.append(TranscriptEntry(role="user", text="go"))
@@ -1569,7 +1569,7 @@ Expected:
 
 - [ ] **Step 3: Close prior turns on new user, and close last turn after replay**
 
-Edit `patchbai/widgets/rich_transcript.py`. Update `_open_turn` to close the prior turn first:
+Edit `patchfeld/widgets/rich_transcript.py`. Update `_open_turn` to close the prior turn first:
 
 ```python
     def _open_turn(self, user_text: str) -> None:
@@ -1618,7 +1618,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript_replay.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript_replay.py
 git commit -m "feat(widgets): close prior turn on new user; close last turn after replay"
 ```
 
@@ -1627,7 +1627,7 @@ git commit -m "feat(widgets): close prior turn on new user; close last turn afte
 ## Task 11: Refactor `OrchestratorChat` to compose `RichTranscript`
 
 **Files:**
-- Modify: `patchbai/widgets/orchestrator_chat.py`
+- Modify: `patchfeld/widgets/orchestrator_chat.py`
 - Test: `tests/test_app_smoke.py`, `tests/test_app_smoke_plan2.py` (verify no regression)
 
 The shell keeps the same constructor, the `Input` ID `#orch-input`, and the input-submit behavior. The internal `VerticalScroll` (id `#orch-messages`), `_append_line`, the `OrchestratorReply` subscription, and the history-preload code all move out — `RichTranscript` owns those concerns.
@@ -1640,9 +1640,9 @@ Append to `tests/test_app_smoke.py`:
 @pytest.mark.asyncio
 async def test_orchestrator_chat_uses_rich_transcript(tmp_path):
     """OrchestratorChat composes a RichTranscript for the 'orchestrator' agent."""
-    from patchbai.widgets.orchestrator_chat import OrchestratorChat
-    from patchbai.widgets.rich_transcript import RichTranscript
-    from patchbai.events import EventBus
+    from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+    from patchfeld.widgets.rich_transcript import RichTranscript
+    from patchfeld.events import EventBus
 
     class _Host(App):
         event_bus = EventBus()
@@ -1667,15 +1667,15 @@ Expected: FAIL — `OrchestratorChat` doesn't compose a `RichTranscript` yet.
 
 - [ ] **Step 3: Rewrite `OrchestratorChat` as a thin shell**
 
-Replace the entire contents of `patchbai/widgets/orchestrator_chat.py`:
+Replace the entire contents of `patchfeld/widgets/orchestrator_chat.py`:
 
 ```python
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Input
 
-from patchbai.events import EventBus, UserMessageToOrchestrator
-from patchbai.widgets.rich_transcript import RichTranscript
+from patchfeld.events import EventBus, UserMessageToOrchestrator
+from patchfeld.widgets.rich_transcript import RichTranscript
 
 
 class OrchestratorChat(Vertical):
@@ -1731,7 +1731,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/orchestrator_chat.py tests/test_app_smoke.py
+git add patchfeld/widgets/orchestrator_chat.py tests/test_app_smoke.py
 git commit -m "refactor(widgets): OrchestratorChat composes RichTranscript"
 ```
 
@@ -1742,7 +1742,7 @@ git commit -m "refactor(widgets): OrchestratorChat composes RichTranscript"
 Same treatment for the per-child-agent panel. The `rendered_text()` test helper is preserved as a façade so `tests/test_agent_transcript_widget.py` continues to pass.
 
 **Files:**
-- Modify: `patchbai/widgets/agent_transcript.py`
+- Modify: `patchfeld/widgets/agent_transcript.py`
 - Test: `tests/test_agent_transcript_widget.py`, `tests/test_agent_transcript_input.py` (verify no regression)
 
 - [ ] **Step 1: Write the failing test**
@@ -1752,8 +1752,8 @@ Append to `tests/test_agent_transcript_widget.py`:
 ```python
 @pytest.mark.asyncio
 async def test_agent_transcript_uses_rich_transcript(tmp_path):
-    from patchbai.widgets.agent_transcript import AgentTranscript as Widget
-    from patchbai.widgets.rich_transcript import RichTranscript
+    from patchfeld.widgets.agent_transcript import AgentTranscript as Widget
+    from patchfeld.widgets.rich_transcript import RichTranscript
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1772,15 +1772,15 @@ Expected: FAIL.
 
 - [ ] **Step 3: Rewrite `AgentTranscript` as a thin shell**
 
-Replace the entire contents of `patchbai/widgets/agent_transcript.py`:
+Replace the entire contents of `patchfeld/widgets/agent_transcript.py`:
 
 ```python
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Input
 
-from patchbai.events import DirectMessageToAgent, EventBus
-from patchbai.widgets.rich_transcript import RichTranscript
+from patchfeld.events import DirectMessageToAgent, EventBus
+from patchfeld.widgets.rich_transcript import RichTranscript
 
 
 class AgentTranscript(Vertical):
@@ -1836,7 +1836,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/agent_transcript.py tests/test_agent_transcript_widget.py
+git add patchfeld/widgets/agent_transcript.py tests/test_agent_transcript_widget.py
 git commit -m "refactor(widgets): AgentTranscript composes RichTranscript"
 ```
 
@@ -1847,7 +1847,7 @@ git commit -m "refactor(widgets): AgentTranscript composes RichTranscript"
 A single `set_interval(0.08, …)` per running widget cycles a Braille spinner glyph at the start of the foldable's title. Stopped on completion. (We hold this until last so all the structural behavior is verified before introducing time-driven UI updates that complicate testing.)
 
 **Files:**
-- Modify: `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/rich_transcript.py`
 - Test: `tests/test_rich_transcript.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1857,7 +1857,7 @@ Append to `tests/test_rich_transcript.py`:
 ```python
 @pytest.mark.asyncio
 async def test_running_tool_call_spinner_advances(tmp_path):
-    from patchbai.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+    from patchfeld.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1883,7 +1883,7 @@ async def test_running_tool_call_spinner_advances(tmp_path):
 
 @pytest.mark.asyncio
 async def test_spinner_stops_after_result(tmp_path):
-    from patchbai.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+    from patchfeld.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 
     bus = EventBus()
     app = _HostApp(bus, "a1")
@@ -1912,7 +1912,7 @@ Expected: 2 FAILs — spinner module-level constant and animation don't exist.
 
 - [ ] **Step 3: Add spinner support**
 
-Edit `patchbai/widgets/rich_transcript.py`. At module top (below imports), add:
+Edit `patchfeld/widgets/rich_transcript.py`. At module top (below imports), add:
 
 ```python
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -2024,7 +2024,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/rich_transcript.py tests/test_rich_transcript.py
+git add patchfeld/widgets/rich_transcript.py tests/test_rich_transcript.py
 git commit -m "feat(widgets): braille-spinner animation on running foldables"
 ```
 
@@ -2041,7 +2041,7 @@ Expected: 100% PASS. Investigate and fix any new failures inline before continui
 
 - [ ] **Step 2: Manual smoke**
 
-Run the TUI: `uv run python -m patchbai` (or whatever the existing dev-launch command is — check `patchbai/__main__.py`).
+Run the TUI: `uv run python -m patchfeld` (or whatever the existing dev-launch command is — check `patchfeld/__main__.py`).
 
 Verify by hand:
 - Send a prompt that triggers a tool sequence (e.g., "list the files in the cwd"). While running:

@@ -1,11 +1,11 @@
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.session import AgentSession
-from patchbai.agents.state import AgentInfo
-from patchbai.events import EventBus
-from patchbai.persistence.transcript_store import AgentTranscript
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.session import AgentSession
+from patchfeld.agents.state import AgentInfo
+from patchfeld.events import EventBus
+from patchfeld.persistence.transcript_store import AgentTranscript
 
 
 def _info() -> AgentInfo:

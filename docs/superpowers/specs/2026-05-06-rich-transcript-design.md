@@ -49,7 +49,7 @@ final response stands out.
 
 ## Architecture
 
-### New module: `patchbai/widgets/rich_transcript.py`
+### New module: `patchfeld/widgets/rich_transcript.py`
 
 Exports one public class:
 
@@ -109,7 +109,7 @@ upstream changes are needed for it.
 
 ### Event-schema extension
 
-`AgentMessageAppended` (in `patchbai/events.py`) gains two optional fields:
+`AgentMessageAppended` (in `patchfeld/events.py`) gains two optional fields:
 
 ```python
 @dataclass(frozen=True)
@@ -121,13 +121,13 @@ class AgentMessageAppended:
     tool_name: str | None = None     # set for role == "tool_use"
 ```
 
-`AgentSession._handle_message` in `patchbai/agents/session.py` is updated to
+`AgentSession._handle_message` in `patchfeld/agents/session.py` is updated to
 populate these fields:
 
 - For `ToolUseBlock`: `tool_id=block.id`, `tool_name=block.name`.
 - For `ToolResultBlock`: `tool_id=block.tool_use_id`.
 
-`TranscriptEntry` (the on-disk record in `patchbai/persistence/transcript_store.py`)
+`TranscriptEntry` (the on-disk record in `patchfeld/persistence/transcript_store.py`)
 also gains the same optional fields, with serialization defaulting to absent
 when `None`. Old transcripts without those fields continue to read fine —
 `tool_id`/`tool_name` are simply `None`, and on replay we fall back to the

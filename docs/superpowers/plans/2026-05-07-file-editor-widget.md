@@ -4,7 +4,7 @@
 
 **Goal:** Add a `FileEditor` Textual widget that mirrors `FileViewer` (extension-based syntax highlighting, optional `follow_selection` to subscribe to `FileSelected` events) but allows the user to actually save edits with `Ctrl+S`. Show a dirty marker in the border title, prompt before discarding edits when the tree click switches files, and prompt before overwriting files that changed on disk since load.
 
-**Architecture:** Single `FileEditor(TextArea)` subclass in `patchbai/widgets/file_editor.py`, paralleling the existing `FileViewer`. Two thin `ModalScreen[str]` subclasses live in the same module (`ConfirmDirtySwitchScreen`, `ConfirmOverwriteScreen`) and return string verbs via `dismiss(...)`. The extension→language map and file-loading helper are extracted out of `file_viewer.py` into a shared `patchbai/widgets/_file_lang.py` so both widgets use one definition. Bus subscription, `default_border_title`, and registration follow the same shape as the existing `FileViewer`/`FileTree` pair.
+**Architecture:** Single `FileEditor(TextArea)` subclass in `patchfeld/widgets/file_editor.py`, paralleling the existing `FileViewer`. Two thin `ModalScreen[str]` subclasses live in the same module (`ConfirmDirtySwitchScreen`, `ConfirmOverwriteScreen`) and return string verbs via `dismiss(...)`. The extension→language map and file-loading helper are extracted out of `file_viewer.py` into a shared `patchfeld/widgets/_file_lang.py` so both widgets use one definition. Bus subscription, `default_border_title`, and registration follow the same shape as the existing `FileViewer`/`FileTree` pair.
 
 **Tech Stack:** Python 3.12, Textual 8.x (`TextArea`, `ModalScreen`, `Binding`), pytest-asyncio.
 
@@ -16,23 +16,23 @@
 
 **Created**
 
-- `patchbai/widgets/_file_lang.py` — shared `_EXTENSION_LANGUAGES` map plus `detect_language()` and `load_text()` helpers used by both `FileViewer` and `FileEditor`.
-- `patchbai/widgets/file_editor.py` — `FileEditor` widget plus `ConfirmDirtySwitchScreen` and `ConfirmOverwriteScreen` modals.
+- `patchfeld/widgets/_file_lang.py` — shared `_EXTENSION_LANGUAGES` map plus `detect_language()` and `load_text()` helpers used by both `FileViewer` and `FileEditor`.
+- `patchfeld/widgets/file_editor.py` — `FileEditor` widget plus `ConfirmDirtySwitchScreen` and `ConfirmOverwriteScreen` modals.
 - `tests/test_widget_file_lang.py` — small unit tests for the extracted helpers.
 - `tests/test_widget_file_editor.py` — load/dirty/save/border-title tests for the editor in isolation.
 - `tests/test_widget_file_tree_editor_pair.py` — tree+editor pair tests covering `follow_selection` and the dirty-switch modal.
 
 **Modified**
 
-- `patchbai/widgets/file_viewer.py` — replace its private `_EXTENSION_LANGUAGES`, `_detect_language`, `_load_text` with imports from `_file_lang`. No behavior change.
-- `patchbai/app.py` — register `FileEditor` in `build_default_registry()`.
+- `patchfeld/widgets/file_viewer.py` — replace its private `_EXTENSION_LANGUAGES`, `_detect_language`, `_load_text` with imports from `_file_lang`. No behavior change.
+- `patchfeld/app.py` — register `FileEditor` in `build_default_registry()`.
 
 ---
 
 ## Task 1: Extract shared file-language helper
 
 **Files:**
-- Create: `patchbai/widgets/_file_lang.py`
+- Create: `patchfeld/widgets/_file_lang.py`
 - Test: `tests/test_widget_file_lang.py`
 
 The current `file_viewer.py` defines an extension-to-language map and a `_load_text` helper privately. Both `FileViewer` and the new `FileEditor` need them. Extract them into a private sibling module before adding the second widget so we don't ship two copies.
@@ -44,7 +44,7 @@ Create `tests/test_widget_file_lang.py`:
 ```python
 from pathlib import Path
 
-from patchbai.widgets._file_lang import detect_language, load_text
+from patchfeld.widgets._file_lang import detect_language, load_text
 
 
 def test_detect_language_python():
@@ -84,11 +84,11 @@ def test_load_text_missing_file_returns_placeholder(tmp_path: Path):
 uv run pytest tests/test_widget_file_lang.py -v
 ```
 
-Expected: all four tests fail with `ModuleNotFoundError: No module named 'patchbai.widgets._file_lang'`.
+Expected: all four tests fail with `ModuleNotFoundError: No module named 'patchfeld.widgets._file_lang'`.
 
 - [ ] **Step 1.3: Create the helper module**
 
-Create `patchbai/widgets/_file_lang.py`:
+Create `patchfeld/widgets/_file_lang.py`:
 
 ```python
 from pathlib import Path
@@ -139,15 +139,15 @@ Expected: 4 passed.
 
 - [ ] **Step 1.5: Switch FileViewer to the shared helper**
 
-Edit `patchbai/widgets/file_viewer.py`. Replace the top of the file (the `_EXTENSION_LANGUAGES` dict, `_detect_language`, and `_load_text`) with an import:
+Edit `patchfeld/widgets/file_viewer.py`. Replace the top of the file (the `_EXTENSION_LANGUAGES` dict, `_detect_language`, and `_load_text`) with an import:
 
 ```python
 from pathlib import Path
 
 from textual.widgets import TextArea
 
-from patchbai.events import FileSelected
-from patchbai.widgets._file_lang import detect_language as _detect_language, load_text as _load_text
+from patchfeld.events import FileSelected
+from patchfeld.widgets._file_lang import detect_language as _detect_language, load_text as _load_text
 ```
 
 Delete the old `_EXTENSION_LANGUAGES` dict and the two helper functions. Leave the `FileViewer` class untouched — it already calls `_load_text` and `_detect_language` by those names, so the aliased imports keep its body unchanged.
@@ -163,7 +163,7 @@ Expected: all existing FileViewer + pair tests pass.
 - [ ] **Step 1.7: Commit**
 
 ```bash
-git add patchbai/widgets/_file_lang.py patchbai/widgets/file_viewer.py tests/test_widget_file_lang.py
+git add patchfeld/widgets/_file_lang.py patchfeld/widgets/file_viewer.py tests/test_widget_file_lang.py
 git commit -m "refactor(widgets): extract shared file-language helper for FileViewer"
 ```
 
@@ -172,7 +172,7 @@ git commit -m "refactor(widgets): extract shared file-language helper for FileVi
 ## Task 2: FileEditor scaffold — class, constructor, eager load, language detection
 
 **Files:**
-- Create: `patchbai/widgets/file_editor.py`
+- Create: `patchfeld/widgets/file_editor.py`
 - Test: `tests/test_widget_file_editor.py`
 
 Land the bare class so `file_path=` loads content and language is detected. No saves, no dirty tracking, no bus, no modals yet. This is the equivalent of `FileViewer`'s read-only scaffold but writable.
@@ -187,7 +187,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.widgets.file_editor import FileEditor
+from patchfeld.widgets.file_editor import FileEditor
 
 
 class _Host(App):
@@ -260,18 +260,18 @@ async def test_file_editor_blank_when_no_path():
 uv run pytest tests/test_widget_file_editor.py -v
 ```
 
-Expected: all five fail with `ModuleNotFoundError: No module named 'patchbai.widgets.file_editor'`.
+Expected: all five fail with `ModuleNotFoundError: No module named 'patchfeld.widgets.file_editor'`.
 
 - [ ] **Step 2.3: Create the module with the scaffold**
 
-Create `patchbai/widgets/file_editor.py`:
+Create `patchfeld/widgets/file_editor.py`:
 
 ```python
 from pathlib import Path
 
 from textual.widgets import TextArea
 
-from patchbai.widgets._file_lang import load_text as _load_text
+from patchfeld.widgets._file_lang import load_text as _load_text
 
 
 class FileEditor(TextArea):
@@ -318,7 +318,7 @@ Expected: 5 passed.
 - [ ] **Step 2.5: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_editor.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_editor.py
 git commit -m "feat(widgets): FileEditor scaffold with file_path load + language detect"
 ```
 
@@ -327,7 +327,7 @@ git commit -m "feat(widgets): FileEditor scaffold with file_path load + language
 ## Task 3: Dirty tracking and border title with `*` marker
 
 **Files:**
-- Modify: `patchbai/widgets/file_editor.py`
+- Modify: `patchfeld/widgets/file_editor.py`
 - Test: `tests/test_widget_file_editor.py`
 
 Add `_dirty` state, `default_border_title`, a runtime `_refresh_border_title()` method, and `on_text_area_changed` to flip dirty when text diverges from the loaded baseline. The border title shows `Edit: name` when clean and `Edit: name *` when dirty.
@@ -406,7 +406,7 @@ Expected: the five new tests fail (no `is_dirty`, no `default_border_title`, no 
 
 - [ ] **Step 3.3: Implement dirty tracking and the border title**
 
-Edit `patchbai/widgets/file_editor.py`. Add the `default_border_title` classmethod, an `is_dirty` property, the `_refresh_border_title()` helper, and the `on_text_area_changed` hook.
+Edit `patchfeld/widgets/file_editor.py`. Add the `default_border_title` classmethod, an `is_dirty` property, the `_refresh_border_title()` helper, and the `on_text_area_changed` hook.
 
 Replace the entire `FileEditor` class body so far with:
 
@@ -481,7 +481,7 @@ Expected: all 10 pass.
 - [ ] **Step 3.5: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_editor.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_editor.py
 git commit -m "feat(widgets): FileEditor dirty tracking + border title marker"
 ```
 
@@ -490,7 +490,7 @@ git commit -m "feat(widgets): FileEditor dirty tracking + border title marker"
 ## Task 4: `Ctrl+S` save with mtime/size baseline (no overwrite modal yet)
 
 **Files:**
-- Modify: `patchbai/widgets/file_editor.py`
+- Modify: `patchfeld/widgets/file_editor.py`
 - Test: `tests/test_widget_file_editor.py`
 
 Add the save action without the external-change confirmation modal. We track `_loaded_mtime` / `_loaded_size` from this task on so the next task can layer the modal cleanly. `action_save()` is `async` and returns `bool` per the spec.
@@ -594,7 +594,7 @@ Expected: the five new tests fail (no `action_save`, no Ctrl+S binding).
 
 - [ ] **Step 4.3: Implement save**
 
-Edit `patchbai/widgets/file_editor.py`. Add the `Binding` import, the `BINDINGS` list, the `_loaded_mtime` / `_loaded_size` state in `__init__`, a `_stat_or_none` helper, and the `action_save()` method.
+Edit `patchfeld/widgets/file_editor.py`. Add the `Binding` import, the `BINDINGS` list, the `_loaded_mtime` / `_loaded_size` state in `__init__`, a `_stat_or_none` helper, and the `action_save()` method.
 
 Top of the file:
 
@@ -604,7 +604,7 @@ from pathlib import Path
 from textual.binding import Binding
 from textual.widgets import TextArea
 
-from patchbai.widgets._file_lang import load_text as _load_text
+from patchfeld.widgets._file_lang import load_text as _load_text
 
 
 def _stat_or_none(path: Path) -> tuple[float, int] | None:
@@ -693,7 +693,7 @@ Expected: all 15 pass.
 - [ ] **Step 4.5: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_editor.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_editor.py
 git commit -m "feat(widgets): FileEditor Ctrl+S save with dirty clear"
 ```
 
@@ -702,7 +702,7 @@ git commit -m "feat(widgets): FileEditor Ctrl+S save with dirty clear"
 ## Task 5: `ConfirmOverwriteScreen` and external-change detection
 
 **Files:**
-- Modify: `patchbai/widgets/file_editor.py`
+- Modify: `patchfeld/widgets/file_editor.py`
 - Test: `tests/test_widget_file_editor.py`
 
 When the user presses `Ctrl+S` and the file's mtime/size on disk differs from what we cached at load time, push a small modal that returns `"overwrite"` or `"cancel"`. We don't poll; this fires only at save time.
@@ -717,7 +717,7 @@ import time
 
 from textual.screen import ModalScreen
 
-from patchbai.widgets.file_editor import ConfirmOverwriteScreen
+from patchfeld.widgets.file_editor import ConfirmOverwriteScreen
 
 
 @pytest.mark.asyncio
@@ -824,7 +824,7 @@ Expected: the three new tests fail (`ConfirmOverwriteScreen` does not exist; `ac
 
 - [ ] **Step 5.3: Implement the modal and external-change check**
 
-Edit `patchbai/widgets/file_editor.py`. Add modal-related imports near the top:
+Edit `patchfeld/widgets/file_editor.py`. Add modal-related imports near the top:
 
 ```python
 from textual.app import ComposeResult
@@ -921,7 +921,7 @@ Expected: all 18 pass.
 - [ ] **Step 5.5: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_editor.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_editor.py
 git commit -m "feat(widgets): FileEditor external-change overwrite confirmation"
 ```
 
@@ -930,7 +930,7 @@ git commit -m "feat(widgets): FileEditor external-change overwrite confirmation"
 ## Task 6: `load_file` method (state-cache-aware reload)
 
 **Files:**
-- Modify: `patchbai/widgets/file_editor.py`
+- Modify: `patchfeld/widgets/file_editor.py`
 - Test: `tests/test_widget_file_editor.py`
 
 Add `load_file(path)` so an external caller (and Task 7's bus handler) can repoint the editor at a new file. It refreshes text, language, the cached `_loaded_text` / `_loaded_mtime` / `_loaded_size` / `_current_path`, clears dirty, and refreshes the border title.
@@ -1042,7 +1042,7 @@ Expected: all 21 pass.
 - [ ] **Step 6.5: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_editor.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_editor.py
 git commit -m "feat(widgets): FileEditor.load_file for repointing at new files"
 ```
 
@@ -1051,7 +1051,7 @@ git commit -m "feat(widgets): FileEditor.load_file for repointing at new files"
 ## Task 7: `ConfirmDirtySwitchScreen` and `follow_selection` bus handler
 
 **Files:**
-- Modify: `patchbai/widgets/file_editor.py`
+- Modify: `patchfeld/widgets/file_editor.py`
 - Create: `tests/test_widget_file_tree_editor_pair.py`
 
 Subscribe to `FileSelected` when `follow_selection=True`. When a new path is delivered, reload directly if clean; otherwise prompt save / discard / cancel via `ConfirmDirtySwitchScreen`. The handler runs as an `exclusive=True` worker so a third tree click cancels a pending prompt.
@@ -1066,9 +1066,9 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.events import EventBus, FileSelected
-from patchbai.widgets.file_editor import ConfirmDirtySwitchScreen, FileEditor
-from patchbai.widgets.file_tree import FileTree
+from patchfeld.events import EventBus, FileSelected
+from patchfeld.widgets.file_editor import ConfirmDirtySwitchScreen, FileEditor
+from patchfeld.widgets.file_tree import FileTree
 
 
 class _Pair(App):
@@ -1240,10 +1240,10 @@ Expected: all six fail (`ConfirmDirtySwitchScreen` undefined; `follow_selection`
 
 - [ ] **Step 7.3: Implement the dirty-switch modal and bus handler**
 
-Edit `patchbai/widgets/file_editor.py`. Add the import for `FileSelected` near the top, alongside the existing imports:
+Edit `patchfeld/widgets/file_editor.py`. Add the import for `FileSelected` near the top, alongside the existing imports:
 
 ```python
-from patchbai.events import FileSelected
+from patchfeld.events import FileSelected
 ```
 
 Add `_unsub` initialization at the end of `__init__`:
@@ -1358,7 +1358,7 @@ Expected: every test passes.
 - [ ] **Step 7.6: Commit**
 
 ```bash
-git add patchbai/widgets/file_editor.py tests/test_widget_file_tree_editor_pair.py
+git add patchfeld/widgets/file_editor.py tests/test_widget_file_tree_editor_pair.py
 git commit -m "feat(widgets): FileEditor follow_selection + dirty-switch modal"
 ```
 
@@ -1367,7 +1367,7 @@ git commit -m "feat(widgets): FileEditor follow_selection + dirty-switch modal"
 ## Task 8: Register `FileEditor` in the widget registry
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_widget_file_editor.py`
 
 Make `FileEditor` available to `LayoutSpec` so users (and the orchestrator's `list_widgets` MCP tool) can drop it into a layout by name.
@@ -1378,8 +1378,8 @@ Append to `tests/test_widget_file_editor.py`:
 
 ```python
 def test_file_editor_is_registered_in_default_registry():
-    from patchbai.app import build_default_registry
-    from patchbai.widgets.file_editor import FileEditor
+    from patchfeld.app import build_default_registry
+    from patchfeld.widgets.file_editor import FileEditor
 
     reg = build_default_registry()
     assert "FileEditor" in reg.known()
@@ -1399,10 +1399,10 @@ Expected: fails — `'FileEditor' not in reg.known()`.
 
 - [ ] **Step 8.3: Register the widget**
 
-Edit `patchbai/app.py`. Add the import next to the other widget imports (alphabetical with `file_tree` / `file_viewer`):
+Edit `patchfeld/app.py`. Add the import next to the other widget imports (alphabetical with `file_tree` / `file_viewer`):
 
 ```python
-from patchbai.widgets.file_editor import FileEditor
+from patchfeld.widgets.file_editor import FileEditor
 ```
 
 In `build_default_registry()`, add the registration directly after the existing `FileViewer` block:
@@ -1440,6 +1440,6 @@ Expected: every test passes. (Pay attention to the smoke tests in `tests/test_ap
 - [ ] **Step 8.6: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_widget_file_editor.py
+git add patchfeld/app.py tests/test_widget_file_editor.py
 git commit -m "feat(app): register FileEditor in default widget registry"
 ```

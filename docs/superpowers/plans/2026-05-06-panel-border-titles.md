@@ -4,7 +4,7 @@
 
 **Goal:** Render a human-readable title in the top border of every mounted panel, with prop-aware defaults, agent override via `Panel.title`, and a `get_layout` MCP tool so the agent can resolve user references like "the Activity Panel" back to a panel `id`.
 
-**Architecture:** One new optional field on `Panel` (`title: str | None`). One shared resolver `resolve_title(panel, widget_cls)` in a new `patchbai/layout/titles.py` that the layout engine and the new `get_layout` tool both call. Per-widget defaults expressed as either a `DEFAULT_BORDER_TITLE` class attribute (static) or a `default_border_title(cls, props)` classmethod (prop-aware). The engine assigns `widget.border_title` at mount; the five borderless widgets gain a `border:` rule in their DEFAULT_CSS so titles render; a heuristic safety net catches custom widgets without a border.
+**Architecture:** One new optional field on `Panel` (`title: str | None`). One shared resolver `resolve_title(panel, widget_cls)` in a new `patchfeld/layout/titles.py` that the layout engine and the new `get_layout` tool both call. Per-widget defaults expressed as either a `DEFAULT_BORDER_TITLE` class attribute (static) or a `default_border_title(cls, props)` classmethod (prop-aware). The engine assigns `widget.border_title` at mount; the five borderless widgets gain a `border:` rule in their DEFAULT_CSS so titles render; a heuristic safety net catches custom widgets without a border.
 
 **Tech Stack:** Python 3.12, Textual ≥ 0.87 (for `border_title`), Pydantic 2, pytest-asyncio.
 
@@ -15,27 +15,27 @@
 ## File Structure
 
 **Create:**
-- `patchbai/layout/titles.py` — `resolve_title()` helper + `populate_effective_titles()` walk used by `get_layout`.
+- `patchfeld/layout/titles.py` — `resolve_title()` helper + `populate_effective_titles()` walk used by `get_layout`.
 - `tests/test_layout_titles_resolver.py` — pure resolver tests (no Textual app harness).
 - `tests/test_layout_engine_titles.py` — engine integration tests for `border_title` + safety-net border.
 - `tests/test_orchestrator_tools_get_layout.py` — `get_layout` handler tests.
 
 **Modify:**
-- `patchbai/layout/spec.py` — add `Panel.title` field.
-- `patchbai/layout/engine.py` — use `resolve_title` in `_build`, apply safety-net border.
-- `patchbai/widgets/orchestrator_chat.py`, `agent_table.py`, `placeholders.py`, `diff_viewer.py` — add `DEFAULT_BORDER_TITLE`.
-- `patchbai/widgets/file_tree.py`, `file_viewer.py`, `markdown.py`, `log_tail.py`, `notebook.py`, `terminal.py`, `agent_transcript.py`, `rich_transcript.py` — add `default_border_title` classmethod.
-- `patchbai/widgets/markdown.py`, `file_tree.py`, `notebook.py`, `file_viewer.py`, `rich_transcript.py` — add `border:` to DEFAULT_CSS.
-- `patchbai/orchestrator/tools.py` — new `_get_layout_handler` + wire it into `build_orchestrator_tools` and `build_orchestrator_mcp_server`. Update `set_layout` description.
-- `patchbai/orchestrator/session.py` — accept `current_layout` callable, forward to MCP builders.
-- `patchbai/app.py` — pass `current_layout=lambda: self._current_spec` into `OrchestratorSession`.
+- `patchfeld/layout/spec.py` — add `Panel.title` field.
+- `patchfeld/layout/engine.py` — use `resolve_title` in `_build`, apply safety-net border.
+- `patchfeld/widgets/orchestrator_chat.py`, `agent_table.py`, `placeholders.py`, `diff_viewer.py` — add `DEFAULT_BORDER_TITLE`.
+- `patchfeld/widgets/file_tree.py`, `file_viewer.py`, `markdown.py`, `log_tail.py`, `notebook.py`, `terminal.py`, `agent_transcript.py`, `rich_transcript.py` — add `default_border_title` classmethod.
+- `patchfeld/widgets/markdown.py`, `file_tree.py`, `notebook.py`, `file_viewer.py`, `rich_transcript.py` — add `border:` to DEFAULT_CSS.
+- `patchfeld/orchestrator/tools.py` — new `_get_layout_handler` + wire it into `build_orchestrator_tools` and `build_orchestrator_mcp_server`. Update `set_layout` description.
+- `patchfeld/orchestrator/session.py` — accept `current_layout` callable, forward to MCP builders.
+- `patchfeld/app.py` — pass `current_layout=lambda: self._current_spec` into `OrchestratorSession`.
 
 ---
 
 ## Task 1: Add `Panel.title` to the layout spec
 
 **Files:**
-- Modify: `patchbai/layout/spec.py:6-13`
+- Modify: `patchfeld/layout/spec.py:6-13`
 - Test: `tests/test_layout_spec.py` (new test added at end of file)
 
 - [ ] **Step 1: Read existing test file**
@@ -80,7 +80,7 @@ Expected: FAIL — `Object has no attribute 'title'` or `extra fields not permit
 
 - [ ] **Step 4: Add the field**
 
-Edit `patchbai/layout/spec.py`, replacing the `Panel` class body:
+Edit `patchfeld/layout/spec.py`, replacing the `Panel` class body:
 
 ```python
 class Panel(BaseModel):
@@ -102,7 +102,7 @@ Expected: PASS for all four new tests, no regressions in existing tests.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/layout/spec.py tests/test_layout_spec.py
+git add patchfeld/layout/spec.py tests/test_layout_spec.py
 git commit -m "feat(layout): add optional Panel.title field"
 ```
 
@@ -111,8 +111,8 @@ git commit -m "feat(layout): add optional Panel.title field"
 ## Task 2: Title resolver helper + static defaults
 
 **Files:**
-- Create: `patchbai/layout/titles.py`
-- Modify: `patchbai/widgets/orchestrator_chat.py`, `patchbai/widgets/agent_table.py`, `patchbai/widgets/placeholders.py`, `patchbai/widgets/diff_viewer.py`
+- Create: `patchfeld/layout/titles.py`
+- Modify: `patchfeld/widgets/orchestrator_chat.py`, `patchfeld/widgets/agent_table.py`, `patchfeld/widgets/placeholders.py`, `patchfeld/widgets/diff_viewer.py`
 - Test: `tests/test_layout_titles_resolver.py`
 
 - [ ] **Step 1: Write the failing resolver test**
@@ -120,12 +120,12 @@ git commit -m "feat(layout): add optional Panel.title field"
 Create `tests/test_layout_titles_resolver.py`:
 
 ```python
-from patchbai.layout.spec import Panel
-from patchbai.layout.titles import resolve_title
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.diff_viewer import DiffViewer
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchfeld.layout.spec import Panel
+from patchfeld.layout.titles import resolve_title
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.diff_viewer import DiffViewer
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.placeholders import ActivityFeed
 
 
 class _Bare:
@@ -156,19 +156,19 @@ def test_resolver_swallows_classmethod_exceptions():
     assert resolve_title(Panel(id="x", widget="Boom"), Boom) == "Boom"
 ```
 
-- [ ] **Step 2: Run, expect ImportError on `patchbai.layout.titles`**
+- [ ] **Step 2: Run, expect ImportError on `patchfeld.layout.titles`**
 
 Run: `uv run pytest tests/test_layout_titles_resolver.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'patchbai.layout.titles'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'patchfeld.layout.titles'`.
 
 - [ ] **Step 3: Create the resolver module**
 
-Create `patchbai/layout/titles.py`:
+Create `patchfeld/layout/titles.py`:
 
 ```python
 from typing import Any
 
-from patchbai.layout.spec import Container, Panel
+from patchfeld.layout.spec import Container, Panel
 
 
 def resolve_title(panel: Panel | dict, widget_cls: type) -> str:
@@ -239,7 +239,7 @@ def populate_effective_titles(node: Any, registry) -> None:
 
 - [ ] **Step 4: Add `DEFAULT_BORDER_TITLE` to OrchestratorChat**
 
-Edit `patchbai/widgets/orchestrator_chat.py`. Inside `class OrchestratorChat(Vertical):`, add a class attribute right after the `AGENT_ID = "orchestrator"` line:
+Edit `patchfeld/widgets/orchestrator_chat.py`. Inside `class OrchestratorChat(Vertical):`, add a class attribute right after the `AGENT_ID = "orchestrator"` line:
 
 ```python
     DEFAULT_BORDER_TITLE = "Orchestrator"
@@ -247,7 +247,7 @@ Edit `patchbai/widgets/orchestrator_chat.py`. Inside `class OrchestratorChat(Ver
 
 - [ ] **Step 5: Add `DEFAULT_BORDER_TITLE` to AgentTable**
 
-Edit `patchbai/widgets/agent_table.py`. Inside `class AgentTable(Container):`, add a class attribute right after the docstring (above `DEFAULT_CSS`):
+Edit `patchfeld/widgets/agent_table.py`. Inside `class AgentTable(Container):`, add a class attribute right after the docstring (above `DEFAULT_CSS`):
 
 ```python
     DEFAULT_BORDER_TITLE = "Agents"
@@ -255,7 +255,7 @@ Edit `patchbai/widgets/agent_table.py`. Inside `class AgentTable(Container):`, a
 
 - [ ] **Step 6: Add `DEFAULT_BORDER_TITLE` to ActivityFeed**
 
-Edit `patchbai/widgets/placeholders.py`. Inside `class ActivityFeed(Container):`, add right after the docstring:
+Edit `patchfeld/widgets/placeholders.py`. Inside `class ActivityFeed(Container):`, add right after the docstring:
 
 ```python
     DEFAULT_BORDER_TITLE = "Activity"
@@ -263,7 +263,7 @@ Edit `patchbai/widgets/placeholders.py`. Inside `class ActivityFeed(Container):`
 
 - [ ] **Step 7: Add `DEFAULT_BORDER_TITLE` to DiffViewer**
 
-Edit `patchbai/widgets/diff_viewer.py`. Inside `class DiffViewer(VerticalScroll):`, add right after the docstring:
+Edit `patchfeld/widgets/diff_viewer.py`. Inside `class DiffViewer(VerticalScroll):`, add right after the docstring:
 
 ```python
     DEFAULT_BORDER_TITLE = "Diff"
@@ -277,9 +277,9 @@ Expected: PASS, all five tests.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add patchbai/layout/titles.py tests/test_layout_titles_resolver.py \
-        patchbai/widgets/orchestrator_chat.py patchbai/widgets/agent_table.py \
-        patchbai/widgets/placeholders.py patchbai/widgets/diff_viewer.py
+git add patchfeld/layout/titles.py tests/test_layout_titles_resolver.py \
+        patchfeld/widgets/orchestrator_chat.py patchfeld/widgets/agent_table.py \
+        patchfeld/widgets/placeholders.py patchfeld/widgets/diff_viewer.py
 git commit -m "feat(layout): title resolver + static DEFAULT_BORDER_TITLE on 4 widgets"
 ```
 
@@ -288,7 +288,7 @@ git commit -m "feat(layout): title resolver + static DEFAULT_BORDER_TITLE on 4 w
 ## Task 3: Prop-aware `default_border_title` classmethods
 
 **Files:**
-- Modify: `patchbai/widgets/file_tree.py`, `file_viewer.py`, `markdown.py`, `log_tail.py`, `notebook.py`, `terminal.py`, `agent_transcript.py`, `rich_transcript.py`
+- Modify: `patchfeld/widgets/file_tree.py`, `file_viewer.py`, `markdown.py`, `log_tail.py`, `notebook.py`, `terminal.py`, `agent_transcript.py`, `rich_transcript.py`
 - Test: `tests/test_layout_titles_resolver.py` (extend)
 
 - [ ] **Step 1: Write the failing prop-aware tests**
@@ -296,17 +296,17 @@ git commit -m "feat(layout): title resolver + static DEFAULT_BORDER_TITLE on 4 w
 Append to `tests/test_layout_titles_resolver.py`:
 
 ```python
-from patchbai.layout.spec import Panel
-from patchbai.layout.titles import resolve_title
-from patchbai.widgets.agent_transcript import AgentTranscript
-from patchbai.widgets.diff_viewer import DiffViewer
-from patchbai.widgets.file_tree import FileTree
-from patchbai.widgets.file_viewer import FileViewer
-from patchbai.widgets.log_tail import LogTail
-from patchbai.widgets.markdown import Markdown
-from patchbai.widgets.notebook import Notebook
-from patchbai.widgets.rich_transcript import RichTranscript
-from patchbai.widgets.terminal import Terminal
+from patchfeld.layout.spec import Panel
+from patchfeld.layout.titles import resolve_title
+from patchfeld.widgets.agent_transcript import AgentTranscript
+from patchfeld.widgets.diff_viewer import DiffViewer
+from patchfeld.widgets.file_tree import FileTree
+from patchfeld.widgets.file_viewer import FileViewer
+from patchfeld.widgets.log_tail import LogTail
+from patchfeld.widgets.markdown import Markdown
+from patchfeld.widgets.notebook import Notebook
+from patchfeld.widgets.rich_transcript import RichTranscript
+from patchfeld.widgets.terminal import Terminal
 
 
 def test_file_tree_default_title_uses_path():
@@ -376,7 +376,7 @@ Expected: FAIL — each prop-aware widget falls through to its class name (since
 
 - [ ] **Step 3: Add classmethod to FileTree**
 
-Edit `patchbai/widgets/file_tree.py`. Replace the `class FileTree` block to add the classmethod after the existing methods (before EOF, but inside the class):
+Edit `patchfeld/widgets/file_tree.py`. Replace the `class FileTree` block to add the classmethod after the existing methods (before EOF, but inside the class):
 
 ```python
     @classmethod
@@ -389,7 +389,7 @@ Edit `patchbai/widgets/file_tree.py`. Replace the `class FileTree` block to add 
 
 - [ ] **Step 4: Add classmethod to FileViewer**
 
-Edit `patchbai/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, add at the end of the class:
+Edit `patchfeld/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, add at the end of the class:
 
 ```python
     @classmethod
@@ -403,7 +403,7 @@ Edit `patchbai/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, ad
 
 - [ ] **Step 5: Add classmethod to Markdown**
 
-Edit `patchbai/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, add at the end:
+Edit `patchfeld/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, add at the end:
 
 ```python
     @classmethod
@@ -418,7 +418,7 @@ Edit `patchbai/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, a
 
 - [ ] **Step 6: Add classmethod to LogTail**
 
-Edit `patchbai/widgets/log_tail.py`. Inside `class LogTail(VerticalScroll):`, add at the end:
+Edit `patchfeld/widgets/log_tail.py`. Inside `class LogTail(VerticalScroll):`, add at the end:
 
 ```python
     @classmethod
@@ -433,7 +433,7 @@ Edit `patchbai/widgets/log_tail.py`. Inside `class LogTail(VerticalScroll):`, ad
 
 - [ ] **Step 7: Add classmethod to Notebook**
 
-Edit `patchbai/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add at the end:
+Edit `patchfeld/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add at the end:
 
 ```python
     @classmethod
@@ -446,7 +446,7 @@ Edit `patchbai/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add at 
 
 - [ ] **Step 8: Add classmethod to Terminal**
 
-Edit `patchbai/widgets/terminal.py`. Inside `class Terminal(Container):`, add at the end:
+Edit `patchfeld/widgets/terminal.py`. Inside `class Terminal(Container):`, add at the end:
 
 ```python
     @classmethod
@@ -460,7 +460,7 @@ Edit `patchbai/widgets/terminal.py`. Inside `class Terminal(Container):`, add at
 
 - [ ] **Step 9: Add classmethod to AgentTranscript**
 
-Edit `patchbai/widgets/agent_transcript.py`. Inside `class AgentTranscript(Vertical):`, add at the end (after `rendered_text`):
+Edit `patchfeld/widgets/agent_transcript.py`. Inside `class AgentTranscript(Vertical):`, add at the end (after `rendered_text`):
 
 ```python
     @classmethod
@@ -473,7 +473,7 @@ Edit `patchbai/widgets/agent_transcript.py`. Inside `class AgentTranscript(Verti
 
 - [ ] **Step 10: Add classmethod to RichTranscript**
 
-Edit `patchbai/widgets/rich_transcript.py`. Inside `class RichTranscript(Vertical):`, add at the end of the class (after the existing methods):
+Edit `patchfeld/widgets/rich_transcript.py`. Inside `class RichTranscript(Vertical):`, add at the end of the class (after the existing methods):
 
 ```python
     @classmethod
@@ -492,10 +492,10 @@ Expected: PASS, all tests including the originals from Task 2.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add patchbai/widgets/file_tree.py patchbai/widgets/file_viewer.py \
-        patchbai/widgets/markdown.py patchbai/widgets/log_tail.py \
-        patchbai/widgets/notebook.py patchbai/widgets/terminal.py \
-        patchbai/widgets/agent_transcript.py patchbai/widgets/rich_transcript.py \
+git add patchfeld/widgets/file_tree.py patchfeld/widgets/file_viewer.py \
+        patchfeld/widgets/markdown.py patchfeld/widgets/log_tail.py \
+        patchfeld/widgets/notebook.py patchfeld/widgets/terminal.py \
+        patchfeld/widgets/agent_transcript.py patchfeld/widgets/rich_transcript.py \
         tests/test_layout_titles_resolver.py
 git commit -m "feat(widgets): prop-aware default_border_title classmethods"
 ```
@@ -505,13 +505,13 @@ git commit -m "feat(widgets): prop-aware default_border_title classmethods"
 ## Task 4: Add visible borders to the 5 borderless widgets
 
 **Files:**
-- Modify: `patchbai/widgets/markdown.py`, `patchbai/widgets/file_tree.py`, `patchbai/widgets/notebook.py`, `patchbai/widgets/file_viewer.py`, `patchbai/widgets/rich_transcript.py`
+- Modify: `patchfeld/widgets/markdown.py`, `patchfeld/widgets/file_tree.py`, `patchfeld/widgets/notebook.py`, `patchfeld/widgets/file_viewer.py`, `patchfeld/widgets/rich_transcript.py`
 
 These widgets currently render no outer border. Without a border, Textual silently drops `border_title`. Add a `border:` rule to each widget's DEFAULT_CSS so titles render. Use `round $surface-lighten-2` to match the in-tree convention.
 
 - [ ] **Step 1: Add DEFAULT_CSS to Markdown (which has none today)**
 
-Edit `patchbai/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, add right after the docstring (above `__init__`):
+Edit `patchfeld/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, add right after the docstring (above `__init__`):
 
 ```python
     DEFAULT_CSS = """
@@ -524,7 +524,7 @@ Edit `patchbai/widgets/markdown.py`. Inside `class Markdown(VerticalScroll):`, a
 
 - [ ] **Step 2: Add DEFAULT_CSS to FileTree (which has none today)**
 
-Edit `patchbai/widgets/file_tree.py`. Inside `class FileTree(DirectoryTree):`, add right after the docstring (above `__init__`):
+Edit `patchfeld/widgets/file_tree.py`. Inside `class FileTree(DirectoryTree):`, add right after the docstring (above `__init__`):
 
 ```python
     DEFAULT_CSS = """
@@ -537,7 +537,7 @@ Edit `patchbai/widgets/file_tree.py`. Inside `class FileTree(DirectoryTree):`, a
 
 - [ ] **Step 3: Add DEFAULT_CSS to Notebook (which has none today)**
 
-Edit `patchbai/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add right after the docstring (above `__init__`):
+Edit `patchfeld/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add right after the docstring (above `__init__`):
 
 ```python
     DEFAULT_CSS = """
@@ -551,7 +551,7 @@ Edit `patchbai/widgets/notebook.py`. Inside `class Notebook(TextArea):`, add rig
 
 - [ ] **Step 4: Add DEFAULT_CSS to FileViewer (which has none today)**
 
-Edit `patchbai/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, add right after the docstring (above `__init__`):
+Edit `patchfeld/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, add right after the docstring (above `__init__`):
 
 ```python
     DEFAULT_CSS = """
@@ -563,7 +563,7 @@ Edit `patchbai/widgets/file_viewer.py`. Inside `class FileViewer(TextArea):`, ad
 
 - [ ] **Step 5: Extend DEFAULT_CSS on RichTranscript**
 
-Edit `patchbai/widgets/rich_transcript.py`. Replace the existing RichTranscript DEFAULT_CSS block (around line 269):
+Edit `patchfeld/widgets/rich_transcript.py`. Replace the existing RichTranscript DEFAULT_CSS block (around line 269):
 
 ```python
     DEFAULT_CSS = """
@@ -587,9 +587,9 @@ Expected: PASS — adding a border is purely visual; no test should care unless 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/widgets/markdown.py patchbai/widgets/file_tree.py \
-        patchbai/widgets/notebook.py patchbai/widgets/file_viewer.py \
-        patchbai/widgets/rich_transcript.py
+git add patchfeld/widgets/markdown.py patchfeld/widgets/file_tree.py \
+        patchfeld/widgets/notebook.py patchfeld/widgets/file_viewer.py \
+        patchfeld/widgets/rich_transcript.py
 git commit -m "feat(widgets): give the five borderless widgets a visible border"
 ```
 
@@ -598,7 +598,7 @@ git commit -m "feat(widgets): give the five borderless widgets a visible border"
 ## Task 5: Engine integration — assign `border_title` and apply safety net
 
 **Files:**
-- Modify: `patchbai/layout/engine.py:77-91` (the `_build` function)
+- Modify: `patchfeld/layout/engine.py:77-91` (the `_build` function)
 - Test: `tests/test_layout_engine_titles.py` (new)
 
 The engine sets `widget.border_title` from `resolve_title(node, cls)`. For widgets whose class has no `border:` mention in DEFAULT_CSS (a heuristic — covers the unknown / orchestrator-supplied custom case), the engine applies a default round border inline so the title still renders. We use a heuristic class-level check rather than `widget.styles.has_rule("border")` because the styling cascade has not yet run at `_build` time.
@@ -614,13 +614,13 @@ from textual.containers import Container
 from textual.widget import Widget
 from textual.widgets import Static
 
-from patchbai.events import EventBus
-from patchbai.layout.engine import apply as apply_layout
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchfeld.events import EventBus
+from patchfeld.layout.engine import apply as apply_layout
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.placeholders import ActivityFeed
 
 
 class _BorderlessCustom(Static):
@@ -786,7 +786,7 @@ Expected: FAIL — `border_title` is `None` because the engine doesn't assign it
 
 - [ ] **Step 3: Wire `resolve_title` into `_build`**
 
-Edit `patchbai/layout/engine.py`. Replace the `_build` function (currently lines 77-91) with:
+Edit `patchfeld/layout/engine.py`. Replace the `_build` function (currently lines 77-91) with:
 
 ```python
 def _has_border_in_default_css(cls) -> bool:
@@ -829,7 +829,7 @@ def _build(node, registry) -> "TxContainer":
 Add the `resolve_title` import near the top of `engine.py`, alongside the existing imports:
 
 ```python
-from patchbai.layout.titles import resolve_title
+from patchfeld.layout.titles import resolve_title
 ```
 
 - [ ] **Step 4: Run engine title tests**
@@ -845,7 +845,7 @@ Expected: PASS, no regressions.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/layout/engine.py tests/test_layout_engine_titles.py
+git add patchfeld/layout/engine.py tests/test_layout_engine_titles.py
 git commit -m "feat(layout): engine sets border_title and applies a safety-net border"
 ```
 
@@ -854,9 +854,9 @@ git commit -m "feat(layout): engine sets border_title and applies a safety-net b
 ## Task 6: `get_layout` MCP tool — plumbing + handler
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py` (add handler, register in both `build_orchestrator_tools` and `build_orchestrator_mcp_server`)
-- Modify: `patchbai/orchestrator/session.py` (accept `current_layout`, forward)
-- Modify: `patchbai/app.py` (pass `current_layout` to `OrchestratorSession`)
+- Modify: `patchfeld/orchestrator/tools.py` (add handler, register in both `build_orchestrator_tools` and `build_orchestrator_mcp_server`)
+- Modify: `patchfeld/orchestrator/session.py` (accept `current_layout`, forward)
+- Modify: `patchfeld/app.py` (pass `current_layout` to `OrchestratorSession`)
 - Test: `tests/test_orchestrator_tools_get_layout.py` (new)
 
 - [ ] **Step 1: Write the failing handler test**
@@ -868,17 +868,17 @@ import json
 
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.layouts_store import NamedLayoutsStore
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.placeholders import ActivityFeed
 
 
 def _make_manager(tmp_path, ok_script):
@@ -1000,11 +1000,11 @@ Expected: FAIL — `build_orchestrator_tools` does not accept `current_layout`, 
 
 - [ ] **Step 3: Add the handler in tools.py**
 
-Edit `patchbai/orchestrator/tools.py`. Add a new handler builder near the other layout handlers (right after `_list_layouts_handler`):
+Edit `patchfeld/orchestrator/tools.py`. Add a new handler builder near the other layout handlers (right after `_list_layouts_handler`):
 
 ```python
 def _get_layout_handler(current_layout, widget_registry: WidgetRegistry):
-    from patchbai.layout.titles import populate_effective_titles
+    from patchfeld.layout.titles import populate_effective_titles
 
     async def get_layout_tool(_args: dict) -> dict:
         spec = current_layout() if current_layout is not None else None
@@ -1022,7 +1022,7 @@ def _get_layout_handler(current_layout, widget_registry: WidgetRegistry):
 
 - [ ] **Step 4: Wire it into `build_orchestrator_tools`**
 
-Edit `patchbai/orchestrator/tools.py`. Change the `build_orchestrator_tools` signature to accept `current_layout`:
+Edit `patchfeld/orchestrator/tools.py`. Change the `build_orchestrator_tools` signature to accept `current_layout`:
 
 ```python
 def build_orchestrator_tools(
@@ -1047,7 +1047,7 @@ Inside the function, after the existing `if widget_registry is not None:` block,
 
 - [ ] **Step 5: Wire it into `build_orchestrator_mcp_server`**
 
-Edit `patchbai/orchestrator/tools.py`. Change the `build_orchestrator_mcp_server` signature to accept `current_layout`:
+Edit `patchfeld/orchestrator/tools.py`. Change the `build_orchestrator_mcp_server` signature to accept `current_layout`:
 
 ```python
 def build_orchestrator_mcp_server(
@@ -1080,7 +1080,7 @@ Inside the function, after the existing `if widget_registry is not None:` block 
 
 - [ ] **Step 6: Forward `current_layout` through OrchestratorSession**
 
-Edit `patchbai/orchestrator/session.py`. Add `current_layout=None` to `__init__`'s signature:
+Edit `patchfeld/orchestrator/session.py`. Add `current_layout=None` to `__init__`'s signature:
 
 ```python
     def __init__(
@@ -1120,7 +1120,7 @@ In `start()`, pass it through to `build_orchestrator_mcp_server`:
 
 - [ ] **Step 7: Wire it from the App**
 
-Edit `patchbai/app.py`. Inside `PatchbaiApp.__init__`, change the `OrchestratorSession` construction to pass `current_layout`:
+Edit `patchfeld/app.py`. Inside `PatchfeldApp.__init__`, change the `OrchestratorSession` construction to pass `current_layout`:
 
 ```python
         self.orchestrator = orchestrator or OrchestratorSession(
@@ -1150,7 +1150,7 @@ Expected: PASS, no regressions.
 - [ ] **Step 10: Commit**
 
 ```bash
-git add patchbai/orchestrator/tools.py patchbai/orchestrator/session.py patchbai/app.py \
+git add patchfeld/orchestrator/tools.py patchfeld/orchestrator/session.py patchfeld/app.py \
         tests/test_orchestrator_tools_get_layout.py
 git commit -m "feat(orchestrator): get_layout MCP tool with effective titles"
 ```
@@ -1160,11 +1160,11 @@ git commit -m "feat(orchestrator): get_layout MCP tool with effective titles"
 ## Task 7: Update `set_layout` description and run the full suite
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py` (the `set_layout` description string in `build_orchestrator_mcp_server`)
+- Modify: `patchfeld/orchestrator/tools.py` (the `set_layout` description string in `build_orchestrator_mcp_server`)
 
 - [ ] **Step 1: Update the `set_layout` advertised description**
 
-Edit `patchbai/orchestrator/tools.py`. Inside `build_orchestrator_mcp_server`, find the `set_layout` entry in `layout_specs` and replace its description string. The new description (full text):
+Edit `patchfeld/orchestrator/tools.py`. Inside `build_orchestrator_mcp_server`, find the `set_layout` entry in `layout_specs` and replace its description string. The new description (full text):
 
 ```
 "Replace the current UI layout with the given LayoutSpec dict. "
@@ -1188,7 +1188,7 @@ Expected: PASS, no failures.
 
 - [ ] **Step 3: Manual smoke check (optional but recommended)**
 
-Run the app: `uv run python -m patchbai`
+Run the app: `uv run python -m patchfeld`
 Expected:
   - Each panel in the dashboard shows a readable title in its top border ("Orchestrator", "Agents", "Activity").
   - Asking the orchestrator "what panels are visible?" results in it calling `get_layout` and reporting back with the titles.
@@ -1198,7 +1198,7 @@ If you can't run the app interactively, skip this step.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patchbai/orchestrator/tools.py
+git add patchfeld/orchestrator/tools.py
 git commit -m "docs(orchestrator): mention title field + get_layout in set_layout description"
 ```
 
@@ -1214,13 +1214,13 @@ git commit -m "docs(orchestrator): mention title field + get_layout in set_layou
 - Engine sets `border_title` and applies safety-net border — Task 5.
 - `get_layout` MCP tool with effective titles — Task 6.
 - `set_layout` description mentions `title` and recommends `get_layout` — Task 7.
-- Resolver helper shared between engine and `get_layout` (no drift) — `patchbai/layout/titles.py` introduced in Task 2 and reused in Task 5 (engine) and Task 6 (handler).
+- Resolver helper shared between engine and `get_layout` (no drift) — `patchfeld/layout/titles.py` introduced in Task 2 and reused in Task 5 (engine) and Task 6 (handler).
 - Engine never aborts on a buggy `default_border_title` — Task 5 step 1 test #5.
 
 **Type / signature consistency check:**
 - `default_border_title(cls, props: dict) -> str` everywhere — verified across Tasks 3 and 5 tests.
 - `resolve_title(panel, widget_cls)` accepts both `Panel` and dict — exercised by Task 2 (Panel) and Task 6 (dict via `populate_effective_titles`).
-- `current_layout` keyword name consistent across `build_orchestrator_tools`, `build_orchestrator_mcp_server`, `OrchestratorSession.__init__`, and `PatchbaiApp` — verified in Task 6 steps 4–7.
+- `current_layout` keyword name consistent across `build_orchestrator_tools`, `build_orchestrator_mcp_server`, `OrchestratorSession.__init__`, and `PatchfeldApp` — verified in Task 6 steps 4–7.
 
 **Pre-existing limitation (not addressed here, flagged in spec):**
 - `apply()` rebuilds the whole container on any spec change, so a title-only edit will remount and lose transient widget state. Out of scope.

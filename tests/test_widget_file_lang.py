@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from patchbai.widgets._file_lang import detect_language, load_text
+from patchfeld.widgets._file_lang import detect_language, load_text
 
 
 def test_detect_language_python():

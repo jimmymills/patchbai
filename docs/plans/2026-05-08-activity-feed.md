@@ -4,9 +4,9 @@
 
 **Goal:** Replace the `ActivityFeed` placeholder with a working four-mode event stream backed by an app-level `ActivityLog` singleton, with mode chips, variable row density, click-through navigation, and auto-follow scrolling.
 
-**Architecture:** A new `ActivityLog` lives on `PatchbaiApp` and subscribes to a curated set of `EventBus` events, normalizing each into an `ActivityEntry` and storing the last 500 in a `deque`. It publishes `ActivityLogged(entry)` after each append. The new `ActivityFeed` widget reads the singleton's backlog on mount and subscribes to `ActivityLogged` for live updates, applying a per-instance mode filter to the rendered rows.
+**Architecture:** A new `ActivityLog` lives on `PatchfeldApp` and subscribes to a curated set of `EventBus` events, normalizing each into an `ActivityEntry` and storing the last 500 in a `deque`. It publishes `ActivityLogged(entry)` after each append. The new `ActivityFeed` widget reads the singleton's backlog on mount and subscribes to `ActivityLogged` for live updates, applying a per-instance mode filter to the rendered rows.
 
-**Tech Stack:** Python 3.12, Textual 8.x, pytest + pytest-asyncio, the existing `EventBus` in `patchbai/events.py`.
+**Tech Stack:** Python 3.12, Textual 8.x, pytest + pytest-asyncio, the existing `EventBus` in `patchfeld/events.py`.
 
 **Spec:** `docs/specs/2026-05-08-activity-feed-design.md`
 
@@ -15,20 +15,20 @@
 ## File Structure
 
 **New files**
-- `patchbai/activity/__init__.py` — package marker.
-- `patchbai/activity/log.py` — `ActivityEntry` dataclass, `ActivityKind` constants, `ActivityLog` class.
-- `patchbai/widgets/activity_feed.py` — `ActivityFeed`, `_ModeChips`, `_ActivityRow`, `_VARIANT`, `_CLICK_HANDLERS`, `_MODE_KINDS`.
+- `patchfeld/activity/__init__.py` — package marker.
+- `patchfeld/activity/log.py` — `ActivityEntry` dataclass, `ActivityKind` constants, `ActivityLog` class.
+- `patchfeld/widgets/activity_feed.py` — `ActivityFeed`, `_ModeChips`, `_ActivityRow`, `_VARIANT`, `_CLICK_HANDLERS`, `_MODE_KINDS`.
 - `tests/test_activity_log.py` — pure-logic tests for `ActivityLog` (no Textual).
 - `tests/test_activity_feed_widget.py` — Pilot tests for `ActivityFeed`.
 - `tests/test_activity_feed_modes.py` — table-driven mode coverage.
 
 **Modified files**
-- `patchbai/events.py` — add `ActivityLogged` and `AgentFocusRequested` event classes.
-- `patchbai/app.py` — instantiate `self.activity_log` in `__init__`; switch `ActivityFeed` import from `placeholders` to `activity_feed`.
-- `patchbai/widgets/agent_table.py` — subscribe to `AgentFocusRequested` and select the matching row.
+- `patchfeld/events.py` — add `ActivityLogged` and `AgentFocusRequested` event classes.
+- `patchfeld/app.py` — instantiate `self.activity_log` in `__init__`; switch `ActivityFeed` import from `placeholders` to `activity_feed`.
+- `patchfeld/widgets/agent_table.py` — subscribe to `AgentFocusRequested` and select the matching row.
 
 **Deleted files**
-- `patchbai/widgets/placeholders.py` — only contains `ActivityFeed`; deleted after callers migrate.
+- `patchfeld/widgets/placeholders.py` — only contains `ActivityFeed`; deleted after callers migrate.
 
 **Existing test files modified to update import paths**
 - `tests/test_layout_engine_focus.py`
@@ -46,7 +46,7 @@
 ## Task 1: Add new event types
 
 **Files:**
-- Modify: `patchbai/events.py`
+- Modify: `patchfeld/events.py`
 - Test: `tests/test_events_activity.py` (new)
 
 - [ ] **Step 1: Write the failing test**
@@ -54,7 +54,7 @@
 Create `tests/test_events_activity.py`:
 
 ```python
-from patchbai.events import ActivityLogged, AgentFocusRequested
+from patchfeld.events import ActivityLogged, AgentFocusRequested
 
 
 def test_activity_logged_carries_entry():
@@ -86,14 +86,14 @@ Expected: ImportError — `ActivityLogged` and `AgentFocusRequested` don't exist
 
 - [ ] **Step 3: Add the event classes**
 
-Append to `patchbai/events.py` (right before the `# --- The bus ---------------------------------------------------------------` divider):
+Append to `patchfeld/events.py` (right before the `# --- The bus ---------------------------------------------------------------` divider):
 
 ```python
 @dataclass(frozen=True)
 class ActivityLogged:
     """A new entry was appended to the app's ActivityLog. Subscribers (e.g.,
     ActivityFeed widgets) consume this to render the new entry. The `entry`
-    field is an `ActivityEntry` from `patchbai.activity.log`; we leave it
+    field is an `ActivityEntry` from `patchfeld.activity.log`; we leave it
     typed as `object` here to avoid a circular import."""
     entry: object
 
@@ -115,7 +115,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/events.py tests/test_events_activity.py
+git add patchfeld/events.py tests/test_events_activity.py
 git commit -m "feat(events): add ActivityLogged and AgentFocusRequested"
 ```
 
@@ -124,8 +124,8 @@ git commit -m "feat(events): add ActivityLogged and AgentFocusRequested"
 ## Task 2: ActivityEntry and ActivityKind
 
 **Files:**
-- Create: `patchbai/activity/__init__.py`
-- Create: `patchbai/activity/log.py`
+- Create: `patchfeld/activity/__init__.py`
+- Create: `patchfeld/activity/log.py`
 - Test: `tests/test_activity_log.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -135,7 +135,7 @@ Create `tests/test_activity_log.py`:
 ```python
 from datetime import datetime
 
-from patchbai.activity.log import ActivityEntry, ActivityKind
+from patchfeld.activity.log import ActivityEntry, ActivityKind
 
 
 def test_activity_entry_required_fields():
@@ -165,16 +165,16 @@ def test_activity_kind_values_are_dotted_strings():
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_activity_log.py -v`
-Expected: ImportError — `patchbai.activity` package doesn't exist.
+Expected: ImportError — `patchfeld.activity` package doesn't exist.
 
 - [ ] **Step 3: Create the package and module**
 
-Create `patchbai/activity/__init__.py` (empty file):
+Create `patchfeld/activity/__init__.py` (empty file):
 
 ```python
 ```
 
-Create `patchbai/activity/log.py`:
+Create `patchfeld/activity/log.py`:
 
 ```python
 from __future__ import annotations
@@ -230,7 +230,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/activity/__init__.py patchbai/activity/log.py tests/test_activity_log.py
+git add patchfeld/activity/__init__.py patchfeld/activity/log.py tests/test_activity_log.py
 git commit -m "feat(activity): add ActivityEntry and ActivityKind"
 ```
 
@@ -239,7 +239,7 @@ git commit -m "feat(activity): add ActivityEntry and ActivityKind"
 ## Task 3: ActivityLog with agent event subscriptions
 
 **Files:**
-- Modify: `patchbai/activity/log.py`
+- Modify: `patchfeld/activity/log.py`
 - Test: `tests/test_activity_log.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -249,9 +249,9 @@ Append to `tests/test_activity_log.py`:
 ```python
 import time
 
-from patchbai.activity.log import ActivityLog
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.events import (
+from patchfeld.activity.log import ActivityLog
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.events import (
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
     AgentStateChanged, AgentTokensTouched, EventBus, StatsUpdated,
@@ -331,13 +331,13 @@ Expected: ImportError on `ActivityLog`.
 
 - [ ] **Step 3: Implement the ActivityLog**
 
-Append to `patchbai/activity/log.py`:
+Append to `patchfeld/activity/log.py`:
 
 ```python
 from collections import deque
 from typing import Callable, Iterable
 
-from patchbai.events import (
+from patchfeld.events import (
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
     AgentStateChanged, EventBus,
@@ -468,7 +468,7 @@ Expected: 8 passed (2 from Task 2 + 6 new).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/activity/log.py tests/test_activity_log.py
+git add patchfeld/activity/log.py tests/test_activity_log.py
 git commit -m "feat(activity): ActivityLog with agent-event capture"
 ```
 
@@ -477,7 +477,7 @@ git commit -m "feat(activity): ActivityLog with agent-event capture"
 ## Task 4: Remaining ActivityLog subscriptions and ring eviction
 
 **Files:**
-- Modify: `patchbai/activity/log.py`
+- Modify: `patchfeld/activity/log.py`
 - Test: `tests/test_activity_log.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -485,12 +485,12 @@ git commit -m "feat(activity): ActivityLog with agent-event capture"
 Append to `tests/test_activity_log.py`:
 
 ```python
-from patchbai.events import (
+from patchfeld.events import (
     FileSelected, LayoutApplied, LayoutFailed, OrchestratorReply,
     OrchestratorSessionSwitched, TabAdded, TabClosed, TabSwitched,
     UserMessageToOrchestrator, WorkspaceCwdChanged,
 )
-from patchbai.layout.spec import LayoutSpec
+from patchfeld.layout.spec import LayoutSpec
 
 
 def _spec() -> LayoutSpec:
@@ -561,10 +561,10 @@ Expected: 5 new failures (`test_log_captures_orchestrator_events`, `test_log_cap
 
 - [ ] **Step 3: Wire the remaining subscriptions**
 
-In `patchbai/activity/log.py`, add to the imports at top of the subscriptions block:
+In `patchfeld/activity/log.py`, add to the imports at top of the subscriptions block:
 
 ```python
-from patchbai.events import (
+from patchfeld.events import (
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
     AgentStateChanged, EventBus, FileSelected, LayoutApplied, LayoutFailed,
@@ -676,16 +676,16 @@ Expected: 13 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/activity/log.py tests/test_activity_log.py
+git add patchfeld/activity/log.py tests/test_activity_log.py
 git commit -m "feat(activity): subscribe to orch/layout/tab/workspace events; verify ring eviction"
 ```
 
 ---
 
-## Task 5: Wire ActivityLog onto PatchbaiApp
+## Task 5: Wire ActivityLog onto PatchfeldApp
 
 **Files:**
-- Modify: `patchbai/app.py`
+- Modify: `patchfeld/app.py`
 - Test: `tests/test_app_smoke_activity_log.py` (new)
 
 - [ ] **Step 1: Write the failing test**
@@ -696,12 +696,12 @@ Create `tests/test_app_smoke_activity_log.py`:
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.activity.log import ActivityLog
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, TabAdded
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.activity.log import ActivityLog
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, TabAdded
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -721,7 +721,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -753,17 +753,17 @@ async def test_activity_log_is_wired_to_app_event_bus(tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_app_smoke_activity_log.py -v`
-Expected: AttributeError — `PatchbaiApp` has no `activity_log`.
+Expected: AttributeError — `PatchfeldApp` has no `activity_log`.
 
 - [ ] **Step 3: Wire ActivityLog into the app**
 
-In `patchbai/app.py`, add to the import block (top of file):
+In `patchfeld/app.py`, add to the import block (top of file):
 
 ```python
-from patchbai.activity.log import ActivityLog
+from patchfeld.activity.log import ActivityLog
 ```
 
-In `PatchbaiApp.__init__`, after the line `self.event_bus = EventBus()` (currently around line 270), add:
+In `PatchfeldApp.__init__`, after the line `self.event_bus = EventBus()` (currently around line 270), add:
 
 ```python
         self.activity_log = ActivityLog(self.event_bus)
@@ -778,7 +778,7 @@ There is a subtle re-binding: the smoke test fixtures set `app.event_bus = bus` 
         # they must also re-create activity_log to keep subscriptions wired.
         # We can't intercept attribute assignment cleanly here; the fixture
         # in test_app_smoke_activity_log.py compensates by using the bus
-        # passed into PatchbaiApp directly.
+        # passed into PatchfeldApp directly.
 ```
 
 The simpler fix is: have the test's `_build_app` recreate `activity_log` after re-pointing the bus:
@@ -802,8 +802,8 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_smoke_activity_log.py
-git commit -m "feat(app): instantiate ActivityLog on PatchbaiApp"
+git add patchfeld/app.py tests/test_app_smoke_activity_log.py
+git commit -m "feat(app): instantiate ActivityLog on PatchfeldApp"
 ```
 
 ---
@@ -811,8 +811,8 @@ git commit -m "feat(app): instantiate ActivityLog on PatchbaiApp"
 ## Task 6: ActivityFeed widget shell with backlog rendering
 
 **Files:**
-- Create: `patchbai/widgets/activity_feed.py`
-- Modify: `patchbai/app.py` (registry import)
+- Create: `patchfeld/widgets/activity_feed.py`
+- Modify: `patchfeld/app.py` (registry import)
 - Test: `tests/test_activity_feed_widget.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -824,12 +824,12 @@ import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.widgets import Static
 
-from patchbai.activity.log import ActivityLog
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, TabAdded
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.activity.log import ActivityLog
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, TabAdded
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -849,7 +849,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.activity_log = ActivityLog(bus)
     app.orchestrator = OrchestratorSession(
@@ -874,7 +874,7 @@ async def test_activity_feed_renders_backlog_on_mount(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         # Collect static text rows inside any ActivityFeed instance.
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feeds = list(app.query(ActivityFeed))
         assert feeds, "default dashboard layout should mount one ActivityFeed"
         rows = list(feeds[0].query(_ActivityRow))
@@ -889,7 +889,7 @@ async def test_activity_feed_appends_new_event_after_mount(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         before = len(list(feed.query(_ActivityRow)))
         app.event_bus.publish(TabAdded(tab_id="zzz", title="Surprise"))
@@ -902,11 +902,11 @@ async def test_activity_feed_appends_new_event_after_mount(tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `.venv/bin/pytest tests/test_activity_feed_widget.py -v`
-Expected: ImportError — `patchbai.widgets.activity_feed` doesn't exist.
+Expected: ImportError — `patchfeld.widgets.activity_feed` doesn't exist.
 
 - [ ] **Step 3: Implement the widget shell**
 
-Create `patchbai/widgets/activity_feed.py`:
+Create `patchfeld/widgets/activity_feed.py`:
 
 ```python
 from __future__ import annotations
@@ -915,8 +915,8 @@ from textual.app import ComposeResult
 from textual.containers import Container, VerticalScroll
 from textual.widgets import Static
 
-from patchbai.activity.log import ActivityEntry, ActivityKind
-from patchbai.events import ActivityLogged
+from patchfeld.activity.log import ActivityEntry, ActivityKind
+from patchfeld.events import ActivityLogged
 
 
 class _ActivityRow(Static):
@@ -982,16 +982,16 @@ class ActivityFeed(Container):
         scroll.mount(_ActivityRow(event.entry))
 ```
 
-Update `patchbai/app.py` to import `ActivityFeed` from the new module. Find the current import:
+Update `patchfeld/app.py` to import `ActivityFeed` from the new module. Find the current import:
 
 ```python
-from patchbai.widgets.placeholders import ActivityFeed
+from patchfeld.widgets.placeholders import ActivityFeed
 ```
 
 Replace with:
 
 ```python
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.widgets.activity_feed import ActivityFeed
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -1002,7 +1002,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py patchbai/app.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py patchfeld/app.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): real widget rendering backlog and live appends"
 ```
 
@@ -1011,7 +1011,7 @@ git commit -m "feat(activity-feed): real widget rendering backlog and live appen
 ## Task 7: Mode prop and filter table
 
 **Files:**
-- Modify: `patchbai/widgets/activity_feed.py`
+- Modify: `patchfeld/widgets/activity_feed.py`
 - Create: `tests/test_activity_feed_modes.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1021,7 +1021,7 @@ Create `tests/test_activity_feed_modes.py`:
 ```python
 import pytest
 
-from patchbai.widgets.activity_feed import _MODE_KINDS, MODES
+from patchfeld.widgets.activity_feed import _MODE_KINDS, MODES
 
 
 # Source-of-truth coverage table from the design spec. Each row: (kind, modes-where-visible).
@@ -1089,8 +1089,8 @@ async def test_mode_prop_filters_initial_render(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     # Pre-load both kinds: a tab.* (hidden in agents mode) and a stand-in
@@ -1100,7 +1100,7 @@ async def test_mode_prop_filters_initial_render(tmp_path):
 
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         labels = " ".join(str(r.renderable) for r in rows)
@@ -1116,7 +1116,7 @@ Expected: ImportError on `_MODE_KINDS`/`MODES`; AttributeError on `feed.mode`.
 
 - [ ] **Step 3: Add the mode table and prop**
 
-In `patchbai/widgets/activity_feed.py`, before the `_ActivityRow` class, add:
+In `patchfeld/widgets/activity_feed.py`, before the `_ActivityRow` class, add:
 
 ```python
 MODES: tuple[str, ...] = ("audit", "agents", "notifs", "debug")
@@ -1192,7 +1192,7 @@ Expected: 18 mode tests + 3 widget tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py tests/test_activity_feed_modes.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py tests/test_activity_feed_modes.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): mode prop and per-mode kind filter"
 ```
 
@@ -1201,7 +1201,7 @@ git commit -m "feat(activity-feed): mode prop and per-mode kind filter"
 ## Task 8: Mode chips and persistence
 
 **Files:**
-- Modify: `patchbai/widgets/activity_feed.py`
+- Modify: `patchfeld/widgets/activity_feed.py`
 - Modify: `tests/test_activity_feed_widget.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1232,13 +1232,13 @@ async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ModeChip
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ModeChip
         feed = app.query(ActivityFeed).first()
         assert feed.mode == "audit"
         # Find the "agents" chip and click it.
@@ -1249,7 +1249,7 @@ async def test_clicking_mode_chip_changes_mode_and_persists(tmp_path):
         await pilot.pause()  # let _apply_to_tab settle
         assert feed.mode == "agents"
         # Check that workspace.json now has props.mode == "agents".
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         children = ws_raw["tabs"][0]["layout"]["layout"]["children"]
         feed_node = next(c for c in children if c.get("widget") == "ActivityFeed")
         assert feed_node["props"]["mode"] == "agents"
@@ -1262,7 +1262,7 @@ Expected: ImportError on `_ModeChip`.
 
 - [ ] **Step 3: Implement chips and persistence**
 
-Add to `patchbai/widgets/activity_feed.py` (after the constants block, before `_ActivityRow`):
+Add to `patchfeld/widgets/activity_feed.py` (after the constants block, before `_ActivityRow`):
 
 ```python
 from textual.containers import Horizontal
@@ -1365,7 +1365,7 @@ Add a click handler and a persistence helper to `ActivityFeed`:
             return
         node_id = self.id[len("panel-"):]
         # Find the active tab's spec, deep-copy it, mutate the matching panel.
-        from patchbai.layout.spec import LayoutSpec
+        from patchfeld.layout.spec import LayoutSpec
         target_tab = next((t for t in ws.tabs if t.id == active_tab_id), None)
         if target_tab is None:
             return
@@ -1398,7 +1398,7 @@ Expected: 4 widget tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): mode chips with per-panel persistence"
 ```
 
@@ -1407,7 +1407,7 @@ git commit -m "feat(activity-feed): mode chips with per-panel persistence"
 ## Task 9: Variable row variants (compact / expanded / card)
 
 **Files:**
-- Modify: `patchbai/widgets/activity_feed.py`
+- Modify: `patchfeld/widgets/activity_feed.py`
 - Modify: `tests/test_activity_feed_widget.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1420,12 +1420,12 @@ async def test_card_variant_used_for_agent_ask(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentRequestedUserInput
+        from patchfeld.events import AgentRequestedUserInput
         app.event_bus.publish(AgentRequestedUserInput(
             agent_id="bot", question="ok?", request_id="r1",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         ask_row = next(r for r in rows if r.entry.kind == "agent.ask")
@@ -1437,12 +1437,12 @@ async def test_expanded_variant_used_for_agent_message(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentMessageAppended
+        from patchfeld.events import AgentMessageAppended
         app.event_bus.publish(AgentMessageAppended(
             agent_id="bot", role="assistant", text="hi",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         msg_row = next(r for r in rows if r.entry.kind == "agent.message")
@@ -1455,7 +1455,7 @@ async def test_compact_variant_used_for_tab_added(tmp_path):
     app.event_bus.publish(TabAdded(tab_id="t1", title="Files"))
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         rows = list(feed.query(_ActivityRow))
         tab_row = next(r for r in rows if r.entry.kind == "tab.added" and r.entry.tab_id == "t1")
@@ -1469,7 +1469,7 @@ Expected: AssertionErrors on the variant class checks.
 
 - [ ] **Step 3: Implement variants**
 
-In `patchbai/widgets/activity_feed.py`, add a variant lookup table near the top (after `_MODE_KINDS`):
+In `patchfeld/widgets/activity_feed.py`, add a variant lookup table near the top (after `_MODE_KINDS`):
 
 ```python
 _VARIANT: dict[str, str] = {
@@ -1504,8 +1504,8 @@ def _variant_for(entry: ActivityEntry) -> str:
     """Pick the variant for an entry. Most kinds map statically via _VARIANT;
     agent.done escalates to 'card' when the underlying state is ERROR."""
     if entry.kind == ActivityKind.AGENT_DONE:
-        from patchbai.events import AgentStateChanged
-        from patchbai.agents.state import AgentState
+        from patchfeld.events import AgentStateChanged
+        from patchfeld.agents.state import AgentState
         raw = entry.raw
         if isinstance(raw, AgentStateChanged) and raw.info.state == AgentState.ERROR:
             return "card"
@@ -1558,7 +1558,7 @@ Expected: 7 widget tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): compact/expanded/card row variants"
 ```
 
@@ -1567,8 +1567,8 @@ git commit -m "feat(activity-feed): compact/expanded/card row variants"
 ## Task 10: Click-through navigation
 
 **Files:**
-- Modify: `patchbai/widgets/activity_feed.py`
-- Modify: `patchbai/widgets/agent_table.py`
+- Modify: `patchfeld/widgets/activity_feed.py`
+- Modify: `patchfeld/widgets/agent_table.py`
 - Modify: `tests/test_activity_feed_widget.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1581,14 +1581,14 @@ async def test_clicking_agent_row_publishes_focus_request(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import AgentMessageAppended, AgentFocusRequested
+        from patchfeld.events import AgentMessageAppended, AgentFocusRequested
         seen: list[AgentFocusRequested] = []
         app.event_bus.subscribe(AgentFocusRequested, lambda e: seen.append(e))
         app.event_bus.publish(AgentMessageAppended(
             agent_id="bot", role="assistant", text="hi",
         ))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         msg_row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "agent.message")
         await pilot.click(msg_row)
@@ -1601,7 +1601,7 @@ async def test_clicking_layout_failed_calls_notify(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import LayoutFailed
+        from patchfeld.events import LayoutFailed
         notified: list[tuple[str, str]] = []
         # Wrap notify; Textual returns None and stores notifications internally,
         # but we just need to know it was called.
@@ -1614,7 +1614,7 @@ async def test_clicking_layout_failed_calls_notify(tmp_path):
         app.notify = _wrapped  # type: ignore[assignment]
         app.event_bus.publish(LayoutFailed(error="boom", tab_id="t1"))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         feed = app.query(ActivityFeed).first()
         row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "layout.failed")
         await pilot.click(row)
@@ -1629,12 +1629,12 @@ async def test_clicking_non_interactive_row_does_nothing(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.events import TabSwitched, AgentFocusRequested
+        from patchfeld.events import TabSwitched, AgentFocusRequested
         seen: list[AgentFocusRequested] = []
         app.event_bus.subscribe(AgentFocusRequested, lambda e: seen.append(e))
         app.event_bus.publish(TabSwitched(tab_id="t1", title="Files"))
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed, _ActivityRow
+        from patchfeld.widgets.activity_feed import ActivityFeed, _ActivityRow
         # tab.switched is debug-only; mount a debug feed via prop is overkill —
         # this widget is in audit mode by default and tab.switched is filtered
         # out, so the click path is implicitly covered. Use tab.added instead,
@@ -1644,7 +1644,7 @@ async def test_clicking_non_interactive_row_does_nothing(tmp_path):
         # Find a kind that should NOT fire AgentFocusRequested when clicked.
         rows = list(feed.query(_ActivityRow))
         # workspace.cwd has no click handler.
-        from patchbai.events import WorkspaceCwdChanged
+        from patchfeld.events import WorkspaceCwdChanged
         app.event_bus.publish(WorkspaceCwdChanged(cwd="/tmp"))
         await pilot.pause()
         cwd_row = next(r for r in feed.query(_ActivityRow) if r.entry.kind == "workspace.cwd")
@@ -1661,12 +1661,12 @@ Expected: AssertionErrors — clicks have no effect yet.
 
 - [ ] **Step 3: Implement click-through**
 
-In `patchbai/widgets/activity_feed.py`, add the click handlers map near the top (after `_VARIANT`):
+In `patchfeld/widgets/activity_feed.py`, add the click handlers map near the top (after `_VARIANT`):
 
 ```python
 from typing import Callable
 
-from patchbai.events import AgentFocusRequested
+from patchfeld.events import AgentFocusRequested
 
 
 def _click_agent(app, entry: ActivityEntry) -> None:
@@ -1756,7 +1756,7 @@ class _ActivityRow(Static):
 
 (The existing `ActivityFeed.on_click` chip handler still runs because it inspects `event.widget`; clicks on a row have already been stopped, so they don't bubble to the chip handler.)
 
-In `patchbai/widgets/agent_table.py`, add the focus-request subscription. After the existing `_on_archive_changed` handler, add:
+In `patchfeld/widgets/agent_table.py`, add the focus-request subscription. After the existing `_on_archive_changed` handler, add:
 
 ```python
     def _on_focus_requested(self, event: AgentFocusRequested) -> None:
@@ -1775,7 +1775,7 @@ In `patchbai/widgets/agent_table.py`, add the focus-request subscription. After 
                 return
 ```
 
-In `patchbai/widgets/agent_table.py`, add `AgentFocusRequested` to the existing `from patchbai.events import (...)` block at the top of the file.
+In `patchfeld/widgets/agent_table.py`, add `AgentFocusRequested` to the existing `from patchfeld.events import (...)` block at the top of the file.
 
 Then in `AgentTable.on_mount`, append a new subscription right after the existing `AgentArchiveChanged` line:
 
@@ -1795,7 +1795,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py patchbai/widgets/agent_table.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py patchfeld/widgets/agent_table.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): click-through navigation for agent/layout/tab/orch rows"
 ```
 
@@ -1804,7 +1804,7 @@ git commit -m "feat(activity-feed): click-through navigation for agent/layout/ta
 ## Task 11: Auto-follow scrolling
 
 **Files:**
-- Modify: `patchbai/widgets/activity_feed.py`
+- Modify: `patchfeld/widgets/activity_feed.py`
 - Modify: `tests/test_activity_feed_widget.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1817,7 +1817,7 @@ async def test_new_event_scrolls_to_bottom_when_at_bottom(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed
+        from patchfeld.widgets.activity_feed import ActivityFeed
         from textual.containers import VerticalScroll
         feed = app.query(ActivityFeed).first()
         scroll = feed.query_one("#activity-rows", VerticalScroll)
@@ -1834,7 +1834,7 @@ async def test_user_scroll_up_pauses_autofollow(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.activity_feed import ActivityFeed
+        from patchfeld.widgets.activity_feed import ActivityFeed
         from textual.containers import VerticalScroll
         feed = app.query(ActivityFeed).first()
         scroll = feed.query_one("#activity-rows", VerticalScroll)
@@ -1893,7 +1893,7 @@ Expected: all widget tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/activity_feed.py tests/test_activity_feed_widget.py
+git add patchfeld/widgets/activity_feed.py tests/test_activity_feed_widget.py
 git commit -m "feat(activity-feed): auto-follow scroll with pause-on-scroll-up"
 ```
 
@@ -1902,7 +1902,7 @@ git commit -m "feat(activity-feed): auto-follow scroll with pause-on-scroll-up"
 ## Task 12: Migrate placeholders.py imports and clean up
 
 **Files:**
-- Delete: `patchbai/widgets/placeholders.py`
+- Delete: `patchfeld/widgets/placeholders.py`
 - Modify: 9 test files (see File Structure section)
 
 - [ ] **Step 1: Update test imports**
@@ -1910,13 +1910,13 @@ git commit -m "feat(activity-feed): auto-follow scroll with pause-on-scroll-up"
 For each of these files, replace:
 
 ```python
-from patchbai.widgets.placeholders import ActivityFeed
+from patchfeld.widgets.placeholders import ActivityFeed
 ```
 
 with:
 
 ```python
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.widgets.activity_feed import ActivityFeed
 ```
 
 Files to update:
@@ -1932,12 +1932,12 @@ Files to update:
 
 Verify no other imports remain:
 
-Run: `grep -rn "patchbai.widgets.placeholders\|from .placeholders" patchbai/ tests/`
+Run: `grep -rn "patchfeld.widgets.placeholders\|from .placeholders" patchfeld/ tests/`
 Expected: no output.
 
 - [ ] **Step 2: Delete placeholders.py**
 
-Run: `rm patchbai/widgets/placeholders.py`
+Run: `rm patchfeld/widgets/placeholders.py`
 
 - [ ] **Step 3: Run the entire test suite**
 
@@ -1948,7 +1948,7 @@ Expected: all green; row count higher than the pre-feature baseline by ~25–30 
 
 Launch the app:
 
-Run: `.venv/bin/python -m patchbai`
+Run: `.venv/bin/python -m patchfeld`
 
 Verify:
 - The Activity panel in the default dashboard renders an "Audit · Agents · Notifs · Debug" chip strip at the top.
@@ -1964,7 +1964,7 @@ If anything fails, do NOT commit — return to the relevant task and fix.
 
 ```bash
 git add tests/test_layout_engine_focus.py tests/test_layout_engine_titles.py tests/test_layout_engine_weakref.py tests/test_app_smoke.py tests/test_layout_engine_idempotent.py tests/test_layout_engine_splitter.py tests/test_orchestrator_tools_get_layout.py tests/test_layout_engine_tabs.py tests/test_layout_titles_resolver.py
-git rm patchbai/widgets/placeholders.py
+git rm patchfeld/widgets/placeholders.py
 git commit -m "refactor(widgets): drop placeholders.py; ActivityFeed lives in its own module"
 ```
 

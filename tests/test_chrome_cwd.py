@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.app import PatchbaiApp
-from patchbai.widgets.chrome import StatusBar, _format_cwd
+from patchfeld.app import PatchfeldApp
+from patchfeld.widgets.chrome import StatusBar, _format_cwd
 from textual.widgets import Static
 
 
 def test_format_cwd_uses_tilde_when_under_home(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    nested = tmp_path / "Developer" / "patchbai"
-    assert _format_cwd(nested, available_width=80) == "~/Developer/patchbai"
+    nested = tmp_path / "Developer" / "patchfeld"
+    assert _format_cwd(nested, available_width=80) == "~/Developer/patchfeld"
 
 
 def test_format_cwd_keeps_absolute_when_outside_home(monkeypatch, tmp_path):
@@ -37,7 +37,7 @@ async def test_status_bar_shows_cwd_at_boot(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -52,9 +52,9 @@ async def test_status_bar_updates_on_cwd_changed_event(tmp_path, monkeypatch):
     proj_b = tmp_path / "b"
     proj_a.mkdir()
     proj_b.mkdir()
-    from patchbai.events import WorkspaceCwdChanged
+    from patchfeld.events import WorkspaceCwdChanged
 
-    app = PatchbaiApp(cwd=proj_a, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=proj_a, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -74,7 +74,7 @@ async def test_status_bar_widgets_laid_out_side_by_side(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(140, 30)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -97,7 +97,7 @@ async def test_status_bar_truncates_cwd_on_narrow_terminal(tmp_path, monkeypatch
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     deep = tmp_path / "one" / "two" / "three" / "four" / "five" / "six" / "leaf"
     deep.mkdir(parents=True)
-    app = PatchbaiApp(cwd=deep, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=deep, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(40, 10)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)

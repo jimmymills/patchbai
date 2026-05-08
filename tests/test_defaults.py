@@ -1,5 +1,5 @@
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.spec import Container, Panel, Tabs
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.spec import Container, Panel, Tabs
 
 
 def test_dashboard_validates():

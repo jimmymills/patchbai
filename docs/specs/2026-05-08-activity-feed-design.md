@@ -31,7 +31,7 @@ We want a real event stream: a chronological view over what's happening in the r
 
 Two pieces:
 
-### `ActivityLog` (singleton on `PatchbaiApp`)
+### `ActivityLog` (singleton on `PatchfeldApp`)
 
 - Subscribes to a curated set of `EventBus` events at construction time.
 - Normalizes each into an `ActivityEntry`:
@@ -144,21 +144,21 @@ Mode persistence is per-panel, so two ActivityFeed panels can have different mod
 
 A module-level `_CLICK_HANDLERS: dict[str, Callable[[App, ActivityEntry], None]]` table drives this. `_ActivityRow.on_click` looks up the handler and calls it; missing key = non-interactive. Rows with handlers add a CSS class for hover styling.
 
-`AgentFocusRequested(agent_id: str)` is a new event type added to `patchbai/events.py`. AgentTable gains a subscription handler in the same change.
+`AgentFocusRequested(agent_id: str)` is a new event type added to `patchfeld/events.py`. AgentTable gains a subscription handler in the same change.
 
 ## Files
 
 **New:**
-- `patchbai/activity/__init__.py` — package marker.
-- `patchbai/activity/log.py` — `ActivityEntry`, `ActivityLog`, kind derivation logic.
-- `patchbai/widgets/activity_feed.py` — `ActivityFeed`, `_ModeChips`, `_ActivityRow`, `_VARIANT`, `_CLICK_HANDLERS`.
+- `patchfeld/activity/__init__.py` — package marker.
+- `patchfeld/activity/log.py` — `ActivityEntry`, `ActivityLog`, kind derivation logic.
+- `patchfeld/widgets/activity_feed.py` — `ActivityFeed`, `_ModeChips`, `_ActivityRow`, `_VARIANT`, `_CLICK_HANDLERS`.
 
 **Modified:**
-- `patchbai/events.py` — add `ActivityLogged(entry)` and `AgentFocusRequested(agent_id)`.
-- `patchbai/app.py` — instantiate `self.activity_log = ActivityLog(self.event_bus)` in `__init__`.
-- `patchbai/widgets/agent_table.py` — subscribe to `AgentFocusRequested`, select & scroll the matching row.
-- `patchbai/widgets/placeholders.py` — remove `ActivityFeed`. If the file ends up empty, delete it; otherwise leave the rest intact. (Verify at implementation time.)
-- The widget registry import in `patchbai/app.py` switches from `placeholders.ActivityFeed` to `activity_feed.ActivityFeed`.
+- `patchfeld/events.py` — add `ActivityLogged(entry)` and `AgentFocusRequested(agent_id)`.
+- `patchfeld/app.py` — instantiate `self.activity_log = ActivityLog(self.event_bus)` in `__init__`.
+- `patchfeld/widgets/agent_table.py` — subscribe to `AgentFocusRequested`, select & scroll the matching row.
+- `patchfeld/widgets/placeholders.py` — remove `ActivityFeed`. If the file ends up empty, delete it; otherwise leave the rest intact. (Verify at implementation time.)
+- The widget registry import in `patchfeld/app.py` switches from `placeholders.ActivityFeed` to `activity_feed.ActivityFeed`.
 
 **No schema changes** to `workspace.json` or any layout file — `props.mode` is just a free-form string in the existing `props` dict.
 

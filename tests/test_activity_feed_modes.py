@@ -1,6 +1,6 @@
 import pytest
 
-from patchbai.widgets.activity_feed import _MODE_KINDS, MODES
+from patchfeld.widgets.activity_feed import _MODE_KINDS, MODES
 
 
 # Source-of-truth coverage table from the design spec. Each row: (kind, modes-where-visible).

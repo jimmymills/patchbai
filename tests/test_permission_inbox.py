@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from claude_agent_sdk import PermissionResultAllow
 
-from patchbai.agents.permission_inbox import PermissionInbox
+from patchfeld.agents.permission_inbox import PermissionInbox
 
 
 async def _resolve_soon(inbox, rid, result):

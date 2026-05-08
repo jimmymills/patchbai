@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run pyright with a guaranteed-complete venv.
 #
-# This script is the canonical way to typecheck patchbai. It ensures the
+# This script is the canonical way to typecheck patchfeld. It ensures the
 # `dev` extras (pytest, pyright, etc.) are synced before running pyright,
 # which is what avoids the "phantom errors look like a stale cache" trap.
 #
@@ -13,7 +13,7 @@
 #
 # All other args are forwarded to pyright. Examples:
 #   ./scripts/typecheck.sh                       # full project
-#   ./scripts/typecheck.sh patchbai/widgets       # just one tree
+#   ./scripts/typecheck.sh patchfeld/widgets       # just one tree
 #   ./scripts/typecheck.sh --watch               # watch mode
 #   ./scripts/typecheck.sh --clear-cache         # nuke cache then typecheck
 set -euo pipefail

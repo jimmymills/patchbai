@@ -1,14 +1,14 @@
 """Integration tests for /bypass-permissions and /require-permissions slash commands."""
 import pytest
 
-from patchbai.app import PatchbaiApp
-from patchbai.events import OrchestratorReply, UserMessageToOrchestrator
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import OrchestratorReply, UserMessageToOrchestrator
 
 
 @pytest.mark.asyncio
 async def test_slash_bypass_permissions_publishes_reply(tmp_path):
     """/bypass-permissions publishes a reply mentioning 'bypass'."""
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     replies: list[OrchestratorReply] = []
     app.event_bus.subscribe(OrchestratorReply, replies.append)
 
@@ -29,7 +29,7 @@ async def test_slash_bypass_permissions_publishes_reply(tmp_path):
 @pytest.mark.asyncio
 async def test_slash_require_permissions_publishes_reply(tmp_path):
     """/require-permissions publishes a reply mentioning 'require'."""
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -52,7 +52,7 @@ async def test_slash_require_permissions_publishes_reply(tmp_path):
 @pytest.mark.asyncio
 async def test_slash_bypass_permissions_already_bypassed(tmp_path):
     """/bypass-permissions when already bypassed replies with 'already'."""
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -75,11 +75,11 @@ async def test_slash_bypass_permissions_already_bypassed(tmp_path):
 @pytest.mark.asyncio
 async def test_slash_bypass_permissions_refused_with_running_agents(tmp_path):
     """/bypass-permissions is refused when child agents are running."""
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.agents.state import AgentState
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.agents.state import AgentState
     from claude_agent_sdk import AssistantMessage, TextBlock
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     replies: list[OrchestratorReply] = []
     app.event_bus.subscribe(OrchestratorReply, replies.append)
 

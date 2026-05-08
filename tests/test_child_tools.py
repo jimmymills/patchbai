@@ -2,9 +2,9 @@ import asyncio
 
 import pytest
 
-from patchbai.agents.child_tools import build_child_tools
-from patchbai.agents.request_inbox import RequestInbox
-from patchbai.events import (
+from patchfeld.agents.child_tools import build_child_tools
+from patchfeld.agents.request_inbox import RequestInbox
+from patchfeld.events import (
     AgentNotifiedOrchestrator,
     EventBus,
 )

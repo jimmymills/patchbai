@@ -19,7 +19,7 @@ Every mounted panel renders a human-readable title in its top border, so:
 
 ### 1. Schema: `Panel.title`
 
-Add one optional field to `Panel` in `patchbai/layout/spec.py`:
+Add one optional field to `Panel` in `patchfeld/layout/spec.py`:
 
 ```python
 class Panel(BaseModel):
@@ -32,7 +32,7 @@ class Panel(BaseModel):
     title: str | None = None   # NEW
 ```
 
-Plain text. Optional. `extra="forbid"` stays. Existing saved layouts (`~/.config/patchbai/layouts/*.json`, `<cwd>/.patchbai/layout.json`) parse cleanly without migration because the field is additive and defaults to `None`.
+Plain text. Optional. `extra="forbid"` stays. Existing saved layouts (`~/.config/patchfeld/layouts/*.json`, `<cwd>/.patchfeld/layout.json`) parse cleanly without migration because the field is additive and defaults to `None`.
 
 ### 2. Per-widget defaults
 
@@ -71,7 +71,7 @@ The helper takes the widget *class* (not an instance) and the panel's `props`, s
 
 ### 3. Engine + per-widget borders
 
-#### Engine changes (`patchbai/layout/engine.py`, `_build`)
+#### Engine changes (`patchfeld/layout/engine.py`, `_build`)
 
 After constructing the widget and assigning `widget.id = f"panel-{node.id}"`:
 
@@ -82,11 +82,11 @@ After constructing the widget and assigning `widget.id = f"panel-{node.id}"`:
 
 Add `border: round $surface-lighten-2` to DEFAULT_CSS of:
 
-- `Markdown` (`patchbai/widgets/markdown.py`)
-- `FileTree` (`patchbai/widgets/file_tree.py`)
-- `Notebook` (`patchbai/widgets/notebook.py`)
-- `FileViewer` (`patchbai/widgets/file_viewer.py`)
-- `RichTranscript` (`patchbai/widgets/rich_transcript.py`) — outer container; the inner `border-left` styling on individual messages is unaffected.
+- `Markdown` (`patchfeld/widgets/markdown.py`)
+- `FileTree` (`patchfeld/widgets/file_tree.py`)
+- `Notebook` (`patchfeld/widgets/notebook.py`)
+- `FileViewer` (`patchfeld/widgets/file_viewer.py`)
+- `RichTranscript` (`patchfeld/widgets/rich_transcript.py`) — outer container; the inner `border-left` styling on individual messages is unaffected.
 
 These give each widget explicit control of its border style. The engine's safety net then exists purely as the fallback for unknown / orchestrator-supplied custom widgets.
 
@@ -94,13 +94,13 @@ These give each widget explicit control of its border style. The engine's safety
 
 #### Wiring
 
-`PatchbaiApp._apply` already stores the most recent spec on `self._current_spec`. Expose it to the orchestrator session by adding a new keyword-only parameter to `OrchestratorSession.__init__`:
+`PatchfeldApp._apply` already stores the most recent spec on `self._current_spec`. Expose it to the orchestrator session by adding a new keyword-only parameter to `OrchestratorSession.__init__`:
 
 ```python
 current_layout: Callable[[], LayoutSpec | None] | None = None
 ```
 
-`PatchbaiApp.__init__` passes `current_layout=lambda: self._current_spec` when constructing the session, symmetric to the existing `apply_layout` injection.
+`PatchfeldApp.__init__` passes `current_layout=lambda: self._current_spec` when constructing the session, symmetric to the existing `apply_layout` injection.
 
 The session forwards `current_layout` into `build_orchestrator_mcp_server` and `build_orchestrator_tools`, which build a `get_layout` handler when the callable is provided.
 

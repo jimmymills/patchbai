@@ -1,9 +1,9 @@
 import pytest
 from textual.app import App
 
-from patchbai.events import AgentMessageAppended, EventBus
-from patchbai.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
-from patchbai.widgets.agent_transcript import AgentTranscript
+from patchfeld.events import AgentMessageAppended, EventBus
+from patchfeld.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
+from patchfeld.widgets.agent_transcript import AgentTranscript
 
 
 class _HostApp(App):
@@ -61,8 +61,8 @@ async def test_agent_transcript_ignores_other_agents(tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_transcript_uses_rich_transcript(tmp_path):
-    from patchbai.widgets.agent_transcript import AgentTranscript as Widget
-    from patchbai.widgets.rich_transcript import RichTranscript
+    from patchfeld.widgets.agent_transcript import AgentTranscript as Widget
+    from patchfeld.widgets.rich_transcript import RichTranscript
 
     bus = EventBus()
     app = _HostApp(bus, "a1")

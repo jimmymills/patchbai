@@ -12,15 +12,15 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.session import AgentSession
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.events import (
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.session import AgentSession
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.events import (
     AgentMessageAppended,
     AgentStateChanged,
     EventBus,
 )
-from patchbai.persistence.transcript_store import AgentTranscript
+from patchfeld.persistence.transcript_store import AgentTranscript
 
 
 def _info() -> AgentInfo:

@@ -4,13 +4,13 @@ from textual.containers import Container
 from textual.widget import Widget
 from textual.widgets import Static
 
-from patchbai.events import EventBus
-from patchbai.layout.engine import apply as apply_layout
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.events import EventBus
+from patchfeld.layout.engine import apply as apply_layout
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.activity_feed import ActivityFeed
 
 
 class _BorderlessCustom(Static):

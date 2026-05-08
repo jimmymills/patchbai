@@ -1,6 +1,6 @@
 import pytest
 
-from patchbai.actions import ActionRegistry, ActionSpec
+from patchfeld.actions import ActionRegistry, ActionSpec
 
 
 def test_register_then_lookup():

@@ -1,6 +1,6 @@
 """Regression tests for the Markdown widget's scrollability.
 
-Background: when the patchbai `Markdown` class shared the CSS type-name
+Background: when the patchfeld `Markdown` class shared the CSS type-name
 `Markdown` with `textual.widgets.Markdown`, Textual's rule
 `Markdown { height: auto; overflow-y: hidden; }` leaked onto the outer
 `VerticalScroll`, sizing it to its content rather than to its parent
@@ -13,7 +13,7 @@ can't silently regress."""
 import pytest
 from textual.app import App, ComposeResult
 
-from patchbai.widgets.markdown import Markdown
+from patchfeld.widgets.markdown import Markdown
 
 
 # Long enough to overflow any reasonable terminal-test viewport (24 rows).

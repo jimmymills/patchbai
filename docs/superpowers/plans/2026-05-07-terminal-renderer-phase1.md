@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make `patchbai.widgets.terminal.Terminal` actually usable for interactive shells — render colors/attributes, support modern keys, propagate resize, integrate with the asyncio event loop, and surface process exit — all against the existing `pyte` engine, no new runtime deps.
+**Goal:** Make `patchfeld.widgets.terminal.Terminal` actually usable for interactive shells — render colors/attributes, support modern keys, propagate resize, integrate with the asyncio event loop, and surface process exit — all against the existing `pyte` engine, no new runtime deps.
 
 **Architecture:** Extract two pure helpers from the widget so they can be unit-tested without a PTY: `_terminal_render.py` (turns a `pyte.Screen` into a `rich.text.Text`) and `_terminal_keys.py` (turns a Textual `Key` event into the bytes a real xterm would send). The widget keeps its lifecycle responsibilities (PTY spawn/teardown, asyncio reader, resize propagation) but delegates rendering and key encoding to those helpers. Switch from `pyte.Screen` to `pyte.HistoryScreen` for scrollback. Replace 50ms polling with `loop.add_reader`.
 
@@ -19,7 +19,7 @@
 
 ## Pre-flight: branch state and baselines
 
-**You are on branch `terminal-research` in worktree `/Users/jimmy.mills/Developer/patchbai-terminal-research`. Do not push.**
+**You are on branch `terminal-research` in worktree `/Users/jimmy.mills/Developer/patchfeld-terminal-research`. Do not push.**
 
 The current `tests/test_widget_terminal.py` has 3 passing tests. Keep them green throughout. After every task: `uv run pytest -x` must pass and `uv run pyright` must report `0 errors, 0 warnings, 0 informations`.
 
@@ -30,13 +30,13 @@ Note: `docs/superpowers/` is gitignored. The plan and report files in that tree 
 ## File structure
 
 **New files:**
-- `patchbai/widgets/_terminal_render.py` — pure functions: `render_screen(screen, *, show_cursor) -> rich.text.Text`, `cell_style(cell) -> rich.style.Style | None`, internal `_color_to_rich(c) -> str | None`.
-- `patchbai/widgets/_terminal_keys.py` — pure function: `encode_key(key: str, character: str | None) -> bytes | None`. Returns `None` for unhandled keys (caller propagates the event).
+- `patchfeld/widgets/_terminal_render.py` — pure functions: `render_screen(screen, *, show_cursor) -> rich.text.Text`, `cell_style(cell) -> rich.style.Style | None`, internal `_color_to_rich(c) -> str | None`.
+- `patchfeld/widgets/_terminal_keys.py` — pure function: `encode_key(key: str, character: str | None) -> bytes | None`. Returns `None` for unhandled keys (caller propagates the event).
 - `tests/test_terminal_render.py` — unit tests for the renderer. No app, no PTY.
 - `tests/test_terminal_keys.py` — unit tests for the keymap. No app, no PTY.
 
 **Modified files:**
-- `patchbai/widgets/terminal.py` — gradually rewritten across Tasks 2–7. Final shape: imports from the two helpers; uses `pyte.HistoryScreen` + `pyte.Stream`; uses `loop.add_reader`; handles `Resize`, `Focus`/`Blur`, expanded `on_key`; appends `[process exited <code>]` on EOF.
+- `patchfeld/widgets/terminal.py` — gradually rewritten across Tasks 2–7. Final shape: imports from the two helpers; uses `pyte.HistoryScreen` + `pyte.Stream`; uses `loop.add_reader`; handles `Resize`, `Focus`/`Blur`, expanded `on_key`; appends `[process exited <code>]` on EOF.
 - `tests/test_widget_terminal.py` — existing 3 tests stay; new integration tests added per task.
 
 **Total tasks:** 7 substantive + 1 wrap-up.
@@ -48,7 +48,7 @@ Note: `docs/superpowers/` is gitignored. The plan and report files in that tree 
 **Why first:** Renders are testable without a PTY or event loop. Largest user-visible win. Leaves the existing widget untouched — call site swap comes in Task 2.
 
 **Files:**
-- Create: `patchbai/widgets/_terminal_render.py`
+- Create: `patchfeld/widgets/_terminal_render.py`
 - Create: `tests/test_terminal_render.py`
 
 ### Background — what pyte gives us
@@ -84,7 +84,7 @@ import pyte
 import pytest
 from rich.text import Text
 
-from patchbai.widgets._terminal_render import render_screen, cell_style
+from patchfeld.widgets._terminal_render import render_screen, cell_style
 
 
 def _feed(text: str, cols: int = 80, rows: int = 24) -> pyte.Screen:
@@ -206,11 +206,11 @@ def test_render_screen_default_color_default_bg_no_style():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_terminal_render.py -v`
-Expected: All tests fail with `ModuleNotFoundError: No module named 'patchbai.widgets._terminal_render'`.
+Expected: All tests fail with `ModuleNotFoundError: No module named 'patchfeld.widgets._terminal_render'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `patchbai/widgets/_terminal_render.py`:
+Create `patchfeld/widgets/_terminal_render.py`:
 
 ```python
 """Pure helpers that turn a pyte.Screen into a rich.text.Text.
@@ -336,7 +336,7 @@ If `test_cell_style_truecolor_uses_hex` fails because `style.color.triplet` is `
 
 - [ ] **Step 5: Verify pyright clean**
 
-Run: `uv run pyright patchbai/widgets/_terminal_render.py tests/test_terminal_render.py`
+Run: `uv run pyright patchfeld/widgets/_terminal_render.py tests/test_terminal_render.py`
 Expected: `0 errors, 0 warnings, 0 informations`.
 
 - [ ] **Step 6: Run full suite to confirm nothing else broke**
@@ -347,7 +347,7 @@ Expected: all previously-passing tests still pass; new render tests pass.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/widgets/_terminal_render.py tests/test_terminal_render.py
+git add patchfeld/widgets/_terminal_render.py tests/test_terminal_render.py
 git commit -m "feat(terminal): pure renderer mapping pyte cells to rich.Text with attrs"
 ```
 
@@ -358,7 +358,7 @@ git commit -m "feat(terminal): pure renderer mapping pyte cells to rich.Text wit
 **Why now:** Replaces the lossy `screen.display` join with the per-cell renderer. Also fixes the encode/decode round-trip and adds scrollback (HistoryScreen). The 50ms polling loop stays for now — Task 3 swaps it for `add_reader`.
 
 **Files:**
-- Modify: `patchbai/widgets/terminal.py` (lines 9, 64–66, 109–117, 119–126)
+- Modify: `patchfeld/widgets/terminal.py` (lines 9, 64–66, 109–117, 119–126)
 - Modify: `tests/test_widget_terminal.py` (add new test)
 
 - [ ] **Step 1: Write the failing integration test**
@@ -408,7 +408,7 @@ async def test_terminal_uses_history_screen():
 Run: `uv run pytest tests/test_widget_terminal.py::test_terminal_renders_with_color_attributes tests/test_widget_terminal.py::test_terminal_uses_history_screen -v`
 Expected: both fail. The first fails because the current renderer does `Text("\n".join(self._screen.display))` (no spans). The second fails because the screen is a `pyte.Screen`, not `pyte.HistoryScreen`.
 
-- [ ] **Step 3: Edit `patchbai/widgets/terminal.py`**
+- [ ] **Step 3: Edit `patchfeld/widgets/terminal.py`**
 
 Replace these sections.
 
@@ -425,7 +425,7 @@ from textual.widgets import Static
 import ptyprocess
 import pyte
 
-from patchbai.widgets._terminal_render import render_screen
+from patchfeld.widgets._terminal_render import render_screen
 ```
 
 (b) Constructor — switch screen + stream. Replace lines 63–66:
@@ -485,7 +485,7 @@ Run: `uv run pytest -x` → all pass. Run: `uv run pyright` → 0 errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/terminal.py tests/test_widget_terminal.py
+git add patchfeld/widgets/terminal.py tests/test_widget_terminal.py
 git commit -m "feat(terminal): render pyte attrs via Text; HistoryScreen + Stream"
 ```
 
@@ -496,7 +496,7 @@ git commit -m "feat(terminal): render pyte attrs via Text; HistoryScreen + Strea
 **Why now:** The renderer is in place; this fixes latency and CPU without changing what's rendered.
 
 **Files:**
-- Modify: `patchbai/widgets/terminal.py` — `on_mount`, `_teardown`, drop `_tick`'s timer-driven nature in favor of an fd-readiness callback. Keep `_tick` as the drain function so the existing tests (which call `term._tick()` directly) continue to work.
+- Modify: `patchfeld/widgets/terminal.py` — `on_mount`, `_teardown`, drop `_tick`'s timer-driven nature in favor of an fd-readiness callback. Keep `_tick` as the drain function so the existing tests (which call `term._tick()` directly) continue to work.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -543,7 +543,7 @@ async def test_terminal_drains_via_add_reader(tmp_path):
 Run: `uv run pytest tests/test_widget_terminal.py::test_terminal_uses_add_reader_not_timer tests/test_widget_terminal.py::test_terminal_drains_via_add_reader -v`
 Expected: both fail. First because `_reader_registered` doesn't exist; second because output won't appear without `term._tick()` calls.
 
-- [ ] **Step 3: Edit `patchbai/widgets/terminal.py`**
+- [ ] **Step 3: Edit `patchfeld/widgets/terminal.py`**
 
 (a) Add `import asyncio` at the top (after `import select`).
 
@@ -631,7 +631,7 @@ Run: `uv run pytest -x` → all pass. Run: `uv run pyright` → 0 errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/terminal.py tests/test_widget_terminal.py
+git add patchfeld/widgets/terminal.py tests/test_widget_terminal.py
 git commit -m "feat(terminal): drive PTY reads via asyncio.add_reader, drop polling"
 ```
 
@@ -642,7 +642,7 @@ git commit -m "feat(terminal): drive PTY reads via asyncio.add_reader, drop poll
 **Why now:** Renderer correct, event loop correct. Now the visible area should match the Textual panel's actual cell dimensions.
 
 **Files:**
-- Modify: `patchbai/widgets/terminal.py` — add `on_resize`. Change DEFAULT_COLS/ROWS handling to use the actual size when available.
+- Modify: `patchfeld/widgets/terminal.py` — add `on_resize`. Change DEFAULT_COLS/ROWS handling to use the actual size when available.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -674,7 +674,7 @@ async def test_terminal_resizes_screen_and_pty():
 Run: `uv run pytest tests/test_widget_terminal.py::test_terminal_resizes_screen_and_pty -v`
 Expected: FAIL — `term._screen.columns == 80 and term._screen.lines == 24` since no resize hookup exists.
 
-- [ ] **Step 3: Edit `patchbai/widgets/terminal.py`**
+- [ ] **Step 3: Edit `patchfeld/widgets/terminal.py`**
 
 Add this method to the `Terminal` class (a good spot is right after `on_mount`):
 
@@ -718,7 +718,7 @@ Run: `uv run pytest -x` → all pass. Run: `uv run pyright` → 0 errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/terminal.py tests/test_widget_terminal.py
+git add patchfeld/widgets/terminal.py tests/test_widget_terminal.py
 git commit -m "feat(terminal): propagate Resize to setwinsize and screen.resize"
 ```
 
@@ -729,7 +729,7 @@ git commit -m "feat(terminal): propagate Resize to setwinsize and screen.resize"
 **Why now:** Renderer + IO correct; resize correct; now wire input properly. Pure helper first, then integrate.
 
 **Files:**
-- Create: `patchbai/widgets/_terminal_keys.py`
+- Create: `patchfeld/widgets/_terminal_keys.py`
 - Create: `tests/test_terminal_keys.py`
 
 ### Reference — sequences we need to emit
@@ -790,7 +790,7 @@ Textual's `Key` event delivers `event.key` as a string. Some examples we need to
 Create `tests/test_terminal_keys.py`:
 
 ```python
-from patchbai.widgets._terminal_keys import encode_key
+from patchfeld.widgets._terminal_keys import encode_key
 
 
 def _enc(key: str, character: str | None = None) -> bytes | None:
@@ -920,7 +920,7 @@ Expected: all fail with `ModuleNotFoundError`.
 
 - [ ] **Step 3: Write the implementation**
 
-Create `patchbai/widgets/_terminal_keys.py`:
+Create `patchfeld/widgets/_terminal_keys.py`:
 
 ```python
 """Pure mapping from Textual key events to xterm-compatible byte sequences.
@@ -1018,13 +1018,13 @@ Expected: all PASS.
 
 - [ ] **Step 5: Verify pyright clean**
 
-Run: `uv run pyright patchbai/widgets/_terminal_keys.py tests/test_terminal_keys.py`
+Run: `uv run pyright patchfeld/widgets/_terminal_keys.py tests/test_terminal_keys.py`
 Expected: 0 errors.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/_terminal_keys.py tests/test_terminal_keys.py
+git add patchfeld/widgets/_terminal_keys.py tests/test_terminal_keys.py
 git commit -m "feat(terminal): pure key encoder for xterm-style sequences"
 ```
 
@@ -1035,7 +1035,7 @@ git commit -m "feat(terminal): pure key encoder for xterm-style sequences"
 **Why now:** Helper proven; integrate.
 
 **Files:**
-- Modify: `patchbai/widgets/terminal.py` — replace `on_key`. Also add an `import` for the helper.
+- Modify: `patchfeld/widgets/terminal.py` — replace `on_key`. Also add an `import` for the helper.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1090,12 +1090,12 @@ async def test_terminal_drops_unknown_key_silently():
 Run: `uv run pytest tests/test_widget_terminal.py::test_terminal_forwards_arrow_key_bytes tests/test_widget_terminal.py::test_terminal_forwards_ctrl_letter tests/test_widget_terminal.py::test_terminal_drops_unknown_key_silently -v`
 Expected: all fail — current `on_key` doesn't handle arrows or ctrl+l, and there's no `_last_write` field.
 
-- [ ] **Step 3: Edit `patchbai/widgets/terminal.py`**
+- [ ] **Step 3: Edit `patchfeld/widgets/terminal.py`**
 
 (a) Add an import next to the renderer import:
 
 ```python
-from patchbai.widgets._terminal_keys import encode_key
+from patchfeld.widgets._terminal_keys import encode_key
 ```
 
 (b) Initialize the spy field in `__init__`:
@@ -1136,7 +1136,7 @@ Run: `uv run pytest -x` → all pass. Run: `uv run pyright` → 0 errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/terminal.py tests/test_widget_terminal.py
+git add patchfeld/widgets/terminal.py tests/test_widget_terminal.py
 git commit -m "feat(terminal): forward arrows/F-keys/Ctrl/Alt via encode_key"
 ```
 
@@ -1147,7 +1147,7 @@ git commit -m "feat(terminal): forward arrows/F-keys/Ctrl/Alt via encode_key"
 **Why now:** Last user-visible bug from the report — when the shell exits, the panel just freezes silently.
 
 **Files:**
-- Modify: `patchbai/widgets/terminal.py`
+- Modify: `patchfeld/widgets/terminal.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1197,7 +1197,7 @@ async def test_terminal_restart_respawns():
 Run: `uv run pytest tests/test_widget_terminal.py::test_terminal_announces_exit tests/test_widget_terminal.py::test_terminal_restart_respawns -v`
 Expected: both fail.
 
-- [ ] **Step 3: Edit `patchbai/widgets/terminal.py`**
+- [ ] **Step 3: Edit `patchfeld/widgets/terminal.py`**
 
 (a) Update `_tick` to detect EOF and call a new `_announce_exit` helper instead of teardown-only:
 
@@ -1279,7 +1279,7 @@ Run: `uv run pytest -x` → all pass. Run: `uv run pyright` → 0 errors.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/terminal.py tests/test_widget_terminal.py
+git add patchfeld/widgets/terminal.py tests/test_widget_terminal.py
 git commit -m "feat(terminal): announce exit status and add action_restart"
 ```
 
@@ -1299,7 +1299,7 @@ Expected: `0 errors, 0 warnings, 0 informations`.
 
 - [ ] **Step 3: Smoke-run the terminal widget by hand (optional)**
 
-Run: `uv run patchbai` (or `uv run mt`) and exercise the terminal panel:
+Run: `uv run patchfeld` (or `uv run mt`) and exercise the terminal panel:
 - Type a printable string. Confirm cursor advances visibly.
 - Press arrows at a shell prompt — history should scroll.
 - Run `ls --color=auto` — file colors should appear.
@@ -1308,9 +1308,9 @@ Run: `uv run patchbai` (or `uv run mt`) and exercise the terminal panel:
 
 This is a manual sanity check; do not block on it if not feasible in the dev environment.
 
-- [ ] **Step 4: Diff summary of `patchbai/widgets/terminal.py` against `terminal-research`'s starting point**
+- [ ] **Step 4: Diff summary of `patchfeld/widgets/terminal.py` against `terminal-research`'s starting point**
 
-Run: `git log --oneline 52f8c77..HEAD -- patchbai/widgets/terminal.py patchbai/widgets/_terminal_render.py patchbai/widgets/_terminal_keys.py`
+Run: `git log --oneline 52f8c77..HEAD -- patchfeld/widgets/terminal.py patchfeld/widgets/_terminal_render.py patchfeld/widgets/_terminal_keys.py`
 Expected: 6 substantive commits (Tasks 1–7 minus Task 1 which only adds the helper module).
 
 - [ ] **Step 5: Report back to the orchestrator**

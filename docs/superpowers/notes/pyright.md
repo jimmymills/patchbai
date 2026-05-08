@@ -1,10 +1,10 @@
-# Pyright in `patchbai`
+# Pyright in `patchfeld`
 
 ## TL;DR — How to run pyright
 
 ```bash
 ./scripts/typecheck.sh                  # full project
-./scripts/typecheck.sh patchbai/widgets  # one subtree
+./scripts/typecheck.sh patchfeld/widgets  # one subtree
 ./scripts/typecheck.sh --watch          # watch mode
 ```
 
@@ -62,7 +62,7 @@ The real cause is almost always **an incomplete `.venv`**. Recovery, in order:
 ## Root cause investigation (May 2026)
 
 Several agents reported that pyright surfaced "stale" errors that didn't match
-the source. Systematic debugging in worktree `patchbai-pyright-cache` showed
+the source. Systematic debugging in worktree `patchfeld-pyright-cache` showed
 the symptom was a misdiagnosis. Findings:
 
 - **There is no persistent on-disk AST cache.** An edit-and-retest experiment

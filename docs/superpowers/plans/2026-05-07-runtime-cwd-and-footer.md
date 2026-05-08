@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Let the user re-root the running Patchbai workspace at a new cwd from inside the app (modal, keybinding, `/cd` slash command, or orchestrator MCP tool) AND show the active cwd in the footer status bar at all times.
+**Goal:** Let the user re-root the running Patchfeld workspace at a new cwd from inside the app (modal, keybinding, `/cd` slash command, or orchestrator MCP tool) AND show the active cwd in the footer status bar at all times.
 
-**Architecture:** A new `App.change_cwd(new_cwd)` orchestrates a deterministic re-root: refuses if any child agents are still running, then stops the orchestrator + manager, swaps `self.cwd`, rebuilds both, reloads (or seeds) the new cwd's `.patchbai/workspace.json`, re-applies the active theme, and publishes a new `WorkspaceCwdChanged` event. The `StatusBar` adds an `sb-cwd` Static that subscribes to that event and renders an abbreviated, width-aware path. Triggers are layered (action → keybinding → modal screen, `/cd` slash command in `OrchestratorSession`, `change_cwd` MCP tool in `orchestrator/tools.py`) so every existing entry point — manual user, scripted keybinding, conversational orchestrator — works.
+**Architecture:** A new `App.change_cwd(new_cwd)` orchestrates a deterministic re-root: refuses if any child agents are still running, then stops the orchestrator + manager, swaps `self.cwd`, rebuilds both, reloads (or seeds) the new cwd's `.patchfeld/workspace.json`, re-applies the active theme, and publishes a new `WorkspaceCwdChanged` event. The `StatusBar` adds an `sb-cwd` Static that subscribes to that event and renders an abbreviated, width-aware path. Triggers are layered (action → keybinding → modal screen, `/cd` slash command in `OrchestratorSession`, `change_cwd` MCP tool in `orchestrator/tools.py`) so every existing entry point — manual user, scripted keybinding, conversational orchestrator — works.
 
 **Tech Stack:** Python 3.12, Textual 8.x (`ModalScreen`, `Binding`, `Static`), pydantic v2, pytest-asyncio.
 
@@ -17,8 +17,8 @@ These decisions resolve the ambiguities in the spec. They are documented here so
 | # | Decision | Rationale | Cheap reversal |
 |---|----------|-----------|----------------|
 | D1 | **Refuse re-root while non-terminal children are running.** Return a structured error naming the running agents. | The Claude Agent SDK fixes a child's process cwd at spawn time — we cannot retroactively rebase a running child without restarting it. Carrying it across a re-root would silently make its tool calls write to the *old* project, which is far worse than a friendly refusal. | Add a `force=true` flag in v2 that calls `manager.kill(...)` on each running agent before swapping. |
-| D2 | **Re-root performs an orchestrator reset.** The orchestrator's session index, transcripts, and SDK options are bound to a cwd; we tear the inner SDK session down and start a fresh one against the new cwd's `.patchbai/`. The previous session continues to exist on disk under the old cwd and can be resumed by going back. | Resuming an SDK session whose `ClaudeAgentOptions.cwd` differs from where the session was first opened is uncharted. Treating re-root like "open this other project" is symmetric with `patchbai` initial launch. | Add a `keep_session=true` flag in v2 that passes the old `_sdk_session_id` to `_swap_inner(resume=...)` after the cwd change. |
-| D3 | **Load `<new_cwd>/.patchbai/workspace.json` if it exists; otherwise seed from `dashboard_layout()`.** Each project owns its own workspace state. | Symmetric with the existing `_load_or_seed_workspace()` boot path. Users who switch back and forth between projects expect each to remember its layout. | Add a `carry_layout=true` flag that copies the current Workspace into the new cwd before mounting. |
+| D2 | **Re-root performs an orchestrator reset.** The orchestrator's session index, transcripts, and SDK options are bound to a cwd; we tear the inner SDK session down and start a fresh one against the new cwd's `.patchfeld/`. The previous session continues to exist on disk under the old cwd and can be resumed by going back. | Resuming an SDK session whose `ClaudeAgentOptions.cwd` differs from where the session was first opened is uncharted. Treating re-root like "open this other project" is symmetric with `patchfeld` initial launch. | Add a `keep_session=true` flag in v2 that passes the old `_sdk_session_id` to `_swap_inner(resume=...)` after the cwd change. |
+| D3 | **Load `<new_cwd>/.patchfeld/workspace.json` if it exists; otherwise seed from `dashboard_layout()`.** Each project owns its own workspace state. | Symmetric with the existing `_load_or_seed_workspace()` boot path. Users who switch back and forth between projects expect each to remember its layout. | Add a `carry_layout=true` flag that copies the current Workspace into the new cwd before mounting. |
 | D4 | **`FileTree(path=...)` props are not auto-rebased.** A FileTree with `path="src"` mounted via the new cwd's saved layout is interpreted relative to the *process's* cwd at construction time — same as today. | The layout JSON is the source of truth; we don't want a re-root to silently mutate paths the user typed. Saved layouts that meant to be project-relative should already be using absolute paths or `path: "."`. | Document explicitly in `FileTree.__init__` doctring; no code change needed. |
 | D5 | **Footer formatting**: show `cwd: ~/foo/bar` when the path is under `Path.home()`; otherwise absolute. Truncate from the LEFT with `…/last/segs` when the text would exceed `min(40, container_width // 2)` chars. Sit between `sb-layout` and `sb-error`. | Matches the visible-real-estate constraints of the existing 1-row StatusBar; left-truncation keeps the most informative trailing segments. | Tweak constants in `chrome.py::_format_cwd`. |
 | D6 | **Triggers exposed:** `ctrl+shift+d` keybinding → `ChangeCwdScreen` modal; `/cd <path>` slash command; `change_cwd` action in the registry (so users can re-bind); `change_cwd` MCP tool for the orchestrator LLM. | Mirrors the layered exposure of `/reset`, `/resume`, layouts, themes — every existing capability has a manual, scripted, and orchestrator surface. | Drop any of the four; each is independent. |
@@ -29,7 +29,7 @@ These decisions resolve the ambiguities in the spec. They are documented here so
 
 **Created**
 
-- `patchbai/widgets/change_cwd_screen.py` — `ChangeCwdScreen(ModalScreen[str | None])`. Single text Input with the current cwd pre-filled. Submit → dismiss with the trimmed string; Escape → dismiss `None`.
+- `patchfeld/widgets/change_cwd_screen.py` — `ChangeCwdScreen(ModalScreen[str | None])`. Single text Input with the current cwd pre-filled. Submit → dismiss with the trimmed string; Escape → dismiss `None`.
 - `tests/test_widget_change_cwd_screen.py` — modal smoke tests (renders, escape cancels, submit returns trimmed string).
 - `tests/test_app_change_cwd.py` — integration tests for `App.change_cwd` (happy path, refuse-with-running-children, no-op same path, invalid path, slash command path).
 - `tests/test_chrome_cwd.py` — StatusBar cwd display tests (initial value, abbreviation under `$HOME`, left-truncation, updates on `WorkspaceCwdChanged`).
@@ -37,17 +37,17 @@ These decisions resolve the ambiguities in the spec. They are documented here so
 
 **Modified**
 
-- `patchbai/events.py` — add `WorkspaceCwdChanged(cwd: str)`.
-- `patchbai/widgets/chrome.py` — `StatusBar` gains an `sb-cwd` Static, an `_on_cwd_changed` subscriber, an `on_resize` re-formatter, and a pure `_format_cwd(path, available_width)` helper.
-- `patchbai/app.py` — add `change_cwd()`, `action_change_cwd()`, `action_open_change_cwd()`, register the action, add the `ctrl+shift+d` Binding, publish `WorkspaceCwdChanged` from `on_mount` and from `change_cwd`.
-- `patchbai/orchestrator/session.py` — handle `/cd <path>` in `_on_user_message`; expose a small async helper `_handle_cd_command` that calls `app.change_cwd`.
-- `patchbai/orchestrator/tools.py` — register `change_cwd` MCP tool routed through `app.change_cwd`.
+- `patchfeld/events.py` — add `WorkspaceCwdChanged(cwd: str)`.
+- `patchfeld/widgets/chrome.py` — `StatusBar` gains an `sb-cwd` Static, an `_on_cwd_changed` subscriber, an `on_resize` re-formatter, and a pure `_format_cwd(path, available_width)` helper.
+- `patchfeld/app.py` — add `change_cwd()`, `action_change_cwd()`, `action_open_change_cwd()`, register the action, add the `ctrl+shift+d` Binding, publish `WorkspaceCwdChanged` from `on_mount` and from `change_cwd`.
+- `patchfeld/orchestrator/session.py` — handle `/cd <path>` in `_on_user_message`; expose a small async helper `_handle_cd_command` that calls `app.change_cwd`.
+- `patchfeld/orchestrator/tools.py` — register `change_cwd` MCP tool routed through `app.change_cwd`.
 
 **No changes**
 
-- `patchbai/persistence/paths.py` — already takes `cwd` as an argument everywhere. The new manager/orchestrator built with the new cwd will read/write the right files.
-- `patchbai/workspace/spec.py` — Workspace model already has no cwd field; cwd is implicit from where it lives on disk.
-- `patchbai/widgets/file_tree.py`, `widgets/notebook.py`, `widgets/terminal.py` — these read `app.cwd` at mount time, so re-mounting via `_mount_workspace` after a cwd swap picks up the new value automatically.
+- `patchfeld/persistence/paths.py` — already takes `cwd` as an argument everywhere. The new manager/orchestrator built with the new cwd will read/write the right files.
+- `patchfeld/workspace/spec.py` — Workspace model already has no cwd field; cwd is implicit from where it lives on disk.
+- `patchfeld/widgets/file_tree.py`, `widgets/notebook.py`, `widgets/terminal.py` — these read `app.cwd` at mount time, so re-mounting via `_mount_workspace` after a cwd swap picks up the new value automatically.
 
 ---
 
@@ -88,8 +88,8 @@ The bus itself is **never replaced** during the swap. App-level subscriptions (`
 - **Two cwd swaps requested concurrently** (e.g., a fast `/cd` followed by a modal submit): the asyncio lock serialises them. Second swap reads `self.cwd` post-first-swap as its starting point.
 - **Theme load fails for the new cwd's saved theme**: existing fallback to `"default"` already in `on_mount` is reused.
 - **Symlinks**: `Path.resolve()` collapses them. `cwd-symlink → real-path` shows up in the footer as `real-path`, which keeps the displayed cwd canonical (matches what subprocesses see).
-- **New cwd lacks `.patchbai/`**: `save_workspace` creates it. No error.
-- **Footer width too narrow to even fit `cwd: …/x`**: `_format_cwd` returns the bare last segment with no prefix (e.g., `patchbai`), trusting Textual's CSS to clip.
+- **New cwd lacks `.patchfeld/`**: `save_workspace` creates it. No error.
+- **Footer width too narrow to even fit `cwd: …/x`**: `_format_cwd` returns the bare last segment with no prefix (e.g., `patchfeld`), trusting Textual's CSS to clip.
 - **Action invoked before `on_mount` finishes**: `action_open_change_cwd` early-returns if `self._workspace is None`.
 - **Persisted layout at new cwd uses a `FileTree(path="src")`**: mounts with whatever Path that resolves to under the *new* cwd (Textual's `DirectoryTree` accepts the relative string and Path resolves at first I/O). This is consistent with FileTree's documented contract; D4 above.
 
@@ -117,8 +117,8 @@ Each task ends in a commit so the tree always builds.
 ## Task 1: Add `WorkspaceCwdChanged` event and a pure `_format_cwd` helper
 
 **Files:**
-- Modify: `patchbai/events.py` (add new dataclass after `TabSwitched`, before `FileSelected`)
-- Modify: `patchbai/widgets/chrome.py` (add module-level `_format_cwd`)
+- Modify: `patchfeld/events.py` (add new dataclass after `TabSwitched`, before `FileSelected`)
+- Modify: `patchfeld/widgets/chrome.py` (add module-level `_format_cwd`)
 - Create: `tests/test_chrome_cwd.py`
 
 - [ ] **Step 1.1: Write the failing tests for the formatter**
@@ -130,13 +130,13 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.widgets.chrome import _format_cwd
+from patchfeld.widgets.chrome import _format_cwd
 
 
 def test_format_cwd_uses_tilde_when_under_home(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    nested = tmp_path / "Developer" / "patchbai"
-    assert _format_cwd(nested, available_width=80) == "~/Developer/patchbai"
+    nested = tmp_path / "Developer" / "patchfeld"
+    assert _format_cwd(nested, available_width=80) == "~/Developer/patchfeld"
 
 
 def test_format_cwd_keeps_absolute_when_outside_home(monkeypatch, tmp_path):
@@ -166,7 +166,7 @@ uv run pytest tests/test_chrome_cwd.py -v
 
 Expected: ImportError on `_format_cwd`.
 
-- [ ] **Step 1.3: Add `_format_cwd` to `patchbai/widgets/chrome.py`**
+- [ ] **Step 1.3: Add `_format_cwd` to `patchfeld/widgets/chrome.py`**
 
 At the top of `chrome.py`, after the imports, before `class CommandBar`:
 
@@ -214,7 +214,7 @@ Expected: 4 passed.
 
 - [ ] **Step 1.5: Add the `WorkspaceCwdChanged` event**
 
-In `patchbai/events.py`, after `class TabSwitched` and before `class FileSelected`:
+In `patchfeld/events.py`, after `class TabSwitched` and before `class FileSelected`:
 
 ```python
 @dataclass(frozen=True)
@@ -228,7 +228,7 @@ class WorkspaceCwdChanged:
 - [ ] **Step 1.6: Commit**
 
 ```bash
-git add patchbai/events.py patchbai/widgets/chrome.py tests/test_chrome_cwd.py
+git add patchfeld/events.py patchfeld/widgets/chrome.py tests/test_chrome_cwd.py
 git commit -m "feat(chrome): add _format_cwd helper and WorkspaceCwdChanged event"
 ```
 
@@ -237,7 +237,7 @@ git commit -m "feat(chrome): add _format_cwd helper and WorkspaceCwdChanged even
 ## Task 2: StatusBar renders the active cwd at boot
 
 **Files:**
-- Modify: `patchbai/widgets/chrome.py` (StatusBar gains `sb-cwd`, on_mount reads `app.cwd`)
+- Modify: `patchfeld/widgets/chrome.py` (StatusBar gains `sb-cwd`, on_mount reads `app.cwd`)
 - Modify: `tests/test_chrome_cwd.py` (add boot-render test)
 
 - [ ] **Step 2.1: Write the failing test**
@@ -247,8 +247,8 @@ Append to `tests/test_chrome_cwd.py`:
 ```python
 import pytest
 
-from patchbai.app import PatchbaiApp
-from patchbai.widgets.chrome import StatusBar
+from patchfeld.app import PatchfeldApp
+from patchfeld.widgets.chrome import StatusBar
 from textual.widgets import Static
 
 
@@ -257,7 +257,7 @@ async def test_status_bar_shows_cwd_at_boot(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -275,7 +275,7 @@ Expected: `NoMatches` for `#sb-cwd`.
 
 - [ ] **Step 2.3: Add `sb-cwd` Static to StatusBar.compose**
 
-In `patchbai/widgets/chrome.py`, modify `StatusBar.compose` to insert the cwd between `sb-layout` and `sb-error`:
+In `patchfeld/widgets/chrome.py`, modify `StatusBar.compose` to insert the cwd between `sb-layout` and `sb-error`:
 
 ```python
     def compose(self) -> ComposeResult:
@@ -291,7 +291,7 @@ In `StatusBar.on_mount`, after the existing `bus is None` guard (but BEFORE the 
 
 ```python
     def on_mount(self) -> None:
-        from patchbai.events import LayoutApplied, StatsUpdated, WorkspaceCwdChanged
+        from patchfeld.events import LayoutApplied, StatsUpdated, WorkspaceCwdChanged
         bus = self._bus or getattr(self.app, "event_bus", None)
         # Initial cwd render — read app.cwd directly so we display correctly
         # even if the WorkspaceCwdChanged event was published before this
@@ -357,7 +357,7 @@ Expected: 5 passed.
 - [ ] **Step 2.5: Commit**
 
 ```bash
-git add patchbai/widgets/chrome.py tests/test_chrome_cwd.py
+git add patchfeld/widgets/chrome.py tests/test_chrome_cwd.py
 git commit -m "feat(chrome): show active cwd in status bar at boot"
 ```
 
@@ -366,7 +366,7 @@ git commit -m "feat(chrome): show active cwd in status bar at boot"
 ## Task 3: StatusBar updates on `WorkspaceCwdChanged` and on resize
 
 **Files:**
-- Modify: `patchbai/widgets/chrome.py` (`on_resize` re-renders)
+- Modify: `patchfeld/widgets/chrome.py` (`on_resize` re-renders)
 - Modify: `tests/test_chrome_cwd.py` (event-driven update test)
 
 - [ ] **Step 3.1: Write the failing tests**
@@ -381,9 +381,9 @@ async def test_status_bar_updates_on_cwd_changed_event(tmp_path, monkeypatch):
     proj_b = tmp_path / "b"
     proj_a.mkdir()
     proj_b.mkdir()
-    from patchbai.events import WorkspaceCwdChanged
+    from patchfeld.events import WorkspaceCwdChanged
 
-    app = PatchbaiApp(cwd=proj_a, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=proj_a, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -424,7 +424,7 @@ async def test_status_bar_truncates_cwd_on_narrow_terminal(tmp_path, monkeypatch
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     deep = tmp_path / "one" / "two" / "three" / "four" / "five" / "six" / "leaf"
     deep.mkdir(parents=True)
-    app = PatchbaiApp(cwd=deep, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=deep, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(40, 10)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
@@ -445,7 +445,7 @@ Expected: 7 passed.
 - [ ] **Step 3.6: Commit**
 
 ```bash
-git add patchbai/widgets/chrome.py tests/test_chrome_cwd.py
+git add patchfeld/widgets/chrome.py tests/test_chrome_cwd.py
 git commit -m "feat(chrome): subscribe StatusBar to WorkspaceCwdChanged + redraw on resize"
 ```
 
@@ -454,7 +454,7 @@ git commit -m "feat(chrome): subscribe StatusBar to WorkspaceCwdChanged + redraw
 ## Task 4: `ChangeCwdScreen` modal
 
 **Files:**
-- Create: `patchbai/widgets/change_cwd_screen.py`
+- Create: `patchfeld/widgets/change_cwd_screen.py`
 - Create: `tests/test_widget_change_cwd_screen.py`
 
 - [ ] **Step 4.1: Write the failing tests**
@@ -466,7 +466,7 @@ import pytest
 from textual.app import App, ComposeResult
 from textual.widgets import Input
 
-from patchbai.widgets.change_cwd_screen import ChangeCwdScreen
+from patchfeld.widgets.change_cwd_screen import ChangeCwdScreen
 
 
 class _Host(App):
@@ -525,7 +525,7 @@ Expected: ModuleNotFoundError.
 
 - [ ] **Step 4.3: Implement the modal**
 
-Create `patchbai/widgets/change_cwd_screen.py`:
+Create `patchfeld/widgets/change_cwd_screen.py`:
 
 ```python
 from textual.app import ComposeResult
@@ -580,7 +580,7 @@ Expected: 3 passed.
 - [ ] **Step 4.5: Commit**
 
 ```bash
-git add patchbai/widgets/change_cwd_screen.py tests/test_widget_change_cwd_screen.py
+git add patchfeld/widgets/change_cwd_screen.py tests/test_widget_change_cwd_screen.py
 git commit -m "feat(widgets): add ChangeCwdScreen modal"
 ```
 
@@ -589,7 +589,7 @@ git commit -m "feat(widgets): add ChangeCwdScreen modal"
 ## Task 5: `App.change_cwd` happy path
 
 **Files:**
-- Modify: `patchbai/app.py` (add lock, method, reset state)
+- Modify: `patchfeld/app.py` (add lock, method, reset state)
 - Create: `tests/test_app_change_cwd.py`
 
 - [ ] **Step 5.1: Write the failing test**
@@ -603,11 +603,11 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, WorkspaceCwdChanged
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, WorkspaceCwdChanged
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -627,7 +627,7 @@ def _build_app(cwd):
         cwd=cwd, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=cwd, manager=manager, global_dir=cwd / ".global")
+    app = PatchfeldApp(cwd=cwd, manager=manager, global_dir=cwd / ".global")
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=cwd, bus=bus, manager=manager,
@@ -664,7 +664,7 @@ async def test_change_cwd_swaps_cwd_and_publishes_event(tmp_path):
         await pilot.pause()
         assert result == {"changed": str(proj_b.resolve())}
         assert app.cwd == proj_b.resolve()
-        assert (proj_b / ".patchbai" / "workspace.json").exists()
+        assert (proj_b / ".patchfeld" / "workspace.json").exists()
         assert received and received[-1] == str(proj_b.resolve())
 
 
@@ -701,7 +701,7 @@ Expected: AttributeError on `app.change_cwd`.
 
 - [ ] **Step 5.3: Add `_cwd_swap_lock` to `App.__init__`**
 
-In `patchbai/app.py`, in `PatchbaiApp.__init__` after `self.cwd = Path(cwd) if cwd else Path.cwd()`:
+In `patchfeld/app.py`, in `PatchfeldApp.__init__` after `self.cwd = Path(cwd) if cwd else Path.cwd()`:
 
 ```python
         import asyncio as _asyncio
@@ -712,7 +712,7 @@ In `patchbai/app.py`, in `PatchbaiApp.__init__` after `self.cwd = Path(cwd) if c
 
 - [ ] **Step 5.4: Implement `App.change_cwd`**
 
-Append to `PatchbaiApp` (placed between `_apply_to_tab` and `_on_stats_changed` for grouping with workspace lifecycle):
+Append to `PatchfeldApp` (placed between `_apply_to_tab` and `_on_stats_changed` for grouping with workspace lifecycle):
 
 ```python
     async def change_cwd(self, new_cwd: "str | Path") -> dict:
@@ -723,8 +723,8 @@ Append to `PatchbaiApp` (placed between `_apply_to_tab` and `_on_stats_changed` 
 
         Returns a result dict; never raises on user input.
         """
-        from patchbai.events import WorkspaceCwdChanged
-        from patchbai.agents.sdk_adapter import RealSDKAdapter
+        from patchfeld.events import WorkspaceCwdChanged
+        from patchfeld.agents.sdk_adapter import RealSDKAdapter
 
         async with self._cwd_swap_lock:
             # Validate.
@@ -830,7 +830,7 @@ Expected: 3 passed.
 - [ ] **Step 5.6: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_change_cwd.py
+git add patchfeld/app.py tests/test_app_change_cwd.py
 git commit -m "feat(app): App.change_cwd re-roots workspace at runtime"
 ```
 
@@ -881,7 +881,7 @@ uv run pytest tests/test_app_change_cwd.py::test_change_cwd_refuses_with_running
 
 Expected: pass.
 
-If it does not pass (e.g., the FakeSDKAdapter terminates regardless), inspect `patchbai/agents/state.py::AgentState.is_terminal` and adapt the script. The intent is to assert that `not is_terminal` agents block the swap.
+If it does not pass (e.g., the FakeSDKAdapter terminates regardless), inspect `patchfeld/agents/state.py::AgentState.is_terminal` and adapt the script. The intent is to assert that `not is_terminal` agents block the swap.
 
 - [ ] **Step 6.3: Commit**
 
@@ -895,12 +895,12 @@ git commit -m "test(app): change_cwd refuses while children are non-terminal"
 ## Task 7: Action registration, `ctrl+shift+d` binding, modal wiring
 
 **Files:**
-- Modify: `patchbai/app.py` (BINDINGS, _register_actions, action handlers)
+- Modify: `patchfeld/app.py` (BINDINGS, _register_actions, action handlers)
 - Modify: `tests/test_app_change_cwd.py` (modal smoke test)
 
 - [ ] **Step 7.1: Add the binding and action handlers**
 
-In `patchbai/app.py`, append to the `BINDINGS` list (after the `ctrl+shift+r` line, before the tab bindings):
+In `patchfeld/app.py`, append to the `BINDINGS` list (after the `ctrl+shift+r` line, before the tab bindings):
 
 ```python
         Binding("ctrl+shift+d", "open_change_cwd", "change cwd"),
@@ -921,7 +921,7 @@ In `_register_actions`, append after the `reset_panel_sizes` registration:
         )
 ```
 
-Append two new handler methods to `PatchbaiApp`:
+Append two new handler methods to `PatchfeldApp`:
 
 ```python
     def _dispatch_change_cwd(self, path: str) -> None:
@@ -960,7 +960,7 @@ Append two new handler methods to `PatchbaiApp`:
                 return
             self._dispatch_change_cwd(path)
 
-        from patchbai.widgets.change_cwd_screen import ChangeCwdScreen
+        from patchfeld.widgets.change_cwd_screen import ChangeCwdScreen
         self.push_screen(
             ChangeCwdScreen(initial=str(self.cwd)),
             _on_picked,
@@ -981,7 +981,7 @@ async def test_ctrl_shift_d_opens_change_cwd_modal(tmp_path):
         await pilot.pause()
         await pilot.press("ctrl+shift+d")
         await pilot.pause()
-        from patchbai.widgets.change_cwd_screen import ChangeCwdScreen
+        from patchfeld.widgets.change_cwd_screen import ChangeCwdScreen
         assert isinstance(app.screen, ChangeCwdScreen)
 ```
 
@@ -996,7 +996,7 @@ Expected: 4 passed.
 - [ ] **Step 7.4: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_change_cwd.py
+git add patchfeld/app.py tests/test_app_change_cwd.py
 git commit -m "feat(app): bind ctrl+shift+d to ChangeCwdScreen + register change_cwd action"
 ```
 
@@ -1005,7 +1005,7 @@ git commit -m "feat(app): bind ctrl+shift+d to ChangeCwdScreen + register change
 ## Task 8: `/cd <path>` slash command in OrchestratorSession
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py` (add regex, branch in `_on_user_message`)
+- Modify: `patchfeld/orchestrator/session.py` (add regex, branch in `_on_user_message`)
 - Modify: `tests/test_app_change_cwd.py` (slash-command test)
 
 - [ ] **Step 8.1: Write the failing test**
@@ -1025,7 +1025,7 @@ async def test_slash_cd_changes_cwd(tmp_path):
         app.orchestrator._next_adapter_factory = (
             lambda: FakeSDKAdapter(scripts=[_ok()])
         )
-        from patchbai.events import UserMessageToOrchestrator
+        from patchfeld.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator(f"/cd {proj_b}"))
         await pilot.pause()
         await pilot.pause()  # second pause: change_cwd creates async tasks
@@ -1042,7 +1042,7 @@ Expected: assertion failure (cwd unchanged because the SDK ate the `/cd` line as
 
 - [ ] **Step 8.3: Add the `/cd` regex and branch**
 
-In `patchbai/orchestrator/session.py`, after the `_RENAME_RE` regex (line ~47):
+In `patchfeld/orchestrator/session.py`, after the `_RENAME_RE` regex (line ~47):
 
 ```python
 _CD_RE = re.compile(r"^/cd\s+(.+?)\s*$")
@@ -1111,7 +1111,7 @@ Expected: 5 passed.
 - [ ] **Step 8.5: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_app_change_cwd.py
+git add patchfeld/orchestrator/session.py tests/test_app_change_cwd.py
 git commit -m "feat(orchestrator): /cd <path> slash command re-roots the workspace"
 ```
 
@@ -1120,7 +1120,7 @@ git commit -m "feat(orchestrator): /cd <path> slash command re-roots the workspa
 ## Task 9: `change_cwd` MCP tool
 
 **Files:**
-- Modify: `patchbai/orchestrator/tools.py` (handler factory, register in `build_orchestrator_tools` and `build_orchestrator_mcp_server`)
+- Modify: `patchfeld/orchestrator/tools.py` (handler factory, register in `build_orchestrator_tools` and `build_orchestrator_mcp_server`)
 - Create: `tests/test_orchestrator_change_cwd_tool.py`
 
 - [ ] **Step 9.1: Write the failing test**
@@ -1133,12 +1133,12 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok():
@@ -1163,7 +1163,7 @@ async def test_change_cwd_mcp_tool_routes_to_app(tmp_path):
         cwd=proj_a, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=proj_a, manager=manager, global_dir=proj_a / ".g")
+    app = PatchfeldApp(cwd=proj_a, manager=manager, global_dir=proj_a / ".g")
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=proj_a, bus=bus, manager=manager,
@@ -1206,7 +1206,7 @@ Expected: KeyError on `"change_cwd"` handler.
 
 - [ ] **Step 9.3: Add the handler factory to `tools.py`**
 
-In `patchbai/orchestrator/tools.py`, add a new handler factory above `build_orchestrator_tools`:
+In `patchfeld/orchestrator/tools.py`, add a new handler factory above `build_orchestrator_tools`:
 
 ```python
 def _change_cwd_handler(app):
@@ -1257,7 +1257,7 @@ Expected: 1 passed.
 - [ ] **Step 9.5: Commit**
 
 ```bash
-git add patchbai/orchestrator/tools.py tests/test_orchestrator_change_cwd_tool.py
+git add patchfeld/orchestrator/tools.py tests/test_orchestrator_change_cwd_tool.py
 git commit -m "feat(orchestrator): change_cwd MCP tool routes to App.change_cwd"
 ```
 
@@ -1283,7 +1283,7 @@ async def test_change_cwd_updates_footer(tmp_path, monkeypatch):
     app, _ = _build_app(proj_a)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.chrome import StatusBar
+        from patchfeld.widgets.chrome import StatusBar
         from textual.widgets import Static
         bar = app.query_one(StatusBar)
         assert "~/a" in str(bar.query_one("#sb-cwd", Static).renderable)
@@ -1324,11 +1324,11 @@ git commit -m "test(app): integration smoke for runtime cwd change + footer"
 ## Task 11: Update help text and `/help` notification
 
 **Files:**
-- Modify: `patchbai/app.py` (action_show_help) — already touched indirectly by `_HELP_TEXT` in Task 8, but the in-app `?` notification is separate.
+- Modify: `patchfeld/app.py` (action_show_help) — already touched indirectly by `_HELP_TEXT` in Task 8, but the in-app `?` notification is separate.
 
 - [ ] **Step 11.1: Update `action_show_help`**
 
-In `patchbai/app.py`, replace the `action_show_help` body so it advertises the new bindings:
+In `patchfeld/app.py`, replace the `action_show_help` body so it advertises the new bindings:
 
 ```python
     def action_show_help(self) -> None:
@@ -1354,7 +1354,7 @@ Expected: pass.
 - [ ] **Step 11.3: Commit**
 
 ```bash
-git add patchbai/app.py
+git add patchfeld/app.py
 git commit -m "docs(app): mention ctrl-shift-d and /cd in the ? help notification"
 ```
 

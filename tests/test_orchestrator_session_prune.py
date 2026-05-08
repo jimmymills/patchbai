@@ -2,10 +2,10 @@ import asyncio
 
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus, UserMessageToOrchestrator
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus, UserMessageToOrchestrator
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 @pytest.mark.asyncio

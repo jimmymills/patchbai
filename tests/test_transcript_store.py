@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from patchbai.persistence.transcript_store import (
+from patchfeld.persistence.transcript_store import (
     AgentTranscript,
     OrchestratorTranscript,
     TranscriptEntry,
@@ -27,14 +27,14 @@ def test_read_all_when_empty_returns_empty_list(tmp_path: Path):
 def test_append_creates_transcripts_dir(tmp_path: Path):
     store = OrchestratorTranscript(cwd=tmp_path)
     store.append(TranscriptEntry(role="user", text="x"))
-    assert (tmp_path / ".patchbai" / "transcripts" / "orchestrator.jsonl").exists()
+    assert (tmp_path / ".patchfeld" / "transcripts" / "orchestrator.jsonl").exists()
 
 
 def test_corrupted_line_is_skipped(tmp_path: Path):
     store = OrchestratorTranscript(cwd=tmp_path)
     store.append(TranscriptEntry(role="user", text="ok"))
 
-    target = tmp_path / ".patchbai" / "transcripts" / "orchestrator.jsonl"
+    target = tmp_path / ".patchfeld" / "transcripts" / "orchestrator.jsonl"
     with target.open("a") as f:
         f.write("not json\n")
     store.append(TranscriptEntry(role="orch", text="still works"))
@@ -51,7 +51,7 @@ def test_agent_transcript_path_override_uses_explicit_path(tmp_path):
     t = AgentTranscript(cwd=tmp_path, agent_id="orchestrator", path=custom)
     t.append(TranscriptEntry(role="user", text="hi"))
     assert custom.exists()
-    assert (tmp_path / ".patchbai" / "transcripts" / "orchestrator.jsonl").exists() is False
+    assert (tmp_path / ".patchfeld" / "transcripts" / "orchestrator.jsonl").exists() is False
 
 
 def test_agent_transcript_path_override_creates_parents(tmp_path):

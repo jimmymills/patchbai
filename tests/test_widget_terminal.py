@@ -3,7 +3,7 @@ import os
 import pytest
 from textual.app import App
 
-from patchbai.widgets.terminal import Terminal
+from patchfeld.widgets.terminal import Terminal
 
 
 class _Host(App):

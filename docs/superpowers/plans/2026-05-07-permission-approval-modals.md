@@ -4,7 +4,7 @@
 
 **Goal:** Replace the unconditional `permission_mode="bypassPermissions"` with a Textual modal flow that asks the user before any tool call. Permission prompts are **on by default** for both the orchestrator and child agents; the user opts out per launch with the `--bypass-permissions` CLI flag.
 
-**Architecture:** `__main__.py` parses `--bypass-permissions`. `PatchbaiApp` constructs a `PermissionGrants` object iff bypass is *off* (the default), and passes it to both `AgentManager` (for children) and `OrchestratorSession` (for the orchestrator). Each session that has grants attaches a `can_use_tool` callback when it builds `ClaudeAgentOptions`; the callback consults `PermissionGrants` for standing rules, otherwise registers in a per-session `PermissionInbox`, publishes `PermissionRequested`, and `await`s. Two UI surfaces — a global `PermissionModal` and an inline `PermissionRequestBar` mounted inside `AgentTranscript` — both call `inbox.resolve(...)` to drain the same Future. The blocked session flips to a new `AgentState.AWAITING_PERMISSION` (orange) for the duration. Persistent "always allow for any future agent named X" decisions live in `.patchbai/permission_grants.json`, owned by an isolated `permission_grants.py` module.
+**Architecture:** `__main__.py` parses `--bypass-permissions`. `PatchfeldApp` constructs a `PermissionGrants` object iff bypass is *off* (the default), and passes it to both `AgentManager` (for children) and `OrchestratorSession` (for the orchestrator). Each session that has grants attaches a `can_use_tool` callback when it builds `ClaudeAgentOptions`; the callback consults `PermissionGrants` for standing rules, otherwise registers in a per-session `PermissionInbox`, publishes `PermissionRequested`, and `await`s. Two UI surfaces — a global `PermissionModal` and an inline `PermissionRequestBar` mounted inside `AgentTranscript` — both call `inbox.resolve(...)` to drain the same Future. The blocked session flips to a new `AgentState.AWAITING_PERMISSION` (orange) for the duration. Persistent "always allow for any future agent named X" decisions live in `.patchfeld/permission_grants.json`, owned by an isolated `permission_grants.py` module.
 
 **Tech Stack:** Python 3.12, Textual 8.x, `claude_agent_sdk` (`CanUseTool`, `ToolPermissionContext`, `PermissionResultAllow`, `PermissionResultDeny`), `argparse`, `pytest-asyncio`.
 
@@ -16,11 +16,11 @@
 
 ### 1.1 Startup flag — CLI argument
 
-**Choice:** Add `argparse` to `patchbai/__main__.py`. Single boolean flag.
+**Choice:** Add `argparse` to `patchfeld/__main__.py`. Single boolean flag.
 
 ```bash
-patchbai                       # default: ask before every tool call
-patchbai --bypass-permissions  # today's behavior: bypass for everyone
+patchfeld                       # default: ask before every tool call
+patchfeld --bypass-permissions  # today's behavior: bypass for everyone
 ```
 
 **Rationale:**
@@ -38,7 +38,7 @@ Rather than threading a `bypass_permissions: bool` kwarg through three layers, *
 
 Same shape for `OrchestratorSession(permission_grants=...)`.
 
-`PatchbaiApp.__init__(*, bypass_permissions: bool = False)` reads the bool, constructs `PermissionGrants` iff `bypass_permissions is False`, and passes the resulting `PermissionGrants | None` down. Default `False` matches argparse's no-flag semantics.
+`PatchfeldApp.__init__(*, bypass_permissions: bool = False)` reads the bool, constructs `PermissionGrants` iff `bypass_permissions is False`, and passes the resulting `PermissionGrants | None` down. Default `False` matches argparse's no-flag semantics.
 
 **Why this matters for the existing test suite:** every test that constructs `AgentManager` or `OrchestratorSession` does so without passing `permission_grants`. Those calls keep bypassing — zero test churn for an unrelated reason.
 
@@ -67,7 +67,7 @@ Sibling of `RequestInbox`, not an extension. `AgentManager` owns one per child; 
 
 ### 1.5 `PermissionGrants` persistence
 
-`(agent_name, tool_name) → "allow" | "deny"`, persisted at `.patchbai/permission_grants.json`. Plus a session-only flavor that lives only in memory.
+`(agent_name, tool_name) → "allow" | "deny"`, persisted at `.patchfeld/permission_grants.json`. Plus a session-only flavor that lives only in memory.
 
 The orchestrator's `agent_name` is the literal string `"orchestrator"` (defined as `OrchestratorSession.AGENT_ID`). The wording in the modal uses that literal so "Always allow X for the orchestrator" reads naturally.
 
@@ -75,7 +75,7 @@ The orchestrator's `agent_name` is the literal string `"orchestrator"` (defined 
 {
   "version": 1,
   "grants": [
-    {"agent_name": "orchestrator", "tool_name": "mcp__patchbai_orchestrator__list_widgets", "behavior": "allow"},
+    {"agent_name": "orchestrator", "tool_name": "mcp__patchfeld_orchestrator__list_widgets", "behavior": "allow"},
     {"agent_name": "researcher",   "tool_name": "Read",                                     "behavior": "allow"},
     {"agent_name": "deleter",      "tool_name": "Bash",                                     "behavior": "deny"}
   ]
@@ -108,10 +108,10 @@ Label-construction code special-cases `agent_name == "orchestrator"` to read "Al
 ## Section 2 — File Map
 
 **Create:**
-- `patchbai/agents/permission_inbox.py`
-- `patchbai/agents/permission_grants.py`
-- `patchbai/widgets/permission_modal.py`
-- `patchbai/widgets/permission_request_bar.py`
+- `patchfeld/agents/permission_inbox.py`
+- `patchfeld/agents/permission_grants.py`
+- `patchfeld/widgets/permission_modal.py`
+- `patchfeld/widgets/permission_request_bar.py`
 - `tests/test_permission_inbox.py`
 - `tests/test_permission_grants.py`
 - `tests/test_widget_permission_modal.py`
@@ -122,28 +122,28 @@ Label-construction code special-cases `agent_name == "orchestrator"` to read "Al
 - `tests/test_main_argparse.py`
 
 **Modify:**
-- `patchbai/__main__.py` — argparse + `--bypass-permissions`.
-- `patchbai/app.py` — `bypass_permissions` kwarg, construct grants, push modal on first request.
-- `patchbai/agents/state.py` — add `AWAITING_PERMISSION`.
-- `patchbai/agents/session.py` — add `_mark_awaiting_permission` / `_mark_done_permission`.
-- `patchbai/agents/manager.py` — accept `permission_grants`, build per-child inbox + callback.
-- `patchbai/orchestrator/session.py` — accept `permission_grants`, build orchestrator inbox + callback.
-- `patchbai/events.py` — add `PermissionRequested`, `PermissionResolved`.
-- `patchbai/widgets/agent_table.py` — orange for `AWAITING_PERMISSION`.
-- `patchbai/widgets/agent_transcript.py` — mount `PermissionRequestBar` while pending.
+- `patchfeld/__main__.py` — argparse + `--bypass-permissions`.
+- `patchfeld/app.py` — `bypass_permissions` kwarg, construct grants, push modal on first request.
+- `patchfeld/agents/state.py` — add `AWAITING_PERMISSION`.
+- `patchfeld/agents/session.py` — add `_mark_awaiting_permission` / `_mark_done_permission`.
+- `patchfeld/agents/manager.py` — accept `permission_grants`, build per-child inbox + callback.
+- `patchfeld/orchestrator/session.py` — accept `permission_grants`, build orchestrator inbox + callback.
+- `patchfeld/events.py` — add `PermissionRequested`, `PermissionResolved`.
+- `patchfeld/widgets/agent_table.py` — orange for `AWAITING_PERMISSION`.
+- `patchfeld/widgets/agent_transcript.py` — mount `PermissionRequestBar` while pending.
 - `tests/test_agent_state.py`, `tests/test_agent_table_widget.py`, `tests/test_agent_session.py`, `tests/test_agent_manager.py` — minor additions.
 
 ---
 
 ## Section 3 — Lifecycle Walk-Through (orchestrator + child)
 
-1. User runs `patchbai` (no flag). `__main__.py` parses argparse → `args.bypass_permissions=False` → `PatchbaiApp(bypass_permissions=False).run()`.
-2. `PatchbaiApp.__init__` constructs `self._permission_grants = PermissionGrants(cwd=self.cwd)` and passes the object to both `AgentManager(permission_grants=...)` and `OrchestratorSession(permission_grants=...)`.
+1. User runs `patchfeld` (no flag). `__main__.py` parses argparse → `args.bypass_permissions=False` → `PatchfeldApp(bypass_permissions=False).run()`.
+2. `PatchfeldApp.__init__` constructs `self._permission_grants = PermissionGrants(cwd=self.cwd)` and passes the object to both `AgentManager(permission_grants=...)` and `OrchestratorSession(permission_grants=...)`.
 3. **Orchestrator path:** `OrchestratorSession._build_and_start_inner` checks `self._grants`:
    - Not None → drops `permission_mode="bypassPermissions"`, sets `can_use_tool=self._make_can_use_tool()`.
    - None (came up via `--bypass-permissions`) → keeps bypass.
 4. **Child path:** `AgentManager._build_options` does the same.
-5. The orchestrator (Claude) decides to call e.g. the `spawn_agent` MCP tool. The SDK invokes the orchestrator's `can_use_tool` callback with `tool_name="mcp__patchbai_orchestrator__spawn_agent"`, identity `agent_name="orchestrator"`.
+5. The orchestrator (Claude) decides to call e.g. the `spawn_agent` MCP tool. The SDK invokes the orchestrator's `can_use_tool` callback with `tool_name="mcp__patchfeld_orchestrator__spawn_agent"`, identity `agent_name="orchestrator"`.
 6. Callback consults `PermissionGrants.lookup(agent_name="orchestrator", tool_name=...)`:
    - Hit → return Allow/Deny without UI.
    - Miss → register in OrchestratorSession's `PermissionInbox`, publish `PermissionRequested(agent_id="orchestrator", agent_name="orchestrator", ...)`, `await`.
@@ -177,7 +177,7 @@ In-memory grants live on the `PermissionGrants` instance under `_session_grants`
 `PermissionGrants.__init__` catches `JSONDecodeError`/`OSError`/`KeyError` and starts with an empty rule set, logs the failure. Never blocks app startup.
 
 ### 4.7 `change_cwd` mid-pending-request
-`change_cwd` shuts the orchestrator and manager down (which fires §4.3 for every pending request) and rebuilds them. `PatchbaiApp._permission_grants` is reconstructed at the new cwd so a different `permission_grants.json` may apply.
+`change_cwd` shuts the orchestrator and manager down (which fires §4.3 for every pending request) and rebuilds them. `PatchfeldApp._permission_grants` is reconstructed at the new cwd so a different `permission_grants.json` may apply.
 
 ### 4.8 Resume of a persisted child agent
 `AgentManager.resume` re-runs `_build_options`, which re-attaches `can_use_tool` with the resurrected info's name. Persistent grants for that name still apply.
@@ -196,7 +196,7 @@ When the flag is passed: `bypass_permissions=True` → `_permission_grants=None`
 ### Task 1: Add `AWAITING_PERMISSION` to `AgentState`
 
 **Files:**
-- Modify: `patchbai/agents/state.py`
+- Modify: `patchfeld/agents/state.py`
 - Test: `tests/test_agent_state.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -205,13 +205,13 @@ Append to `tests/test_agent_state.py`:
 
 ```python
 def test_awaiting_permission_is_a_distinct_state():
-    from patchbai.agents.state import AgentState
+    from patchfeld.agents.state import AgentState
     assert AgentState.AWAITING_PERMISSION.value == "awaiting_permission"
     assert AgentState.AWAITING_PERMISSION != AgentState.WAITING
 
 
 def test_awaiting_permission_is_not_terminal():
-    from patchbai.agents.state import AgentState
+    from patchfeld.agents.state import AgentState
     assert AgentState.AWAITING_PERMISSION.is_terminal is False
 ```
 
@@ -222,7 +222,7 @@ Expected: `AttributeError: AWAITING_PERMISSION`.
 
 - [ ] **Step 3: Implement**
 
-Add to `patchbai/agents/state.py`, between `WAITING` and `DONE`:
+Add to `patchfeld/agents/state.py`, between `WAITING` and `DONE`:
 
 ```python
 class AgentState(str, Enum):
@@ -246,7 +246,7 @@ Expected: pass. (`from_dict`/`to_dict` round-trip via `.value`, no other code ch
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/state.py tests/test_agent_state.py
+git add patchfeld/agents/state.py tests/test_agent_state.py
 git commit -m "feat(state): add AWAITING_PERMISSION to AgentState"
 ```
 
@@ -255,7 +255,7 @@ git commit -m "feat(state): add AWAITING_PERMISSION to AgentState"
 ### Task 2: Color `AWAITING_PERMISSION` orange in AgentTable
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py:18-24`
+- Modify: `patchfeld/widgets/agent_table.py:18-24`
 - Test: `tests/test_agent_table_widget.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -286,7 +286,7 @@ Expected: `assert "orange" in ""` (no style applied).
 
 - [ ] **Step 3: Implement**
 
-Edit `_STATUS_STYLES` in `patchbai/widgets/agent_table.py`:
+Edit `_STATUS_STYLES` in `patchfeld/widgets/agent_table.py`:
 
 ```python
 _STATUS_STYLES: dict[_AgentState, str] = {
@@ -307,7 +307,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "feat(agent-table): color AWAITING_PERMISSION orange"
 ```
 
@@ -316,7 +316,7 @@ git commit -m "feat(agent-table): color AWAITING_PERMISSION orange"
 ### Task 3: Build `PermissionInbox` (mirror of `RequestInbox`)
 
 **Files:**
-- Create: `patchbai/agents/permission_inbox.py`
+- Create: `patchfeld/agents/permission_inbox.py`
 - Test: `tests/test_permission_inbox.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -329,7 +329,7 @@ import asyncio
 import pytest
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
 
-from patchbai.agents.permission_inbox import PermissionInbox
+from patchfeld.agents.permission_inbox import PermissionInbox
 
 
 async def _resolve_soon(inbox, rid, result):
@@ -384,11 +384,11 @@ async def test_resolve_unknown_id_is_silently_ignored():
 - [ ] **Step 2: Run, verify FAIL**
 
 Run: `pytest tests/test_permission_inbox.py -v`
-Expected: `ModuleNotFoundError: patchbai.agents.permission_inbox`.
+Expected: `ModuleNotFoundError: patchfeld.agents.permission_inbox`.
 
 - [ ] **Step 3: Implement**
 
-Create `patchbai/agents/permission_inbox.py`:
+Create `patchfeld/agents/permission_inbox.py`:
 
 ```python
 import asyncio
@@ -492,7 +492,7 @@ Expected: 5 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/permission_inbox.py tests/test_permission_inbox.py
+git add patchfeld/agents/permission_inbox.py tests/test_permission_inbox.py
 git commit -m "feat(permissions): add PermissionInbox per-session queue"
 ```
 
@@ -501,7 +501,7 @@ git commit -m "feat(permissions): add PermissionInbox per-session queue"
 ### Task 4: Build `PermissionGrants` persistence module
 
 **Files:**
-- Create: `patchbai/agents/permission_grants.py`
+- Create: `patchfeld/agents/permission_grants.py`
 - Test: `tests/test_permission_grants.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -513,7 +513,7 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_grants import PermissionGrants
 
 
 def test_lookup_returns_none_when_file_missing(tmp_path: Path):
@@ -551,13 +551,13 @@ def test_orchestrator_grants_round_trip(tmp_path: Path):
     grants = PermissionGrants(cwd=tmp_path)
     grants.remember(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
         behavior="allow",
     )
     fresh = PermissionGrants(cwd=tmp_path)
     assert fresh.lookup(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
     ) == "allow"
 
 
@@ -570,8 +570,8 @@ def test_clear_wipes_disk(tmp_path: Path):
 
 
 def test_corrupt_file_starts_empty(tmp_path: Path):
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "permission_grants.json").write_text("not json")
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "permission_grants.json").write_text("not json")
     grants = PermissionGrants(cwd=tmp_path)  # must not raise
     assert grants.lookup(agent_name="r", tool_name="Read") is None
 ```
@@ -583,7 +583,7 @@ Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Implement**
 
-Create `patchbai/agents/permission_grants.py`:
+Create `patchfeld/agents/permission_grants.py`:
 
 ```python
 """Persistent + session-scoped grant rules for tool permissions.
@@ -605,8 +605,8 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from patchbai.persistence.atomic import write_json_atomic
-from patchbai.persistence.paths import project_state_dir
+from patchfeld.persistence.atomic import write_json_atomic
+from patchfeld.persistence.paths import project_state_dir
 
 log = logging.getLogger(__name__)
 
@@ -623,7 +623,7 @@ class PermissionGrants:
 
     `remember(scope="session")` rules live in-memory only and evaporate on
     process exit. `remember(scope="persistent")` rules are serialized to
-    `<cwd>/.patchbai/permission_grants.json`.
+    `<cwd>/.patchfeld/permission_grants.json`.
     """
 
     def __init__(self, *, cwd: Path) -> None:
@@ -694,7 +694,7 @@ Expected: 7 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/permission_grants.py tests/test_permission_grants.py
+git add patchfeld/agents/permission_grants.py tests/test_permission_grants.py
 git commit -m "feat(permissions): add PermissionGrants disk + session store"
 ```
 
@@ -703,7 +703,7 @@ git commit -m "feat(permissions): add PermissionGrants disk + session store"
 ### Task 5: Add `PermissionRequested` / `PermissionResolved` events
 
 **Files:**
-- Modify: `patchbai/events.py`
+- Modify: `patchfeld/events.py`
 - Test: `tests/test_events.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -712,7 +712,7 @@ Append to `tests/test_events.py`:
 
 ```python
 def test_permission_request_events_carry_required_fields():
-    from patchbai.events import PermissionRequested, PermissionResolved
+    from patchfeld.events import PermissionRequested, PermissionResolved
     req = PermissionRequested(
         agent_id="a1", agent_name="researcher",
         request_id="r1", tool_name="Read", tool_input={"path": "x"},
@@ -734,7 +734,7 @@ Expected: `ImportError: cannot import name 'PermissionRequested'`.
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/events.py`, after the existing `AgentRequestedUserInput` block:
+In `patchfeld/events.py`, after the existing `AgentRequestedUserInput` block:
 
 ```python
 @dataclass(frozen=True)
@@ -768,7 +768,7 @@ Run: `pytest tests/test_events.py -v`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/events.py tests/test_events.py
+git add patchfeld/events.py tests/test_events.py
 git commit -m "feat(events): add PermissionRequested/Resolved"
 ```
 
@@ -777,7 +777,7 @@ git commit -m "feat(events): add PermissionRequested/Resolved"
 ### Task 6: Add `_mark_awaiting_permission` / `_mark_done_permission` to `AgentSession`
 
 **Files:**
-- Modify: `patchbai/agents/session.py`
+- Modify: `patchfeld/agents/session.py`
 - Test: `tests/test_agent_session.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -788,11 +788,11 @@ Append to `tests/test_agent_session.py`:
 @pytest.mark.asyncio
 async def test_mark_awaiting_permission_flips_state_and_restores():
     from pathlib import Path
-    from patchbai.agents.session import AgentSession
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.events import EventBus
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.persistence.transcript_store import AgentTranscript
+    from patchfeld.agents.session import AgentSession
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.events import EventBus
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.persistence.transcript_store import AgentTranscript
 
     info = AgentInfo(id="x", name="x", cwd="/tmp", started_at=0.0)
     info.state = AgentState.RUNNING
@@ -813,11 +813,11 @@ async def test_mark_awaiting_permission_flips_state_and_restores():
 @pytest.mark.asyncio
 async def test_mark_awaiting_permission_stacked_with_waiting_restores_correctly():
     from pathlib import Path
-    from patchbai.agents.session import AgentSession
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.events import EventBus
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.persistence.transcript_store import AgentTranscript
+    from patchfeld.agents.session import AgentSession
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.events import EventBus
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.persistence.transcript_store import AgentTranscript
 
     info = AgentInfo(id="x", name="x", cwd="/tmp", started_at=0.0)
     info.state = AgentState.RUNNING
@@ -848,7 +848,7 @@ Expected: `AttributeError: ...has no attribute '_mark_awaiting_permission'`.
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/agents/session.py`:
+In `patchfeld/agents/session.py`:
 
 (a) In `__init__`, add `self._pre_perm_state: AgentState | None = None` next to `_pre_wait_state`.
 
@@ -888,7 +888,7 @@ Run: `pytest tests/test_agent_session.py -v`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/session.py tests/test_agent_session.py
+git add patchfeld/agents/session.py tests/test_agent_session.py
 git commit -m "feat(session): add awaiting-permission state transitions"
 ```
 
@@ -899,7 +899,7 @@ git commit -m "feat(session): add awaiting-permission state transitions"
 This task constructs the inbox per child and exposes `get_permission_inbox()`. It does NOT yet plumb `can_use_tool` — that's Task 8.
 
 **Files:**
-- Modify: `patchbai/agents/manager.py`
+- Modify: `patchfeld/agents/manager.py`
 - Test: `tests/test_agent_manager.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -909,7 +909,7 @@ Append to `tests/test_agent_manager.py`:
 ```python
 @pytest.mark.asyncio
 async def test_get_permission_inbox_returns_inbox_per_agent(tmp_path: Path):
-    from patchbai.agents.permission_inbox import PermissionInbox
+    from patchfeld.agents.permission_inbox import PermissionInbox
     manager = AgentManager(
         cwd=tmp_path,
         bus=EventBus(),
@@ -928,7 +928,7 @@ async def test_get_permission_inbox_returns_inbox_per_agent(tmp_path: Path):
 async def test_permission_inbox_register_flips_state_to_awaiting_permission(
     tmp_path: Path,
 ):
-    from patchbai.agents.state import AgentState
+    from patchfeld.agents.state import AgentState
     bus = EventBus()
     manager = AgentManager(
         cwd=tmp_path,
@@ -956,9 +956,9 @@ Expected: `AttributeError: ...has no attribute 'get_permission_inbox'`.
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/agents/manager.py`:
+In `patchfeld/agents/manager.py`:
 
-(a) Add import: `from patchbai.agents.permission_inbox import PermissionInbox`.
+(a) Add import: `from patchfeld.agents.permission_inbox import PermissionInbox`.
 
 (b) In `__init__`, add `self._perm_inboxes: dict[str, PermissionInbox] = {}` next to `self._inboxes`.
 
@@ -998,7 +998,7 @@ Run: `pytest tests/test_agent_manager.py -v`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/manager.py tests/test_agent_manager.py
+git add patchfeld/agents/manager.py tests/test_agent_manager.py
 git commit -m "feat(manager): construct PermissionInbox per child agent"
 ```
 
@@ -1009,7 +1009,7 @@ git commit -m "feat(manager): construct PermissionInbox per child agent"
 The presence of a `permission_grants` instance is the gate. No new bool kwarg.
 
 **Files:**
-- Modify: `patchbai/agents/manager.py:113-141` and `__init__`
+- Modify: `patchfeld/agents/manager.py:113-141` and `__init__`
 - Test: `tests/test_agent_manager_can_use_tool.py` (new)
 
 - [ ] **Step 1: Write the failing tests**
@@ -1025,10 +1025,10 @@ from claude_agent_sdk import (
     PermissionResultAllow, PermissionResultDeny, ToolPermissionContext,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.events import EventBus, PermissionRequested
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.events import EventBus, PermissionRequested
 
 
 def _ok_script():
@@ -1159,7 +1159,7 @@ Expected: failures (`AgentManager.__init__() got an unexpected keyword argument 
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/agents/manager.py`:
+In `patchfeld/agents/manager.py`:
 
 (a) Update imports:
 
@@ -1173,9 +1173,9 @@ from claude_agent_sdk import (
     ToolPermissionContext,
 )
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import (
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import (
     AgentArchiveChanged,
     AgentSpawned,
     AgentStateChanged,
@@ -1225,7 +1225,7 @@ from patchbai.events import (
         opts = info.spawn_options or {}
         kwargs: dict = {
             "cwd": opts.get("cwd") or info.cwd,
-            "mcp_servers": {"patchbai_child": child_mcp},
+            "mcp_servers": {"patchfeld_child": child_mcp},
         }
         if self._grants is None:
             kwargs["permission_mode"] = "bypassPermissions"
@@ -1310,7 +1310,7 @@ Expected: all pass. (Existing manager tests don't pass `permission_grants`, so t
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/agents/manager.py tests/test_agent_manager_can_use_tool.py
+git add patchfeld/agents/manager.py tests/test_agent_manager_can_use_tool.py
 git commit -m "feat(manager): wire can_use_tool when permission_grants is provided"
 ```
 
@@ -1321,7 +1321,7 @@ git commit -m "feat(manager): wire can_use_tool when permission_grants is provid
 The orchestrator gets the same treatment: when `permission_grants` is provided, drop `permission_mode="bypassPermissions"` and attach a callback that uses `OrchestratorSession.AGENT_ID` ("orchestrator") as the `agent_name`.
 
 **Files:**
-- Modify: `patchbai/orchestrator/session.py`
+- Modify: `patchfeld/orchestrator/session.py`
 - Test: `tests/test_orchestrator_session_can_use_tool.py` (new)
 
 - [ ] **Step 1: Write the failing tests**
@@ -1338,11 +1338,11 @@ from claude_agent_sdk import (
     ResultMessage, TextBlock, ToolPermissionContext,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.events import EventBus, PermissionRequested
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.events import EventBus, PermissionRequested
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -1399,12 +1399,12 @@ async def test_grants_provided_attaches_callback_and_inbox(tmp_path: Path):
     # Short-circuit on persistent grant.
     grants.remember(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
         behavior="allow",
     )
     ctx = ToolPermissionContext(tool_use_id="t1")
     result = await callback(
-        "mcp__patchbai_orchestrator__list_widgets", {}, ctx,
+        "mcp__patchfeld_orchestrator__list_widgets", {}, ctx,
     )
     assert isinstance(result, PermissionResultAllow)
     await orch.stop()
@@ -1454,7 +1454,7 @@ Expected: TypeError: unexpected kwarg `permission_grants` / AttributeError: `per
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/orchestrator/session.py`:
+In `patchfeld/orchestrator/session.py`:
 
 (a) Add imports:
 
@@ -1471,9 +1471,9 @@ from claude_agent_sdk import (
     query as sdk_query,
 )
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import (
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import (
     AgentMessageAppended,
     AgentNotifiedOrchestrator,
     AgentRequestedUserInput,
@@ -1601,7 +1601,7 @@ from patchbai.events import (
 ```python
         options_kwargs: dict = {
             "cwd": str(self._cwd),
-            "mcp_servers": {"patchbai_orchestrator": mcp_server},
+            "mcp_servers": {"patchfeld_orchestrator": mcp_server},
         }
         if self._grants is None:
             options_kwargs["permission_mode"] = "bypassPermissions"
@@ -1632,7 +1632,7 @@ Expected: all pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/orchestrator/session.py tests/test_orchestrator_session_can_use_tool.py
+git add patchfeld/orchestrator/session.py tests/test_orchestrator_session_can_use_tool.py
 git commit -m "feat(orchestrator): wire can_use_tool when permission_grants is provided"
 ```
 
@@ -1641,7 +1641,7 @@ git commit -m "feat(orchestrator): wire can_use_tool when permission_grants is p
 ### Task 10: Add argparse to `__main__.py`
 
 **Files:**
-- Modify: `patchbai/__main__.py`
+- Modify: `patchfeld/__main__.py`
 - Test: `tests/test_main_argparse.py` (new)
 
 - [ ] **Step 1: Write the failing test**
@@ -1656,7 +1656,7 @@ import pytest
 
 
 def test_no_flag_passes_bypass_false(monkeypatch):
-    from patchbai import __main__ as main_mod
+    from patchfeld import __main__ as main_mod
 
     captured: dict = {}
     class _StubApp:
@@ -1664,15 +1664,15 @@ def test_no_flag_passes_bypass_false(monkeypatch):
             captured["bypass_permissions"] = bypass_permissions
         def run(self): captured["ran"] = True
 
-    monkeypatch.setattr(main_mod, "PatchbaiApp", _StubApp)
-    monkeypatch.setattr(sys, "argv", ["patchbai"])
+    monkeypatch.setattr(main_mod, "PatchfeldApp", _StubApp)
+    monkeypatch.setattr(sys, "argv", ["patchfeld"])
     rc = main_mod.main()
     assert rc == 0
     assert captured == {"bypass_permissions": False, "ran": True}
 
 
 def test_bypass_flag_passes_bypass_true(monkeypatch):
-    from patchbai import __main__ as main_mod
+    from patchfeld import __main__ as main_mod
 
     captured: dict = {}
     class _StubApp:
@@ -1680,15 +1680,15 @@ def test_bypass_flag_passes_bypass_true(monkeypatch):
             captured["bypass_permissions"] = bypass_permissions
         def run(self): pass
 
-    monkeypatch.setattr(main_mod, "PatchbaiApp", _StubApp)
-    monkeypatch.setattr(sys, "argv", ["patchbai", "--bypass-permissions"])
+    monkeypatch.setattr(main_mod, "PatchfeldApp", _StubApp)
+    monkeypatch.setattr(sys, "argv", ["patchfeld", "--bypass-permissions"])
     main_mod.main()
     assert captured["bypass_permissions"] is True
 
 
 def test_unknown_flag_exits_nonzero(monkeypatch, capsys):
-    from patchbai import __main__ as main_mod
-    monkeypatch.setattr(sys, "argv", ["patchbai", "--garbage"])
+    from patchfeld import __main__ as main_mod
+    monkeypatch.setattr(sys, "argv", ["patchfeld", "--garbage"])
     with pytest.raises(SystemExit):
         main_mod.main()
 ```
@@ -1696,22 +1696,22 @@ def test_unknown_flag_exits_nonzero(monkeypatch, capsys):
 - [ ] **Step 2: Run, verify FAIL**
 
 Run: `pytest tests/test_main_argparse.py -v`
-Expected: failures (`PatchbaiApp` doesn't accept `bypass_permissions` yet, and `__main__` doesn't parse args).
+Expected: failures (`PatchfeldApp` doesn't accept `bypass_permissions` yet, and `__main__` doesn't parse args).
 
 - [ ] **Step 3: Implement**
 
-Replace `patchbai/__main__.py` body:
+Replace `patchfeld/__main__.py` body:
 
 ```python
 import argparse
 import sys
 
-from patchbai.app import PatchbaiApp
+from patchfeld.app import PatchfeldApp
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="patchbai",
+        prog="patchfeld",
         description="Multi-agent Textual TUI for Claude Agent SDK.",
     )
     parser.add_argument(
@@ -1729,7 +1729,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
-    PatchbaiApp(bypass_permissions=args.bypass_permissions).run()
+    PatchfeldApp(bypass_permissions=args.bypass_permissions).run()
     return 0
 
 
@@ -1745,16 +1745,16 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/__main__.py tests/test_main_argparse.py
+git add patchfeld/__main__.py tests/test_main_argparse.py
 git commit -m "feat(cli): add --bypass-permissions flag to __main__"
 ```
 
 ---
 
-### Task 11: Wire `bypass_permissions` through `PatchbaiApp`
+### Task 11: Wire `bypass_permissions` through `PatchfeldApp`
 
 **Files:**
-- Modify: `patchbai/app.py` (`__init__` + `change_cwd`)
+- Modify: `patchfeld/app.py` (`__init__` + `change_cwd`)
 - Test: `tests/test_app_smoke_permission_modal.py` (new)
 
 - [ ] **Step 1: Write the failing tests**
@@ -1766,18 +1766,18 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.app import PatchbaiApp
+from patchfeld.app import PatchfeldApp
 
 
 def test_default_constructs_grants_object(tmp_path: Path):
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     assert app._permission_grants is not None
     assert app.manager._grants is app._permission_grants
     assert app.orchestrator.permission_grants is app._permission_grants
 
 
 def test_bypass_permissions_skips_grants(tmp_path: Path):
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -1792,11 +1792,11 @@ Expected: `TypeError: __init__() got an unexpected keyword argument 'bypass_perm
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/app.py`:
+In `patchfeld/app.py`:
 
-(a) Add import: `from patchbai.agents.permission_grants import PermissionGrants`.
+(a) Add import: `from patchfeld.agents.permission_grants import PermissionGrants`.
 
-(b) Update `PatchbaiApp.__init__` signature and grant-construction:
+(b) Update `PatchfeldApp.__init__` signature and grant-construction:
 
 ```python
     def __init__(
@@ -1878,7 +1878,7 @@ Expected: pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_smoke_permission_modal.py
+git add patchfeld/app.py tests/test_app_smoke_permission_modal.py
 git commit -m "feat(app): bypass_permissions kwarg gates PermissionGrants construction"
 ```
 
@@ -1887,7 +1887,7 @@ git commit -m "feat(app): bypass_permissions kwarg gates PermissionGrants constr
 ### Task 12: Build `PermissionModal`
 
 **Files:**
-- Create: `patchbai/widgets/permission_modal.py`
+- Create: `patchfeld/widgets/permission_modal.py`
 - Test: `tests/test_widget_permission_modal.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -1900,10 +1900,10 @@ from pathlib import Path
 import pytest
 from textual.app import App, ComposeResult
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import EventBus, PermissionRequested
-from patchbai.widgets.permission_modal import PermissionModal
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import EventBus, PermissionRequested
+from patchfeld.widgets.permission_modal import PermissionModal
 
 
 class _Host(App):
@@ -2051,7 +2051,7 @@ Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Implement**
 
-Create `patchbai/widgets/permission_modal.py`:
+Create `patchfeld/widgets/permission_modal.py`:
 
 ```python
 from typing import Callable
@@ -2063,9 +2063,9 @@ from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label, Static
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import (
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import (
     EventBus, PermissionRequested, PermissionResolved,
 )
 
@@ -2249,7 +2249,7 @@ Expected: 6 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/permission_modal.py tests/test_widget_permission_modal.py
+git add patchfeld/widgets/permission_modal.py tests/test_widget_permission_modal.py
 git commit -m "feat(modal): add global PermissionModal screen"
 ```
 
@@ -2258,8 +2258,8 @@ git commit -m "feat(modal): add global PermissionModal screen"
 ### Task 13: Build inline `PermissionRequestBar` for `AgentTranscript`
 
 **Files:**
-- Create: `patchbai/widgets/permission_request_bar.py`
-- Modify: `patchbai/widgets/agent_transcript.py`
+- Create: `patchfeld/widgets/permission_request_bar.py`
+- Modify: `patchfeld/widgets/agent_transcript.py`
 - Test: `tests/test_widget_permission_request_bar.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -2272,10 +2272,10 @@ from pathlib import Path
 import pytest
 from textual.app import App, ComposeResult
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import EventBus, PermissionRequested, PermissionResolved
-from patchbai.widgets.agent_transcript import AgentTranscript
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import EventBus, PermissionRequested, PermissionResolved
+from patchfeld.widgets.agent_transcript import AgentTranscript
 
 
 class _Host(App):
@@ -2311,7 +2311,7 @@ async def test_bar_appears_on_request_for_this_agent(tmp_path: Path):
         await pilot.pause()
         bus.publish(_request(rid=rid))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         bars = app.query(PermissionRequestBar)
         assert len(bars) == 1
 
@@ -2330,7 +2330,7 @@ async def test_bar_does_not_appear_for_other_agents(tmp_path: Path):
             tool_name="Read", tool_input={},
         ))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         assert len(app.query(PermissionRequestBar)) == 0
 
 
@@ -2363,7 +2363,7 @@ async def test_bar_clears_when_resolution_comes_externally(tmp_path: Path):
         await pilot.pause()
         bus.publish(_request(rid=rid))
         await pilot.pause()
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         assert len(app.query(PermissionRequestBar)) == 1
         bus.publish(PermissionResolved(
             agent_id="a1", request_id=rid, behavior="allow",
@@ -2378,7 +2378,7 @@ Expected: `ModuleNotFoundError`.
 
 - [ ] **Step 3: Implement the bar**
 
-Create `patchbai/widgets/permission_request_bar.py`:
+Create `patchfeld/widgets/permission_request_bar.py`:
 
 ```python
 from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
@@ -2386,7 +2386,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Button, Static
 
-from patchbai.events import PermissionRequested, PermissionResolved
+from patchfeld.events import PermissionRequested, PermissionResolved
 
 
 class PermissionRequestBar(Horizontal):
@@ -2464,18 +2464,18 @@ def _short(value: object, limit: int = 80) -> str:
 
 - [ ] **Step 4: Wire bar into `AgentTranscript`**
 
-Edit `patchbai/widgets/agent_transcript.py`:
+Edit `patchfeld/widgets/agent_transcript.py`:
 
 ```python
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import Input
 
-from patchbai.events import (
+from patchfeld.events import (
     DirectMessageToAgent, EventBus,
     PermissionRequested, PermissionResolved,
 )
-from patchbai.widgets.rich_transcript import RichTranscript
+from patchfeld.widgets.rich_transcript import RichTranscript
 
 
 class AgentTranscript(Vertical):
@@ -2525,14 +2525,14 @@ class AgentTranscript(Vertical):
     def _on_perm_request(self, event: PermissionRequested) -> None:
         if event.agent_id != self._agent_id:
             return
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         bar = PermissionRequestBar(request=event)
         self.mount(bar, before=self.query_one(RichTranscript))
 
     def _on_perm_resolved(self, event: PermissionResolved) -> None:
         if event.agent_id != self._agent_id:
             return
-        from patchbai.widgets.permission_request_bar import PermissionRequestBar
+        from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         for bar in list(self.query(PermissionRequestBar)):
             if bar.request_id == event.request_id:
                 bar.remove()
@@ -2565,7 +2565,7 @@ Expected: pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/permission_request_bar.py patchbai/widgets/agent_transcript.py tests/test_widget_permission_request_bar.py
+git add patchfeld/widgets/permission_request_bar.py patchfeld/widgets/agent_transcript.py tests/test_widget_permission_request_bar.py
 git commit -m "feat(transcript): mount inline PermissionRequestBar for pending requests"
 ```
 
@@ -2576,7 +2576,7 @@ git commit -m "feat(transcript): mount inline PermissionRequestBar for pending r
 The modal needs to be on the screen stack to subscribe and render. Approach: the app subscribes to `PermissionRequested` only when grants are wired, and on the *first* request (no modal up) pushes the modal once. Subsequent requests are absorbed by the modal's own subscription.
 
 **Files:**
-- Modify: `patchbai/app.py` (`__init__` flag, `on_mount` subscribe, new handler)
+- Modify: `patchfeld/app.py` (`__init__` flag, `on_mount` subscribe, new handler)
 - Test: `tests/test_app_smoke_permission_modal.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -2586,11 +2586,11 @@ Append to `tests/test_app_smoke_permission_modal.py`:
 ```python
 @pytest.mark.asyncio
 async def test_permission_request_pushes_modal_when_grants_present(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         app.event_bus.publish(PermissionRequested(
@@ -2603,11 +2603,11 @@ async def test_permission_request_pushes_modal_when_grants_present(tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_permission_request_does_nothing_when_bypass(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -2627,9 +2627,9 @@ Expected: first test fails (modal not pushed).
 
 - [ ] **Step 3: Implement**
 
-In `patchbai/app.py`:
+In `patchfeld/app.py`:
 
-(a) Add import: `from patchbai.events import PermissionRequested`.
+(a) Add import: `from patchfeld.events import PermissionRequested`.
 
 (b) In `__init__`, add `self._permission_modal_open = False`.
 
@@ -2646,7 +2646,7 @@ In `patchbai/app.py`:
 
 ```python
     def _on_permission_requested(self, event: PermissionRequested) -> None:
-        from patchbai.widgets.permission_modal import PermissionModal
+        from patchfeld.widgets.permission_modal import PermissionModal
         if self._permission_modal_open:
             return  # the modal's own subscription will queue this
         self._permission_modal_open = True
@@ -2676,7 +2676,7 @@ Run: `pytest tests/test_app_smoke_permission_modal.py -v`
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/app.py tests/test_app_smoke_permission_modal.py
+git add patchfeld/app.py tests/test_app_smoke_permission_modal.py
 git commit -m "feat(app): push PermissionModal on first PermissionRequested"
 ```
 
@@ -2697,10 +2697,10 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
         AssistantMessage, PermissionResultAllow, ResultMessage,
         TextBlock, ToolPermissionContext,
     )
-    from patchbai.app import PatchbaiApp
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         app.manager._adapter_factory = lambda: FakeSDKAdapter(scripts=[[
@@ -2722,7 +2722,7 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
         cb_task = asyncio.create_task(callback("Read", {"path": "x"}, ctx))
         for _ in range(20):
             await pilot.pause()
-            from patchbai.widgets.permission_modal import PermissionModal
+            from patchfeld.widgets.permission_modal import PermissionModal
             if isinstance(app.screen, PermissionModal):
                 break
         await pilot.click("#allow-once")
@@ -2757,10 +2757,10 @@ git commit -m "test(app): e2e child allow-once unblocks can_use_tool"
 async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
     import asyncio
     from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
-    from patchbai.app import PatchbaiApp
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         callback = app.orchestrator._can_use_tool_callback
@@ -2768,7 +2768,7 @@ async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
         ctx = ToolPermissionContext(tool_use_id="t1")
 
         cb_task = asyncio.create_task(
-            callback("mcp__patchbai_orchestrator__list_widgets", {}, ctx)
+            callback("mcp__patchfeld_orchestrator__list_widgets", {}, ctx)
         )
         for _ in range(20):
             await pilot.pause()
@@ -2809,10 +2809,10 @@ This is a regression check: with the flag passed, the build_options output and e
 ```python
 @pytest.mark.asyncio
 async def test_bypass_skips_modal_subscriptions(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
 
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -2846,12 +2846,12 @@ git commit -m "test(app): --bypass-permissions wires nothing"
 Both `AgentManager._build_options` and `OrchestratorSession._build_and_start_inner` carry "plan-3 work" comments that are now obsolete.
 
 **Files:**
-- Modify: `patchbai/agents/manager.py` (existing comment block)
-- Modify: `patchbai/orchestrator/session.py` (existing comment block)
+- Modify: `patchfeld/agents/manager.py` (existing comment block)
+- Modify: `patchfeld/orchestrator/session.py` (existing comment block)
 
 - [ ] **Step 1: Replace the manager comment**
 
-In `patchbai/agents/manager.py`, the comment that says "Bypass permissions for now: there's no Textual modal..." now reads:
+In `patchfeld/agents/manager.py`, the comment that says "Bypass permissions for now: there's no Textual modal..." now reads:
 
 ```python
         # Permission posture: presence of self._grants is the gate.
@@ -2864,7 +2864,7 @@ In `patchbai/agents/manager.py`, the comment that says "Bypass permissions for n
 
 - [ ] **Step 2: Replace the orchestrator comment**
 
-In `patchbai/orchestrator/session.py`, the comment that says "The orchestrator is the user's trusted manager session — there's no UI in the TUI yet to render a permission prompt..." now reads:
+In `patchfeld/orchestrator/session.py`, the comment that says "The orchestrator is the user's trusted manager session — there's no UI in the TUI yet to render a permission prompt..." now reads:
 
 ```python
         # Permission posture mirrors AgentManager (see manager.py): when
@@ -2882,7 +2882,7 @@ Expected: all green.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add patchbai/agents/manager.py patchbai/orchestrator/session.py
+git add patchfeld/agents/manager.py patchfeld/orchestrator/session.py
 git commit -m "docs: refresh permission_mode comments for new flag"
 ```
 
@@ -2897,13 +2897,13 @@ Expected: all green.
 
 - [ ] **Step 2: Manual smoke (record in PR description)**
 
-1. `patchbai` (no flag) → typing anything in the orchestrator chat that requires a tool call pops a `PermissionModal` with "agent: orchestrator".
-2. Click **Always allow** for some safe tool → confirm `.patchbai/permission_grants.json` contains the rule.
-3. Restart `patchbai` (no flag) → ask the orchestrator to use that same tool again → no modal.
+1. `patchfeld` (no flag) → typing anything in the orchestrator chat that requires a tool call pops a `PermissionModal` with "agent: orchestrator".
+2. Click **Always allow** for some safe tool → confirm `.patchfeld/permission_grants.json` contains the rule.
+3. Restart `patchfeld` (no flag) → ask the orchestrator to use that same tool again → no modal.
 4. Have the orchestrator spawn an agent named "researcher" — a NEW modal pops for the orchestrator's `spawn_agent` call. Allow once.
 5. Researcher's first tool call pops a modal labeled "agent: researcher". Confirm the AgentTable shows "researcher" in **orange `awaiting_permission`** while the modal is open.
 6. Open an `AgentTranscript` panel for "researcher" and let it run another tool call — confirm the inline `PermissionRequestBar` appears at the top of the panel and resolves the request when clicked.
-7. `patchbai --bypass-permissions` → no modals, no inline bars; behavior is bit-for-bit the pre-feature codebase.
+7. `patchfeld --bypass-permissions` → no modals, no inline bars; behavior is bit-for-bit the pre-feature codebase.
 
 - [ ] **Step 3: No further commits unless the run revealed bugs**
 
@@ -2928,10 +2928,10 @@ Expected: all green.
 ## Section 7 — Affected Files Summary
 
 **Created (12 files):**
-- `patchbai/agents/permission_inbox.py`
-- `patchbai/agents/permission_grants.py`
-- `patchbai/widgets/permission_modal.py`
-- `patchbai/widgets/permission_request_bar.py`
+- `patchfeld/agents/permission_inbox.py`
+- `patchfeld/agents/permission_grants.py`
+- `patchfeld/widgets/permission_modal.py`
+- `patchfeld/widgets/permission_request_bar.py`
 - `tests/test_permission_inbox.py`
 - `tests/test_permission_grants.py`
 - `tests/test_widget_permission_modal.py`
@@ -2942,13 +2942,13 @@ Expected: all green.
 - `tests/test_main_argparse.py`
 
 **Modified (10 files):**
-- `patchbai/__main__.py`
-- `patchbai/app.py`
-- `patchbai/agents/state.py`
-- `patchbai/agents/session.py`
-- `patchbai/agents/manager.py`
-- `patchbai/orchestrator/session.py`
-- `patchbai/events.py`
-- `patchbai/widgets/agent_table.py`
-- `patchbai/widgets/agent_transcript.py`
+- `patchfeld/__main__.py`
+- `patchfeld/app.py`
+- `patchfeld/agents/state.py`
+- `patchfeld/agents/session.py`
+- `patchfeld/agents/manager.py`
+- `patchfeld/orchestrator/session.py`
+- `patchfeld/events.py`
+- `patchfeld/widgets/agent_table.py`
+- `patchfeld/widgets/agent_transcript.py`
 - `tests/test_agent_state.py` · `tests/test_agent_table_widget.py` · `tests/test_agent_session.py` · `tests/test_agent_manager.py` (small additions)

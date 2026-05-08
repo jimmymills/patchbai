@@ -3,12 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.actions import ActionRegistry
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.config import ConfigStore
-from patchbai.events import EventBus
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.actions import ActionRegistry
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.config import ConfigStore
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _make(tmp_path, ok_script):

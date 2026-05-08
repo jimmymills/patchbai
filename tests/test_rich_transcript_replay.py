@@ -1,9 +1,9 @@
 import pytest
 from textual.app import App
 
-from patchbai.events import EventBus
-from patchbai.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
-from patchbai.widgets.rich_transcript import RichTranscript, _TurnContainer
+from patchfeld.events import EventBus
+from patchfeld.persistence.transcript_store import AgentTranscript as Store, TranscriptEntry
+from patchfeld.widgets.rich_transcript import RichTranscript, _TurnContainer
 
 
 class _HostApp(App):
@@ -40,7 +40,7 @@ async def test_replay_marks_all_turns_done(tmp_path):
 @pytest.mark.asyncio
 async def test_old_transcript_without_tool_id_still_pairs(tmp_path):
     """tool_result without tool_id falls back to most-recent-pending pairing."""
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     store = Store(cwd=tmp_path, agent_id="a1")
     store.append(TranscriptEntry(role="user", text="go"))
@@ -67,7 +67,7 @@ async def test_replay_does_not_start_spinner_on_completed_tool(tmp_path):
     """Replay must not show the spinner on tool foldables whose result
     already arrived. Regression: Textual defers mount, so on_mount used to
     fire after attach_result and unconditionally start the timer."""
-    from patchbai.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
+    from patchfeld.widgets.rich_transcript import _ToolCall, _SPINNER_FRAMES
 
     store = Store(cwd=tmp_path, agent_id="a1")
     store.append(TranscriptEntry(role="user", text="go"))
@@ -101,7 +101,7 @@ async def test_replay_tool_result_with_brackets_does_not_crash(tmp_path):
     # [a-z#/@] (e.g. cat -n output "[\n", JSON "[{") used to crash on replay
     # because textual.markup.escape passed them through unescaped, and the
     # Collapsible title's markup parser then choked on the truncation "…".
-    from patchbai.widgets.rich_transcript import _ToolCall
+    from patchfeld.widgets.rich_transcript import _ToolCall
 
     payload = (
         '820\t            "tabs": [\n'
@@ -132,7 +132,7 @@ async def test_replay_tool_result_with_brackets_does_not_crash(tmp_path):
 @pytest.mark.asyncio
 async def test_replay_does_not_start_spinner_on_completed_thinking(tmp_path):
     """Same regression for thinking groups closed by rolling-turn-close."""
-    from patchbai.widgets.rich_transcript import _ThinkingGroup, _SPINNER_FRAMES
+    from patchfeld.widgets.rich_transcript import _ThinkingGroup, _SPINNER_FRAMES
 
     store = Store(cwd=tmp_path, agent_id="a1")
     # Two turns so the first one's thinking group closes via _open_turn rolling close.

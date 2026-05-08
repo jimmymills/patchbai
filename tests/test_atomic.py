@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.persistence.atomic import write_json_atomic
+from patchfeld.persistence.atomic import write_json_atomic
 
 
 def test_writes_file(tmp_path: Path):

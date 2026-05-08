@@ -1,9 +1,9 @@
 import time
 from datetime import datetime
 
-from patchbai.activity.log import ActivityEntry, ActivityKind, ActivityLog
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.events import (
+from patchfeld.activity.log import ActivityEntry, ActivityKind, ActivityLog
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.events import (
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
     AgentStateChanged, AgentTokensTouched, EventBus, FileSelected,
@@ -11,7 +11,7 @@ from patchbai.events import (
     StatsUpdated, TabAdded, TabClosed, TabSwitched, UserMessageToOrchestrator,
     WorkspaceCwdChanged,
 )
-from patchbai.layout.spec import LayoutSpec
+from patchfeld.layout.spec import LayoutSpec
 
 
 def _spec() -> LayoutSpec:

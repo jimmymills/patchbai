@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from patchbai.persistence.orchestrator_sessions import (
+from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
     OrchestratorSessionsIndex,
 )
@@ -9,7 +9,7 @@ from patchbai.persistence.orchestrator_sessions import (
 def _entry(sid: str = "s1", last: float = 100.0, legacy: bool = False) -> OrchestratorSessionEntry:
     return OrchestratorSessionEntry(
         session_id=sid,
-        transcript_path=f".patchbai/transcripts/orchestrator.{sid}.jsonl",
+        transcript_path=f".patchfeld/transcripts/orchestrator.{sid}.jsonl",
         started_at=last - 10,
         last_activity=last,
         first_user_message=None,
@@ -64,7 +64,7 @@ def test_get_returns_entry_by_session_id(tmp_path):
 
 
 def test_corrupt_file_is_treated_as_empty(tmp_path):
-    state = tmp_path / ".patchbai"
+    state = tmp_path / ".patchfeld"
     state.mkdir()
     (state / "orchestrator_sessions.json").write_text("not json {{")
     assert OrchestratorSessionsIndex(cwd=tmp_path).list() == []
@@ -73,11 +73,11 @@ def test_corrupt_file_is_treated_as_empty(tmp_path):
 def test_index_persists_to_expected_path(tmp_path):
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(_entry("a"))
-    assert (tmp_path / ".patchbai" / "orchestrator_sessions.json").exists()
+    assert (tmp_path / ".patchfeld" / "orchestrator_sessions.json").exists()
 
 
 def test_migrate_legacy_when_old_jsonl_exists_no_index(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     legacy = transcripts / "orchestrator.jsonl"
     legacy.write_text('{"role": "user", "text": "old"}\n', encoding="utf-8")
@@ -96,7 +96,7 @@ def test_migrate_legacy_when_old_jsonl_exists_no_index(tmp_path):
 
 
 def test_migrate_legacy_is_idempotent(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     (transcripts / "orchestrator.jsonl").write_text("{}\n", encoding="utf-8")
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
@@ -114,7 +114,7 @@ def test_migrate_legacy_noop_when_no_legacy_file(tmp_path):
 
 
 def test_migrate_legacy_noop_when_index_already_exists(tmp_path):
-    transcripts = tmp_path / ".patchbai" / "transcripts"
+    transcripts = tmp_path / ".patchfeld" / "transcripts"
     transcripts.mkdir(parents=True)
     (transcripts / "orchestrator.jsonl").write_text("{}\n", encoding="utf-8")
     idx = OrchestratorSessionsIndex(cwd=tmp_path)

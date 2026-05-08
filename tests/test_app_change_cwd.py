@@ -4,12 +4,12 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.state import AgentState
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus, WorkspaceCwdChanged
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.state import AgentState
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus, WorkspaceCwdChanged
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -29,7 +29,7 @@ def _build_app(cwd):
         cwd=cwd, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=cwd, manager=manager, global_dir=cwd / ".global")
+    app = PatchfeldApp(cwd=cwd, manager=manager, global_dir=cwd / ".global")
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=cwd, bus=bus, manager=manager,
@@ -66,7 +66,7 @@ async def test_change_cwd_swaps_cwd_and_publishes_event(tmp_path):
         await pilot.pause()
         assert result == {"changed": str(proj_b.resolve())}
         assert app.cwd == proj_b.resolve()
-        assert (proj_b / ".patchbai" / "workspace.json").exists()
+        assert (proj_b / ".patchfeld" / "workspace.json").exists()
         assert received and received[-1] == str(proj_b.resolve())
 
 
@@ -133,7 +133,7 @@ async def test_ctrl_shift_d_opens_change_cwd_modal(tmp_path):
         await pilot.pause()
         await pilot.press("ctrl+shift+d")
         await pilot.pause()
-        from patchbai.widgets.change_cwd_screen import ChangeCwdScreen
+        from patchfeld.widgets.change_cwd_screen import ChangeCwdScreen
         assert isinstance(app.screen, ChangeCwdScreen)
 
 
@@ -149,7 +149,7 @@ async def test_slash_cd_changes_cwd(tmp_path):
         app.orchestrator._next_adapter_factory = (
             lambda: FakeSDKAdapter(scripts=[_ok()])
         )
-        from patchbai.events import UserMessageToOrchestrator
+        from patchfeld.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator(f"/cd {proj_b}"))
         await pilot.pause()
         await pilot.pause()  # second pause: change_cwd creates async tasks
@@ -166,7 +166,7 @@ async def test_change_cwd_updates_footer(tmp_path, monkeypatch):
     app, _ = _build_app(proj_a)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.widgets.chrome import StatusBar
+        from patchfeld.widgets.chrome import StatusBar
         from textual.widgets import Static
         bar = app.query_one(StatusBar)
         assert "~/a" in str(bar.query_one("#sb-cwd", Static).content)

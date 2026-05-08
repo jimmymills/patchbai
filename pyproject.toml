@@ -1,5 +1,5 @@
 [project]
-name = "patchbai"
+name = "patchfeld"
 version = "0.2.0"
 description = "A Textual TUI for managing multiple Claude Code agent sessions"
 readme = "README.md"
@@ -48,8 +48,8 @@ dev = [
 ]
 
 [project.scripts]
-patchbai = "patchbai.__main__:main"
-mt = "patchbai.__main__:main"
+patchfeld = "patchfeld.__main__:main"
+mt = "patchfeld.__main__:main"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -59,18 +59,18 @@ testpaths = ["tests"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.11"
-include = ["patchbai", "tests"]
+include = ["patchfeld", "tests"]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["patchbai"]
+packages = ["patchfeld"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-  "patchbai",
+  "patchfeld",
   "README.md",
   "LICENSE",
   "pyproject.toml",

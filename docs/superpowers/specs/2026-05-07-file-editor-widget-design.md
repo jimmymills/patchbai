@@ -24,12 +24,12 @@ The intended common layout is the existing tree-and-viewer pair, but with the ed
 
 ### 1. Module layout
 
-New file `patchbai/widgets/file_editor.py` containing the `FileEditor` widget and the two confirmation modals it pushes (`ConfirmDirtySwitchScreen`, `ConfirmOverwriteScreen`).
+New file `patchfeld/widgets/file_editor.py` containing the `FileEditor` widget and the two confirmation modals it pushes (`ConfirmDirtySwitchScreen`, `ConfirmOverwriteScreen`).
 
-The extension→language map and `_load_text` helper currently in `file_viewer.py` are extracted into a new module `patchbai/widgets/_file_lang.py`:
+The extension→language map and `_load_text` helper currently in `file_viewer.py` are extracted into a new module `patchfeld/widgets/_file_lang.py`:
 
 ```python
-# patchbai/widgets/_file_lang.py
+# patchfeld/widgets/_file_lang.py
 from pathlib import Path
 
 _EXTENSION_LANGUAGES = { ... }  # moved verbatim
@@ -159,7 +159,7 @@ Because the handler is now async, wrap the `_on_file_selected` body in a worker 
 
 ### 9. Modals
 
-Both modals are tiny `ModalScreen[str]` subclasses that yield a `Static` prompt and a row of `Button`s, returning a string verb (`"save"`, `"discard"`, `"cancel"`, `"overwrite"`). They live next to the widget in `patchbai/widgets/file_editor.py` because they're trivial and tightly coupled. If they grow, split into `file_editor_modals.py`.
+Both modals are tiny `ModalScreen[str]` subclasses that yield a `Static` prompt and a row of `Button`s, returning a string verb (`"save"`, `"discard"`, `"cancel"`, `"overwrite"`). They live next to the widget in `patchfeld/widgets/file_editor.py` because they're trivial and tightly coupled. If they grow, split into `file_editor_modals.py`.
 
 `ConfirmDirtySwitchScreen(new_path: str)`:
 
@@ -173,10 +173,10 @@ The widget interacts with these via `await self.app.push_screen_wait(modal)`, wh
 
 ### 10. Registration
 
-In `patchbai/app.py:build_default_registry`:
+In `patchfeld/app.py:build_default_registry`:
 
 ```python
-from patchbai.widgets.file_editor import FileEditor
+from patchfeld.widgets.file_editor import FileEditor
 
 reg.register(
     "FileEditor", FileEditor,

@@ -1,11 +1,11 @@
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.engine import (
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.engine import (
     MountPanel,
     UnmountPanel,
     UpdateProps,
     diff,
 )
-from patchbai.layout.spec import LayoutSpec
+from patchfeld.layout.spec import LayoutSpec
 
 
 def _spec(panels: list[dict]) -> LayoutSpec:

@@ -2,9 +2,9 @@ import pytest
 from textual.app import App
 from textual.widgets import ListView
 
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.persistence.layouts_store import NamedLayoutsStore
-from patchbai.widgets.layout_switcher import (
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.widgets.layout_switcher import (
     ConfirmDeleteLayoutScreen,
     LayoutSwitcherScreen,
 )

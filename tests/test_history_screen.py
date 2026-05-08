@@ -2,9 +2,9 @@ import pytest
 from textual.app import App
 from textual.widgets import DataTable
 
-from patchbai.agents.state import AgentInfo, AgentState
-from patchbai.persistence.agents_index import AgentsIndex
-from patchbai.widgets.history_screen import HistoryScreen
+from patchfeld.agents.state import AgentInfo, AgentState
+from patchfeld.persistence.agents_index import AgentsIndex
+from patchfeld.widgets.history_screen import HistoryScreen
 
 
 @pytest.mark.asyncio

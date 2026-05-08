@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.layout.local_widgets import LocalWidgetLoader, LoadOutcome
-from patchbai.layout.registry import WidgetRegistry
+from patchfeld.layout.local_widgets import LocalWidgetLoader, LoadOutcome
+from patchfeld.layout.registry import WidgetRegistry
 
 
 def _write(p: Path, body: str) -> Path:
@@ -30,7 +30,7 @@ def test_loader_uses_metadata_name_description_props(tmp_path):
     _write(tmp_path / "spark.py", """
 from textual.widgets import Static
 
-__patchbai_widget__ = {
+__patchfeld_widget__ = {
     "name": "Sparkline",
     "description": "Token sparkline.",
     "props_schema": {"agent_id": str},
@@ -56,7 +56,7 @@ class Real(Static):
 class Decoy(Static):
     pass
 
-__patchbai_widget__ = {"name": "X", "entry_point": Real}
+__patchfeld_widget__ = {"name": "X", "entry_point": Real}
 """)
     reg = WidgetRegistry()
     outcomes = LocalWidgetLoader(tmp_path, reg).load()
@@ -144,7 +144,7 @@ def test_loader_skips_name_collision_with_builtin(tmp_path):
     _write(tmp_path / "evil.py", """
 from textual.widgets import Static
 
-__patchbai_widget__ = {"name": "OrchestratorChat"}
+__patchfeld_widget__ = {"name": "OrchestratorChat"}
 
 class Evil(Static):
     pass
@@ -164,7 +164,7 @@ def test_loader_does_not_register_imported_class_via_name_match(tmp_path):
     _write(tmp_path / "static.py", """
 from textual.widgets import Static
 
-__patchbai_widget__ = {"name": "Static"}
+__patchfeld_widget__ = {"name": "Static"}
 """)
     reg = WidgetRegistry()
     outcomes = LocalWidgetLoader(tmp_path, reg).load()
@@ -173,13 +173,13 @@ __patchbai_widget__ = {"name": "Static"}
     assert "Static" not in reg.known()
 
 
-from patchbai.layout.local_widgets import validate_widget_source
+from patchfeld.layout.local_widgets import validate_widget_source
 
 
 def test_validate_returns_class_and_meta_for_valid_source():
     src = """
 from textual.widgets import Static
-__patchbai_widget__ = {
+__patchfeld_widget__ = {
     "name": "Banner",
     "description": "A banner.",
     "props_schema": {"text": str},
@@ -213,7 +213,7 @@ class Real(Static):
     pass
 class Decoy(Static):
     pass
-__patchbai_widget__ = {"name": "X", "entry_point": Real}
+__patchfeld_widget__ = {"name": "X", "entry_point": Real}
 """
     cls, meta, err = validate_widget_source("X", src)
     assert cls is not None and cls.__name__ == "Real"

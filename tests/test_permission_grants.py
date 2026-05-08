@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from patchbai.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_grants import PermissionGrants
 
 
 def test_lookup_returns_none_when_file_missing(tmp_path: Path):
@@ -38,13 +38,13 @@ def test_orchestrator_grants_round_trip(tmp_path: Path):
     grants = PermissionGrants(cwd=tmp_path)
     grants.remember(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
         behavior="allow",
     )
     fresh = PermissionGrants(cwd=tmp_path)
     assert fresh.lookup(
         agent_name="orchestrator",
-        tool_name="mcp__patchbai_orchestrator__list_widgets",
+        tool_name="mcp__patchfeld_orchestrator__list_widgets",
     ) == "allow"
 
 
@@ -57,7 +57,7 @@ def test_clear_wipes_disk(tmp_path: Path):
 
 
 def test_corrupt_file_starts_empty(tmp_path: Path):
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "permission_grants.json").write_text("not json")
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "permission_grants.json").write_text("not json")
     grants = PermissionGrants(cwd=tmp_path)  # must not raise
     assert grants.lookup(agent_name="r", tool_name="Read") is None

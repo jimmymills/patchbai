@@ -7,13 +7,13 @@ User-reported bug:
      first tab vs created ones has a bug."
 
 The Agents tab is the seeded "default" tab containing OrchestratorChat. Multica
-is a custom local widget loaded from ~/.config/patchbai/widgets/MulticaIssues.py
+is a custom local widget loaded from ~/.config/patchfeld/widgets/MulticaIssues.py
 that exposes a DataTable populated by an async subprocess.
 
 Hypothesis: MulticaIssues has an `on_data_table_row_selected` handler that
 opens the issue in a browser but does NOT call event.stop(). The DataTable
 RowSelected message therefore bubbles up to the App's global
-`on_data_table_row_selected` handler at patchbai/app.py:1264, which pushes a
+`on_data_table_row_selected` handler at patchfeld/app.py:1264, which pushes a
 TranscriptScreen modal onto the screen stack. With a modal screen on top, all
 subsequent tab-strip clicks are intercepted by the modal — so the Agents tab
 strip click is silently swallowed instead of activating the seeded tab.
@@ -28,11 +28,11 @@ import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.widgets import DataTable, TabbedContent
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.layout.spec import LayoutSpec
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.layout.spec import LayoutSpec
 
 
 def _ok():
@@ -47,7 +47,7 @@ def _ok():
 
 
 # A MulticaIssues stub that mirrors the salient shape of the real widget at
-# ~/.config/patchbai/widgets/MulticaIssues.py — a Container holding a DataTable
+# ~/.config/patchfeld/widgets/MulticaIssues.py — a Container holding a DataTable
 # with cursor_type="row", an async subprocess worker (we point it at /bin/echo
 # returning empty JSON so the test doesn't depend on the multica CLI), and an
 # on_data_table_row_selected handler that does NOT stop the event. The exact
@@ -62,7 +62,7 @@ _MULTICA_STUB_SRC = textwrap.dedent('''
     from textual.containers import Container
     from textual.widgets import DataTable
 
-    __patchbai_widget__ = {
+    __patchfeld_widget__ = {
         "name": "MulticaIssues",
         "description": "stub for tests",
     }
@@ -139,9 +139,9 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
-    from patchbai.orchestrator.session import OrchestratorSession
+    from patchfeld.orchestrator.session import OrchestratorSession
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
         adapter=FakeSDKAdapter(scripts=[_ok()]),
@@ -199,7 +199,7 @@ async def test_can_switch_back_to_agents_after_multica_visit(tmp_path):
         # The bug surface: a TranscriptScreen modal has been pushed on top of
         # the screen stack, so subsequent tab-strip clicks would be swallowed.
         # Assert no modal was pushed — that's what the fix guarantees.
-        from patchbai.widgets.transcript_screen import TranscriptScreen
+        from patchfeld.widgets.transcript_screen import TranscriptScreen
         screen_stack = list(app.screen_stack)
         assert not any(isinstance(s, TranscriptScreen) for s in screen_stack), (
             "MulticaIssues' on_data_table_row_selected let RowSelected bubble "
@@ -269,7 +269,7 @@ async def test_app_global_row_handler_does_not_fire_for_user_widget_rows(tmp_pat
 
     # Ignore any modals pushed during normal app boot (none expected here),
     # focus on whether a TranscriptScreen was pushed in response to the row.
-    from patchbai.widgets.transcript_screen import TranscriptScreen
+    from patchfeld.widgets.transcript_screen import TranscriptScreen
     assert not any(isinstance(s, TranscriptScreen) for s in pushed), (
         f"App.on_data_table_row_selected fired for a non-agent row. "
         f"pushed screens: {[type(s).__name__ for s in pushed]}"

@@ -7,11 +7,11 @@ from claude_agent_sdk import (
     TextBlock,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.agents.state import AgentState
-from patchbai.events import AgentArchiveChanged, AgentSpawned, EventBus
-from patchbai.persistence.agents_index import AgentsIndex
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.agents.state import AgentState
+from patchfeld.events import AgentArchiveChanged, AgentSpawned, EventBus
+from patchfeld.persistence.agents_index import AgentsIndex
 
 
 def _ok_script() -> list:
@@ -58,7 +58,7 @@ async def test_spawn_persists_to_agents_index(tmp_path: Path):
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok_script()]),
     )
     await manager.spawn(name="research", prompt="say done")
-    assert (tmp_path / ".patchbai" / "agents.json").exists()
+    assert (tmp_path / ".patchfeld" / "agents.json").exists()
 
 
 @pytest.mark.asyncio
@@ -187,8 +187,8 @@ async def test_set_archived_works_for_persisted_agent_without_live_session(
     # (seeded from agents.json on mount) but has no entry in
     # AgentManager._sessions. Pressing `d` on such a row used to crash with
     # KeyError; archive must operate on the persisted record instead.
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.persistence.agents_index import AgentsIndex
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.persistence.agents_index import AgentsIndex
 
     AgentsIndex(cwd=tmp_path).save([
         AgentInfo(id="ghost", name="lister", cwd=str(tmp_path),
@@ -223,7 +223,7 @@ async def test_spawn_captures_session_id_and_spawn_options(tmp_path: Path):
     # Resume across restarts depends on (a) spawn_options being persisted
     # at spawn time and (b) the SDK session_id being captured from the first
     # ResultMessage. Verify both land on disk.
-    from patchbai.persistence.agents_index import AgentsIndex
+    from patchfeld.persistence.agents_index import AgentsIndex
 
     manager = AgentManager(
         cwd=tmp_path,
@@ -277,8 +277,8 @@ async def test_resume_revives_session_for_persisted_agent(tmp_path: Path):
 async def test_resume_returns_none_for_legacy_record(tmp_path: Path):
     # Records written before the resume feature have no session_id /
     # spawn_options. resume() must report this and not throw.
-    from patchbai.agents.state import AgentInfo, AgentState
-    from patchbai.persistence.agents_index import AgentsIndex
+    from patchfeld.agents.state import AgentInfo, AgentState
+    from patchfeld.persistence.agents_index import AgentsIndex
 
     AgentsIndex(cwd=tmp_path).save([
         AgentInfo(id="legacy", name="old", cwd=str(tmp_path),
@@ -295,7 +295,7 @@ async def test_resume_returns_none_for_legacy_record(tmp_path: Path):
 async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
     import asyncio
 
-    from patchbai.events import DirectMessageToAgent
+    from patchfeld.events import DirectMessageToAgent
 
     bus = EventBus()
     m1 = AgentManager(
@@ -328,7 +328,7 @@ async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
-    from patchbai.agents.request_inbox import RequestInbox
+    from patchfeld.agents.request_inbox import RequestInbox
 
     manager = AgentManager(
         cwd=tmp_path,
@@ -350,10 +350,10 @@ async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-    from patchbai.agents.manager import AgentManager
-    from patchbai.agents.state import AgentState
-    from patchbai.events import AgentStateChanged, EventBus
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.agents.manager import AgentManager
+    from patchfeld.agents.state import AgentState
+    from patchfeld.events import AgentStateChanged, EventBus
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
     def _ok():
@@ -401,7 +401,7 @@ async def test_inbox_register_flips_session_to_waiting_and_back(tmp_path):
 
 @pytest.mark.asyncio
 async def test_get_permission_inbox_returns_inbox_per_agent(tmp_path: Path):
-    from patchbai.agents.permission_inbox import PermissionInbox
+    from patchfeld.agents.permission_inbox import PermissionInbox
     manager = AgentManager(
         cwd=tmp_path,
         bus=EventBus(),
@@ -420,7 +420,7 @@ async def test_get_permission_inbox_returns_inbox_per_agent(tmp_path: Path):
 async def test_permission_inbox_register_flips_state_to_awaiting_permission(
     tmp_path: Path,
 ):
-    from patchbai.agents.state import AgentState
+    from patchfeld.agents.state import AgentState
     bus = EventBus()
     manager = AgentManager(
         cwd=tmp_path,

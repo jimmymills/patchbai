@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from textual.widgets import Static
 
-from patchbai.app import PatchbaiApp
-from patchbai.widgets.chrome import StatusBar
+from patchfeld.app import PatchfeldApp
+from patchfeld.widgets.chrome import StatusBar
 
 
 def test_status_bar_compose_yields_sb_hints_static():
@@ -38,14 +38,14 @@ async def test_sb_hints_references_help_and_quit_shortcuts(tmp_path, monkeypatch
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(140, 30)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)
         hints = bar.query_one("#sb-hints", Static)
         text = str(hints.content)
         assert text.strip(), f"sb-hints rendered empty after mount: {text!r}"
-        # `?` is the App-level help binding (see PatchbaiApp.BINDINGS).
+        # `?` is the App-level help binding (see PatchfeldApp.BINDINGS).
         assert "?" in text, f"hint text missing '?': {text!r}"
         # `^Q` is the conventional monospace rendering of ctrl+q.
         assert "^Q" in text, f"hint text missing '^Q': {text!r}"
@@ -59,7 +59,7 @@ async def test_sb_hints_is_right_aligned_against_bar_edge(tmp_path, monkeypatch)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     project = tmp_path / "proj"
     project.mkdir()
-    app = PatchbaiApp(cwd=project, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=project, global_dir=tmp_path / "cfg")
     async with app.run_test(size=(140, 30)) as pilot:
         await pilot.pause()
         bar = app.query_one(StatusBar)

@@ -1,8 +1,8 @@
 import pytest
 from textual.app import App
 
-from patchbai.theme.engine import apply_theme
-from patchbai.theme.spec import ThemePalette, ThemeSpec
+from patchfeld.theme.engine import apply_theme
+from patchfeld.theme.spec import ThemePalette, ThemeSpec
 
 
 def _spec(primary: str = "#005577", extra_css: str = "") -> ThemeSpec:
@@ -17,8 +17,8 @@ async def test_apply_theme_registers_and_activates():
     host = _Host()
     async with host.run_test():
         await apply_theme(host, _spec(primary="#112233"), theme_name="alpha")
-        assert host.theme == "patchbai:alpha"
-        assert "patchbai:alpha" in host.available_themes
+        assert host.theme == "patchfeld:alpha"
+        assert "patchfeld:alpha" in host.available_themes
 
 
 @pytest.mark.asyncio
@@ -33,7 +33,7 @@ async def test_apply_theme_replaces_existing_registration():
         await apply_theme(host, _spec(primary="#111111"), theme_name="alpha")
         # Mutate palette and re-apply with same name.
         await apply_theme(host, _spec(primary="#222222"), theme_name="alpha")
-        assert host.theme == "patchbai:alpha"
+        assert host.theme == "patchfeld:alpha"
 
 
 @pytest.mark.asyncio
@@ -49,7 +49,7 @@ async def test_apply_theme_installs_extra_css_source():
             theme_name="alpha",
         )
         keys = list(host.stylesheet.source.keys())
-        assert ("patchbai_theme", "extra_css") in keys
+        assert ("patchfeld_theme", "extra_css") in keys
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_apply_theme_swaps_extra_css_source():
             host, _spec(extra_css="B { color: $accent; }"),
             theme_name="alpha",
         )
-        key = ("patchbai_theme", "extra_css")
+        key = ("patchfeld_theme", "extra_css")
         assert key in host.stylesheet.source
         css = host.stylesheet.source[key].content
         assert "B {" in css
@@ -87,7 +87,7 @@ async def test_apply_theme_drops_extra_css_when_empty():
             theme_name="alpha",
         )
         await apply_theme(host, _spec(extra_css=""), theme_name="alpha")
-        assert ("patchbai_theme", "extra_css") not in host.stylesheet.source
+        assert ("patchfeld_theme", "extra_css") not in host.stylesheet.source
 
 
 @pytest.mark.asyncio
@@ -121,6 +121,6 @@ async def test_apply_theme_bad_css_raises_before_mutating_app_theme():
                 host, _spec(extra_css=bad_css), theme_name="alpha",
             )
         assert host.theme == original_theme
-        assert "patchbai:alpha" not in host.available_themes
+        assert "patchfeld:alpha" not in host.available_themes
 
 

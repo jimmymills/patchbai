@@ -2,18 +2,18 @@ from pathlib import Path
 
 import pytest
 
-from patchbai.app import PatchbaiApp
+from patchfeld.app import PatchfeldApp
 
 
 def test_default_constructs_grants_object(tmp_path: Path):
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     assert app._permission_grants is not None
     assert app.manager._grants is app._permission_grants
     assert app.orchestrator.permission_grants is app._permission_grants
 
 
 def test_bypass_permissions_skips_grants(tmp_path: Path):
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -24,11 +24,11 @@ def test_bypass_permissions_skips_grants(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_permission_request_pushes_modal_when_grants_present(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         app.event_bus.publish(PermissionRequested(
@@ -41,11 +41,11 @@ async def test_permission_request_pushes_modal_when_grants_present(tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_permission_request_does_nothing_when_bypass(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )
@@ -65,11 +65,11 @@ async def test_first_request_renders_in_pushed_modal(tmp_path: Path):
     # modal push must reach the modal — otherwise it sits idle while the
     # SDK callback awaits forever. The fix is to thread the initial event
     # into the modal via constructor.
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         app.event_bus.publish(PermissionRequested(
@@ -89,10 +89,10 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
         AssistantMessage, PermissionResultAllow, ResultMessage,
         TextBlock, ToolPermissionContext,
     )
-    from patchbai.app import PatchbaiApp
-    from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         app.manager._adapter_factory = lambda: FakeSDKAdapter(scripts=[[
@@ -114,7 +114,7 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
         cb_task = asyncio.create_task(callback("Read", {"path": "x"}, ctx))
         for _ in range(20):
             await pilot.pause()
-            from patchbai.widgets.permission_modal import PermissionModal
+            from patchfeld.widgets.permission_modal import PermissionModal
             if isinstance(app.screen, PermissionModal):
                 break
         await pilot.click("#allow-once")
@@ -127,10 +127,10 @@ async def test_e2e_child_allow_once_unblocks_callback(tmp_path: Path):
 async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
     import asyncio
     from claude_agent_sdk import PermissionResultAllow, ToolPermissionContext
-    from patchbai.app import PatchbaiApp
-    from patchbai.widgets.permission_modal import PermissionModal
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.widgets.permission_modal import PermissionModal
 
-    app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
+    app = PatchfeldApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     async with app.run_test() as pilot:
         await pilot.pause()
         callback = app.orchestrator._can_use_tool_callback
@@ -138,7 +138,7 @@ async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
         ctx = ToolPermissionContext(tool_use_id="t1")
 
         cb_task = asyncio.create_task(
-            callback("mcp__patchbai_orchestrator__list_widgets", {}, ctx)
+            callback("mcp__patchfeld_orchestrator__list_widgets", {}, ctx)
         )
         for _ in range(20):
             await pilot.pause()
@@ -155,10 +155,10 @@ async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_bypass_skips_modal_subscriptions(tmp_path: Path):
-    from patchbai.app import PatchbaiApp
-    from patchbai.events import PermissionRequested
+    from patchfeld.app import PatchfeldApp
+    from patchfeld.events import PermissionRequested
 
-    app = PatchbaiApp(
+    app = PatchfeldApp(
         cwd=tmp_path, global_dir=tmp_path / "cfg",
         bypass_permissions=True,
     )

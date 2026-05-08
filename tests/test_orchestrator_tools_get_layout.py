@@ -2,17 +2,17 @@ import json
 
 import pytest
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.layout.spec import LayoutSpec
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.persistence.layouts_store import NamedLayoutsStore
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.layout.spec import LayoutSpec
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.persistence.layouts_store import NamedLayoutsStore
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.activity_feed import ActivityFeed
 
 
 def _make_manager(tmp_path, ok_script):

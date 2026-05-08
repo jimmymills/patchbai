@@ -1,13 +1,13 @@
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tools import build_orchestrator_tools
-from patchbai.widgets.markdown import Markdown
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tools import build_orchestrator_tools
+from patchfeld.widgets.markdown import Markdown
 
 
 def _ok():
@@ -28,7 +28,7 @@ async def test_orchestrator_can_set_layout_with_markdown_panel(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,

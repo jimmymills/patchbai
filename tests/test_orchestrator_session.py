@@ -8,11 +8,11 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.persistence.transcript_store import AgentTranscript
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.persistence.transcript_store import AgentTranscript
 
 
 def _ok_script() -> list:

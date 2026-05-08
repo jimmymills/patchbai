@@ -1,4 +1,4 @@
-from patchbai.widgets._terminal_keys import encode_key
+from patchfeld.widgets._terminal_keys import encode_key
 
 
 def _enc(key: str, character: str | None = None) -> bytes | None:

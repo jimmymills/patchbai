@@ -4,7 +4,7 @@
 
 **Goal:** Default-sort the `AgentTable` widget so agents that need attention surface at the top — `WAITING` first, then `RUNNING`/`IDLE`, then `ERROR`, then `DONE`, with archived agents pinned to the bottom — and keep the order correct as state, archive, and message events arrive.
 
-**Architecture:** Introduce a single pure sort function `sort_agents()` in `patchbai/agents/sort.py` that owns the priority map and tiebreakers. The widget becomes a thin client: every event handler that could change order routes through one private `_rebuild_sorted()` method that captures the focused agent id, calls `DataTable.clear()`, re-adds rows in sorted order, and restores the cursor. No insertion-at-index or `DataTable.sort()` tricks — straightforward clear-and-rebuild keeps the invariants obvious.
+**Architecture:** Introduce a single pure sort function `sort_agents()` in `patchfeld/agents/sort.py` that owns the priority map and tiebreakers. The widget becomes a thin client: every event handler that could change order routes through one private `_rebuild_sorted()` method that captures the focused agent id, calls `DataTable.clear()`, re-adds rows in sorted order, and restores the cursor. No insertion-at-index or `DataTable.sort()` tricks — straightforward clear-and-rebuild keeps the invariants obvious.
 
 **Tech Stack:** Python 3.11+, Textual `DataTable`, pytest + `textual.app.App.run_test()`.
 
@@ -117,8 +117,8 @@ Captured BEFORE mutation because `_cursor_agent_id` reads from `DataTable.coordi
 
 | File | Action | Responsibility |
 | --- | --- | --- |
-| `patchbai/agents/sort.py` | **Create** | Pure module: `STATE_PRIORITY` dict, `sort_agents(infos: Iterable[AgentInfo]) -> list[AgentInfo]`. No Textual imports. |
-| `patchbai/widgets/agent_table.py` | **Modify** | Replace ad-hoc `_rebuild_rows` and event handlers with a single `_rebuild_sorted()` that delegates ordering to `sort_agents()`. Preserve cursor. |
+| `patchfeld/agents/sort.py` | **Create** | Pure module: `STATE_PRIORITY` dict, `sort_agents(infos: Iterable[AgentInfo]) -> list[AgentInfo]`. No Textual imports. |
+| `patchfeld/widgets/agent_table.py` | **Modify** | Replace ad-hoc `_rebuild_rows` and event handlers with a single `_rebuild_sorted()` that delegates ordering to `sort_agents()`. Preserve cursor. |
 | `tests/test_agent_sort.py` | **Create** | Pure unit tests on `sort_agents()` — every bucket ordering, tiebreaker, archived placement, edge cases. |
 | `tests/test_agent_table_widget.py` | **Modify** | Add widget-level order assertions: order after seed, after spawn, after `RUNNING→DONE` transition, after archive while shown, cursor preservation. Existing tests assert `row_count` only and won't regress. |
 
@@ -131,7 +131,7 @@ Each task ends with a green build (`pytest -q`) and a commit. Tasks are independ
 ### Task 1: Pure sort function with TDD
 
 **Files:**
-- Create: `patchbai/agents/sort.py`
+- Create: `patchfeld/agents/sort.py`
 - Create: `tests/test_agent_sort.py`
 
 - [ ] **Step 1: Write failing test for state-priority ordering**
@@ -139,8 +139,8 @@ Each task ends with a green build (`pytest -q`) and a commit. Tasks are independ
 Create `tests/test_agent_sort.py`:
 
 ```python
-from patchbai.agents.sort import sort_agents
-from patchbai.agents.state import AgentInfo, AgentState
+from patchfeld.agents.sort import sort_agents
+from patchfeld.agents.state import AgentInfo, AgentState
 
 
 def _info(
@@ -179,11 +179,11 @@ def test_state_priority_waiting_running_idle_error_done():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `pytest tests/test_agent_sort.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'patchbai.agents.sort'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'patchfeld.agents.sort'`.
 
 - [ ] **Step 3: Implement minimal `sort_agents`**
 
-Create `patchbai/agents/sort.py`:
+Create `patchfeld/agents/sort.py`:
 
 ```python
 """Default sort order for the AgentTable widget.
@@ -210,7 +210,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from patchbai.agents.state import AgentInfo, AgentState
+from patchfeld.agents.state import AgentInfo, AgentState
 
 STATE_PRIORITY: dict[AgentState, int] = {
     AgentState.WAITING: 0,
@@ -337,7 +337,7 @@ Expected: 8 PASSED.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add patchbai/agents/sort.py tests/test_agent_sort.py
+git add patchfeld/agents/sort.py tests/test_agent_sort.py
 git commit -m "feat(sort): add sort_agents() default ordering for agent table"
 ```
 
@@ -346,7 +346,7 @@ git commit -m "feat(sort): add sort_agents() default ordering for agent table"
 ### Task 2: Wire `sort_agents()` into AgentTable
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py:76-126,202-210`
+- Modify: `patchfeld/widgets/agent_table.py:76-126,202-210`
 
 - [ ] **Step 1: Write failing test for default order on disk seed**
 
@@ -379,12 +379,12 @@ Expected: FAIL — order is `["d1", "e1", "r1", "w1"]` (insertion order from dis
 
 - [ ] **Step 3: Replace `on_mount` seed and `_rebuild_rows` with sorted variants**
 
-In `patchbai/widgets/agent_table.py`:
+In `patchfeld/widgets/agent_table.py`:
 
-Add the import near the top with the other patchbai imports:
+Add the import near the top with the other patchfeld imports:
 
 ```python
-from patchbai.agents.sort import sort_agents
+from patchfeld.agents.sort import sort_agents
 ```
 
 Replace the body of `on_mount` (the disk-seed loop and bus subscriptions) with:
@@ -462,7 +462,7 @@ If any existing test fails because of order, the failure indicates either (a) a 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "feat(agent-table): apply default sort on disk seed and rebuild"
 ```
 
@@ -471,7 +471,7 @@ git commit -m "feat(agent-table): apply default sort on disk seed and rebuild"
 ### Task 3: Hook `_rebuild_sorted()` into spawn / state / archive events
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py` — event handler bodies
+- Modify: `patchfeld/widgets/agent_table.py` — event handler bodies
 
 - [ ] **Step 1: Write failing test for state transition reordering**
 
@@ -548,7 +548,7 @@ Expected: all three FAIL — current handlers `_add_row`/`_sync_row` don't reord
 
 - [ ] **Step 3: Reroute event handlers through `_rebuild_sorted()`**
 
-In `patchbai/widgets/agent_table.py`, replace the three event handlers:
+In `patchfeld/widgets/agent_table.py`, replace the three event handlers:
 
 ```python
 def _on_spawned(self, event: AgentSpawned) -> None:
@@ -582,7 +582,7 @@ Expected: all PASS, including new ordering tests.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "feat(agent-table): re-sort on spawn / state / archive events"
 ```
 
@@ -591,7 +591,7 @@ git commit -m "feat(agent-table): re-sort on spawn / state / archive events"
 ### Task 4: Re-sort on `AgentMessageAppended` for last_activity tiebreaker
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py` — `_on_msg` handler
+- Modify: `patchfeld/widgets/agent_table.py` — `_on_msg` handler
 
 - [ ] **Step 1: Write failing test**
 
@@ -640,7 +640,7 @@ Expected: FAIL — current `_on_msg` only updates the last-action cell.
 
 - [ ] **Step 3: Reroute `_on_msg` through `_rebuild_sorted()`**
 
-In `patchbai/widgets/agent_table.py`, replace `_on_msg`:
+In `patchfeld/widgets/agent_table.py`, replace `_on_msg`:
 
 ```python
 def _on_msg(self, event: AgentMessageAppended) -> None:
@@ -666,7 +666,7 @@ Expected: all PASS.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "feat(agent-table): re-sort on message events for last-activity tiebreaker"
 ```
 
@@ -675,7 +675,7 @@ git commit -m "feat(agent-table): re-sort on message events for last-activity ti
 ### Task 5: Cursor preservation across rebuild
 
 **Files:**
-- Modify: `patchbai/widgets/agent_table.py` (only if cursor restore wasn't already wired in Task 2; if it was, this task is the test-only verification)
+- Modify: `patchfeld/widgets/agent_table.py` (only if cursor restore wasn't already wired in Task 2; if it was, this task is the test-only verification)
 
 - [ ] **Step 1: Write failing test**
 
@@ -772,7 +772,7 @@ Expected: all PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add patchbai/widgets/agent_table.py tests/test_agent_table_widget.py
+git add patchfeld/widgets/agent_table.py tests/test_agent_table_widget.py
 git commit -m "test(agent-table): cover cursor preservation across sort reorder"
 ```
 
@@ -802,7 +802,7 @@ If any external caller (e.g., a sibling widget) referenced one of these private 
 - ✅ **Spec coverage:**
   - State priority order (WAITING > RUNNING > ERROR > DONE) — Task 1, `STATE_PRIORITY`.
   - Within-bucket tiebreaker recommendation with tradeoff — Decisions §2.
-  - Sort key location reusable from widget and manager — `patchbai/agents/sort.py`.
+  - Sort key location reusable from widget and manager — `patchfeld/agents/sort.py`.
   - Sort runs at all three places (seed, spawn, state change) plus archive and message — Tasks 2–4.
   - DataTable mechanics with reasoning — Decisions §4.
   - User-overridable column-click sort deferred to follow-up — Decisions §8.

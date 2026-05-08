@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok_script() -> list:
@@ -87,7 +87,7 @@ async def test_build_orchestrator_tools_includes_tab_tools(tmp_path):
     bus = EventBus()
     manager = AgentManager(cwd=tmp_path, bus=bus,
                            adapter_factory=lambda: FakeSDKAdapter(scripts=[]))
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     tools = build_orchestrator_tools(
         app.manager,
         apply_layout=app._orchestrator_apply_layout,

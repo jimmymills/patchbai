@@ -5,11 +5,11 @@ from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 from textual.containers import Container as TxContainer
 from textual.widgets import TabbedContent, TabPane
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
 
 
 def _ok():
@@ -29,7 +29,7 @@ def _build_app(tmp_path):
         cwd=tmp_path, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
+    app = PatchfeldApp(cwd=tmp_path, manager=manager, global_dir=tmp_path)
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=tmp_path, bus=bus, manager=manager,
@@ -73,7 +73,7 @@ async def test_app_writes_workspace_json_on_launch(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        ws_path = tmp_path / ".patchbai" / "workspace.json"
+        ws_path = tmp_path / ".patchfeld" / "workspace.json"
         assert ws_path.exists()
 
 
@@ -90,17 +90,17 @@ async def test_legacy_layout_json_is_migrated_to_workspace(tmp_path):
         },
         "focus": "orch",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "layout.json").write_text(json.dumps(legacy))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "layout.json").write_text(json.dumps(legacy))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         assert len(ws_raw["tabs"]) == 1
         assert ws_raw["active"] == "default"
         assert ws_raw["tabs"][0]["layout"]["focus"] == "orch"
-        assert (tmp_path / ".patchbai" / "layout.json").exists()
+        assert (tmp_path / ".patchfeld" / "layout.json").exists()
 
 
 @pytest.mark.asyncio
@@ -127,8 +127,8 @@ async def test_tab_activation_updates_workspace_active(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
@@ -137,7 +137,7 @@ async def test_tab_activation_updates_workspace_active(tmp_path):
         tc.active = "tab-logs"
         await pilot.pause()
         assert app._active_tab_id == "logs"
-        ws_raw = json.loads((tmp_path / ".patchbai" / "workspace.json").read_text())
+        ws_raw = json.loads((tmp_path / ".patchfeld" / "workspace.json").read_text())
         assert ws_raw["active"] == "logs"
 
 
@@ -153,12 +153,12 @@ async def test_tab_activation_publishes_tab_switched_event(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     seen: list = []
-    from patchbai.events import TabSwitched
+    from patchfeld.events import TabSwitched
     app.event_bus.subscribe(TabSwitched, lambda e: seen.append(e))
 
     async with app.run_test() as pilot:
@@ -189,8 +189,8 @@ async def test_tab_widgets_persist_across_switches(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
 
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
@@ -219,8 +219,8 @@ async def test_ctrl_2_switches_to_second_tab(tmp_path):
         ],
         "active": "main",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -281,8 +281,8 @@ async def test_ctrl_w_closes_active_tab(tmp_path):
         ],
         "active": "logs",
     }
-    (tmp_path / ".patchbai").mkdir()
-    (tmp_path / ".patchbai" / "workspace.json").write_text(json.dumps(seed))
+    (tmp_path / ".patchfeld").mkdir()
+    (tmp_path / ".patchfeld" / "workspace.json").write_text(json.dumps(seed))
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
@@ -300,7 +300,7 @@ async def test_orchestrator_can_add_a_filetree_filviewer_tab(tmp_path):
     app = _build_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        from patchbai.orchestrator.tabs_tools import add_tab_handler
+        from patchfeld.orchestrator.tabs_tools import add_tab_handler
         add = add_tab_handler(app)
         result = await add({
             "title": "Code",

@@ -3,12 +3,12 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
 
-from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
-from patchbai.agents.manager import AgentManager
-from patchbai.app import PatchbaiApp
-from patchbai.events import EventBus
-from patchbai.orchestrator.session import OrchestratorSession
-from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchfeld.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchfeld.agents.manager import AgentManager
+from patchfeld.app import PatchfeldApp
+from patchfeld.events import EventBus
+from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.tools import build_orchestrator_tools
 
 
 def _ok():
@@ -33,7 +33,7 @@ async def test_change_cwd_mcp_tool_routes_to_app(tmp_path):
         cwd=proj_a, bus=bus,
         adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
     )
-    app = PatchbaiApp(cwd=proj_a, manager=manager, global_dir=proj_a / ".g")
+    app = PatchfeldApp(cwd=proj_a, manager=manager, global_dir=proj_a / ".g")
     app.event_bus = bus
     app.orchestrator = OrchestratorSession(
         cwd=proj_a, bus=bus, manager=manager,

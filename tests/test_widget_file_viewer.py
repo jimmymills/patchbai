@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from textual.app import App
 
-from patchbai.widgets.file_viewer import FileViewer
+from patchfeld.widgets.file_viewer import FileViewer
 
 
 class _Host(App):

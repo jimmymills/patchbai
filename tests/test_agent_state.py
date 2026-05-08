@@ -1,4 +1,4 @@
-from patchbai.agents.state import AgentInfo, AgentState
+from patchfeld.agents.state import AgentInfo, AgentState
 
 
 def test_agent_state_values():

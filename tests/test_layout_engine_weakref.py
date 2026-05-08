@@ -4,14 +4,14 @@ import pytest
 from textual.app import App
 from textual.containers import Container
 
-from patchbai.events import EventBus
-from patchbai.layout import engine as engine_mod
-from patchbai.layout.defaults import dashboard_layout
-from patchbai.layout.engine import apply as apply_layout
-from patchbai.layout.registry import WidgetRegistry
-from patchbai.widgets.agent_table import AgentTable
-from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.activity_feed import ActivityFeed
+from patchfeld.events import EventBus
+from patchfeld.layout import engine as engine_mod
+from patchfeld.layout.defaults import dashboard_layout
+from patchfeld.layout.engine import apply as apply_layout
+from patchfeld.layout.registry import WidgetRegistry
+from patchfeld.widgets.agent_table import AgentTable
+from patchfeld.widgets.orchestrator_chat import OrchestratorChat
+from patchfeld.widgets.activity_feed import ActivityFeed
 
 
 def _registry() -> WidgetRegistry:

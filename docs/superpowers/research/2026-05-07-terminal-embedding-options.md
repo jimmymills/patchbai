@@ -1,9 +1,9 @@
-# Terminal Embedding Options for patchbai
+# Terminal Embedding Options for patchfeld
 
 **Date:** 2026-05-07
 **Branch:** `terminal-research`
-**Author:** research subagent (read-only on `patchbai/widgets/terminal.py`)
-**Scope:** Investigate options for replacing patchbai's hand-rolled `Terminal` widget
+**Author:** research subagent (read-only on `patchfeld/widgets/terminal.py`)
+**Scope:** Investigate options for replacing patchfeld's hand-rolled `Terminal` widget
 with something more capable. The user's stated example is "embed Ghostty"; this report
 takes that ask seriously, refutes it where it cannot work, and proposes alternatives
 that *do* work.
@@ -30,7 +30,7 @@ that *do* work.
   GPU-backed native window; none expose a "draw into a cell grid" mode. Also discard:
   spawning a real terminal headlessly and screen-scraping pixels (no surface to scrape);
   tmux control mode as the *primary* solution (heavyweight, adds runtime dep, doesn't
-  remove the need for a VT parser on patchbai's side).
+  remove the need for a VT parser on patchfeld's side).
 
 A two-step roadmap is recommended: (1) renderer/keyboard refactor against current pyte
 this sprint; (2) libghostty-vt swap as the next milestone once the API stabilises (it
@@ -40,7 +40,7 @@ is currently in public alpha but the underlying logic is Ghostty's shipping prod
 
 ## 1. What's missing today
 
-Concrete review of `patchbai/widgets/terminal.py` (169 lines). The PTY plumbing is
+Concrete review of `patchfeld/widgets/terminal.py` (169 lines). The PTY plumbing is
 fine; the **render layer and the keyboard layer are where the widget falls down**.
 
 ### 1.1 Rendering layer — the single biggest issue
@@ -157,7 +157,7 @@ project description:
 > drawing or windowing code; the consumer provides its own.
 > — [libghostty Is Coming](https://mitchellh.com/writing/libghostty-is-coming)
 
-This is *literally* what patchbai needs — a drop-in replacement for pyte with:
+This is *literally* what patchfeld needs — a drop-in replacement for pyte with:
 
 - Full VT escape parsing (SIMD-optimized) including DECSET modes, SGR truecolor,
   alt-screen, scrollback with reflow.
@@ -166,7 +166,7 @@ This is *literally* what patchbai needs — a drop-in replacement for pyte with:
 - Unicode/grapheme width handling (the bit pyte gets wrong on emoji and CJK).
 - Renderer-state diffs (so we only redraw cells that changed).
 
-The patchbai render path stays in Textual: read libghostty-vt's screen state, walk it,
+The patchfeld render path stays in Textual: read libghostty-vt's screen state, walk it,
 emit `rich.text.Text` segments with the right `Style`. It's just *replacing pyte* with
 a more capable engine.
 
@@ -185,17 +185,17 @@ a more capable engine.
   - **Dart:** `libghostty-dart` for Flutter.
   - **WASM:** `browstty`, `obsidian-ghostty-terminal`, `vscode-bootty`, `hauntty`.
   - **Python:** *no project listed yet.* This is genuinely a small gap in the
-    ecosystem — patchbai could be the first.
+    ecosystem — patchfeld could be the first.
 
 ### 2.4 Three integration paths if we go this way
 
 | Path | How it works | Pros | Cons |
 |---|---|---|---|
-| **PyO3 wrapper over libghostty-rs** | Build a small Rust crate exposing a Python module that wraps `libghostty-rs::Terminal`, ship via `maturin`. | Native-speed; clean Rust safety layer underneath. | Adds Rust toolchain to the patchbai build (mitigated by publishing prebuilt wheels). Tracks two upstreams (libghostty-rs + libghostty itself). |
+| **PyO3 wrapper over libghostty-rs** | Build a small Rust crate exposing a Python module that wraps `libghostty-rs::Terminal`, ship via `maturin`. | Native-speed; clean Rust safety layer underneath. | Adds Rust toolchain to the patchfeld build (mitigated by publishing prebuilt wheels). Tracks two upstreams (libghostty-rs + libghostty itself). |
 | **WASM via wasmtime-py** | Compile `libghostty-vt` to wasm32-unknown-unknown (already a supported target — JupyterLab and Obsidian both ship it as WASM), load via [`wasmtime-py`](https://github.com/bytecodealliance/wasmtime-py). | No native build step on the consumer side. Same artifact runs on every OS/arch we care about. Cross-platform parity is automatic. | Slower than native (still much faster than pyte). One more runtime dep (wasmtime). |
 | **Direct ctypes against libghostty-vt's C ABI** | Use [`ctypesgen`](https://github.com/ctypesgen/ctypesgen) on `vt.h`, ship a prebuilt `.so/.dylib/.dll`. | No Rust, no WASM. | We own the wheel-building matrix. The C ABI is the most-likely-to-shift surface during alpha. |
 
-The WASM path looks **best for patchbai's distribution model** (PyPI wheel, no
+The WASM path looks **best for patchfeld's distribution model** (PyPI wheel, no
 compiler on user machines, single artifact per release). It is the same model
 Obsidian and JupyterLab use today, so the trail is broken.
 
@@ -248,7 +248,7 @@ specifically requiring it:
 - Mac-only proprietary app. The [iTerm2 Python API](https://iterm2.com/python-api/)
   is for *controlling* iTerm2 (creating windows, sending keystrokes, reading session
   contents) over websockets. It cannot embed an iTerm2 session into another process.
-  Could in principle be used to *automate* iTerm2 alongside patchbai, but that
+  Could in principle be used to *automate* iTerm2 alongside patchfeld, but that
   doesn't satisfy "panel in the TUI."
 
 ### 3.5 Terminal.app (macOS)
@@ -275,7 +275,7 @@ artifacts from this category are the *engine libraries* — `wezterm-term`,
 | **par-term-emu-core-rust** | Rust+PyO3 | new | yes | yes | yes | unclear | unclear | yes (sixel/iTerm2/Kitty) | new project, single maintainer | [Already has Python bindings](https://github.com/paulrobello/par-term-emu-core-rust). Worth evaluating, but maintenance risk for a critical dep is real. |
 | **terminado / vte (GNOME)** | Python / C | mature | yes | yes | yes | yes | partial | yes | mature | terminado is xterm.js ↔ websocket plumbing for Jupyter; not a parser. GNOME's libvte is a GTK widget — not embeddable in a cell grid for the same reason as the GUIs. |
 
-**Top three for patchbai:**
+**Top three for patchfeld:**
 
 1. **libghostty-vt** — best features, best long-term momentum, alpha API. Pick if we
    are willing to track a stabilising surface for ~6 months.
@@ -294,7 +294,7 @@ artifacts from this category are the *engine libraries* — `wezterm-term`,
 
 Real, works, used in production by many tools. Pattern:
 
-- `tmux new-session -d -s patchbai_<id>` to start a detached session.
+- `tmux new-session -d -s patchfeld_<id>` to start a detached session.
 - [`libtmux`](https://github.com/tmux-python/libtmux) for the Python wrapper, then
   `pane.capture_pane(escape_sequences=True)` per refresh.
 - `pane.send_keys(...)` for input.
@@ -303,10 +303,10 @@ Real, works, used in production by many tools. Pattern:
 Pros:
 - tmux *is* a battle-tested terminal emulator. Truecolor, mouse, alt-screen, scrollback,
   Unicode all work.
-- Process supervision is free (sessions persist if patchbai crashes).
+- Process supervision is free (sessions persist if patchfeld crashes).
 
 Cons:
-- We still have to **parse** the captured ANSI text on patchbai's side to render into
+- We still have to **parse** the captured ANSI text on patchfeld's side to render into
   Textual cells with attributes. So we still need a parser. This means tmux-as-backend
   is *additive* to a parser — it doesn't replace pyte/libghostty-vt, it adds a
   process to the stack.
@@ -318,7 +318,7 @@ Cons:
 ### 5.2 tmux control mode (`-CC`)
 
 iTerm2 and a few IDEs use this. tmux switches to a programmatic protocol; the
-"emulator" (patchbai, in this hypothetical) becomes responsible for rendering each
+"emulator" (patchfeld, in this hypothetical) becomes responsible for rendering each
 pane. Designed *exactly* for the "I am an outer GUI driving tmux" use case.
 ([tmux Control Mode wiki](https://github.com/tmux/tmux/wiki/Control-Mode))
 
@@ -336,7 +336,7 @@ need a parser to turn pixels back into characters.
 
 ### 5.4 Verdict for §5
 
-tmux-as-backend is a real pattern, but for patchbai it solves a problem we don't
+tmux-as-backend is a real pattern, but for patchfeld it solves a problem we don't
 have (process persistence, multi-pane multiplexing) at the cost of a runtime
 dependency, and it does not eliminate the work of having a real VT parser.
 Fixing the parser side directly is cheaper.
@@ -345,7 +345,7 @@ Fixing the parser side directly is cheaper.
 
 ## 6. Switching the embedding model entirely
 
-What if patchbai's "Terminal" panel just isn't a Textual widget at all?
+What if patchfeld's "Terminal" panel just isn't a Textual widget at all?
 
 ### 6.1 `App.suspend` to hand the host terminal back
 
@@ -358,20 +358,20 @@ Pros: zero implementation cost (one method). Native terminal capability is a fun
 of whatever host the user is in (so if they're already in Ghostty, they get Ghostty
 quality).
 
-Cons: monopolises the screen. Can't have a "Terminal" panel alongside other patchbai
+Cons: monopolises the screen. Can't have a "Terminal" panel alongside other patchfeld
 panels at the same time. Mode-switch UX rather than co-habitation.
 
 ### 6.2 "Pop out" — spawn a real terminal in a new window
 
 `open -a Ghostty -n` on macOS, `xdg-terminal-exec` on Linux, etc. Gives the user a
-full-fidelity native terminal for ad-hoc work; patchbai keeps its TUI panels for
+full-fidelity native terminal for ad-hoc work; patchfeld keeps its TUI panels for
 everything else.
 
 Pros: trivial; perfect terminal fidelity; respects the user's chosen emulator;
 runs in parallel.
 
 Cons: it's a separate window — loses the "everything in one TUI" aesthetic; harder
-to wire into the agent orchestration story (no easy way for patchbai to read what
+to wire into the agent orchestration story (no easy way for patchfeld to read what
 the user typed there).
 
 ### 6.3 Verdict for §6
@@ -413,7 +413,7 @@ recognisably and respond to navigation.
 
 Once Phase 1 is in and the surface is well-tested:
 
-1. Stand up a `patchbai-vt` Python package wrapping libghostty-vt. **Recommended path:
+1. Stand up a `patchfeld-vt` Python package wrapping libghostty-vt. **Recommended path:
    WASM via `wasmtime-py`** for distribution simplicity (matches Obsidian + JupyterLab
    precedent; no Rust toolchain on user machines; one artifact for all platforms).
 2. Define a tiny adapter interface (`feed(bytes) -> ScreenDelta`, `cursor()`,
@@ -443,7 +443,7 @@ panel falls short. Ship this regardless of Phase 1/2.
 - **Do not** try to embed Ghostty/Alacritty/WezTerm/Kitty/iTerm2/Terminal.app GUIs
   as Textual panels. The architectures are incompatible.
 - **Do not** adopt tmux-as-backend as the primary solution. It adds a dep without
-  removing the parser need. It can be reconsidered later if patchbai grows into
+  removing the parser need. It can be reconsidered later if patchfeld grows into
   multiplexer territory.
 - **Do not** invest in third-party `textual-terminal` (PyPI) — same pyte-based design,
   same problems, less control.

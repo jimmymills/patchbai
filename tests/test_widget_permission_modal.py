@@ -3,10 +3,10 @@ from pathlib import Path
 import pytest
 from textual.app import App, ComposeResult
 
-from patchbai.agents.permission_grants import PermissionGrants
-from patchbai.agents.permission_inbox import PermissionInbox
-from patchbai.events import EventBus, PermissionRequested
-from patchbai.widgets.permission_modal import PermissionModal
+from patchfeld.agents.permission_grants import PermissionGrants
+from patchfeld.agents.permission_inbox import PermissionInbox
+from patchfeld.events import EventBus, PermissionRequested
+from patchfeld.widgets.permission_modal import PermissionModal
 
 
 class _Host(App):
