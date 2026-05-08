@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Iterable
 
 
 class ActivityKind:
@@ -48,7 +47,9 @@ class ActivityEntry:
 from patchbai.events import (  # noqa: E402 — deferred to avoid circular import
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
-    AgentStateChanged, EventBus,
+    AgentStateChanged, EventBus, FileSelected, LayoutApplied, LayoutFailed,
+    OrchestratorReply, OrchestratorSessionSwitched, TabAdded, TabClosed,
+    TabSwitched, UserMessageToOrchestrator, WorkspaceCwdChanged,
 )
 
 
@@ -64,21 +65,31 @@ class ActivityLog:
     def __init__(self, bus: EventBus) -> None:
         self._bus = bus
         self._entries: deque[ActivityEntry] = deque(maxlen=self.BUFFER_SIZE)
-        self._wire_agent_subs(bus)
+        self._wire_subscriptions(bus)
 
     def entries(self) -> tuple[ActivityEntry, ...]:
         """Snapshot of current entries, oldest first."""
         return tuple(self._entries)
 
-    # --- agent subs --------------------------------------------------------
+    # --- subscriptions -----------------------------------------------------
 
-    def _wire_agent_subs(self, bus: EventBus) -> None:
+    def _wire_subscriptions(self, bus: EventBus) -> None:
         bus.subscribe(AgentSpawned, self._on_agent_spawned)
         bus.subscribe(AgentStateChanged, self._on_agent_state)
         bus.subscribe(AgentMessageAppended, self._on_agent_message)
         bus.subscribe(AgentRequestedUserInput, self._on_agent_ask)
         bus.subscribe(AgentNotifiedOrchestrator, self._on_agent_notify)
         bus.subscribe(AgentArchiveChanged, self._on_agent_archive)
+        bus.subscribe(UserMessageToOrchestrator, self._on_orch_user)
+        bus.subscribe(OrchestratorReply, self._on_orch_reply)
+        bus.subscribe(OrchestratorSessionSwitched, self._on_orch_session)
+        bus.subscribe(LayoutApplied, self._on_layout_applied)
+        bus.subscribe(LayoutFailed, self._on_layout_failed)
+        bus.subscribe(TabAdded, self._on_tab_added)
+        bus.subscribe(TabClosed, self._on_tab_closed)
+        bus.subscribe(TabSwitched, self._on_tab_switched)
+        bus.subscribe(WorkspaceCwdChanged, self._on_cwd_changed)
+        bus.subscribe(FileSelected, self._on_file_selected)
 
     def _on_agent_spawned(self, event: AgentSpawned) -> None:
         info = event.info
@@ -147,6 +158,68 @@ class ActivityLog:
             agent_id=info.id,
             tab_id=None,
             raw=event,
+        )
+
+    def _on_orch_user(self, event: UserMessageToOrchestrator) -> None:
+        self._append(
+            kind=ActivityKind.ORCH_USER, summary="user → orchestrator",
+            detail=event.text, agent_id=None, tab_id=None, raw=event,
+        )
+
+    def _on_orch_reply(self, event: OrchestratorReply) -> None:
+        self._append(
+            kind=ActivityKind.ORCH_REPLY, summary="orchestrator → user",
+            detail=event.text, agent_id=None, tab_id=None, raw=event,
+        )
+
+    def _on_orch_session(self, event: OrchestratorSessionSwitched) -> None:
+        self._append(
+            kind=ActivityKind.ORCH_SESSION,
+            summary=f"session → {event.session_id[:8]}",
+            detail=event.transcript_path, agent_id=None, tab_id=None, raw=event,
+        )
+
+    def _on_layout_applied(self, event: LayoutApplied) -> None:
+        self._append(
+            kind=ActivityKind.LAYOUT_APPLIED,
+            summary=event.layout_name or "(unnamed)",
+            detail=None, agent_id=None, tab_id=event.tab_id, raw=event,
+        )
+
+    def _on_layout_failed(self, event: LayoutFailed) -> None:
+        self._append(
+            kind=ActivityKind.LAYOUT_FAILED, summary="layout failed",
+            detail=event.error, agent_id=None, tab_id=event.tab_id, raw=event,
+        )
+
+    def _on_tab_added(self, event: TabAdded) -> None:
+        self._append(
+            kind=ActivityKind.TAB_ADDED, summary=event.title, detail=None,
+            agent_id=None, tab_id=event.tab_id, raw=event,
+        )
+
+    def _on_tab_closed(self, event: TabClosed) -> None:
+        self._append(
+            kind=ActivityKind.TAB_CLOSED, summary=event.tab_id, detail=None,
+            agent_id=None, tab_id=event.tab_id, raw=event,
+        )
+
+    def _on_tab_switched(self, event: TabSwitched) -> None:
+        self._append(
+            kind=ActivityKind.TAB_SWITCHED, summary=event.title, detail=None,
+            agent_id=None, tab_id=event.tab_id, raw=event,
+        )
+
+    def _on_cwd_changed(self, event: WorkspaceCwdChanged) -> None:
+        self._append(
+            kind=ActivityKind.WORKSPACE_CWD, summary=event.cwd, detail=None,
+            agent_id=None, tab_id=None, raw=event,
+        )
+
+    def _on_file_selected(self, event: FileSelected) -> None:
+        self._append(
+            kind=ActivityKind.FILE_SELECTED, summary=event.path, detail=None,
+            agent_id=None, tab_id=None, raw=event,
         )
 
     # --- append ------------------------------------------------------------

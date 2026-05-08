@@ -6,8 +6,19 @@ from patchbai.agents.state import AgentInfo, AgentState
 from patchbai.events import (
     ActivityLogged, AgentArchiveChanged, AgentMessageAppended,
     AgentNotifiedOrchestrator, AgentRequestedUserInput, AgentSpawned,
-    AgentStateChanged, AgentTokensTouched, EventBus, StatsUpdated,
+    AgentStateChanged, AgentTokensTouched, EventBus, FileSelected,
+    LayoutApplied, LayoutFailed, OrchestratorReply, OrchestratorSessionSwitched,
+    StatsUpdated, TabAdded, TabClosed, TabSwitched, UserMessageToOrchestrator,
+    WorkspaceCwdChanged,
 )
+from patchbai.layout.spec import LayoutSpec
+
+
+def _spec() -> LayoutSpec:
+    return LayoutSpec.model_validate({
+        "version": 1,
+        "layout": {"id": "p", "widget": "ActivityFeed"},
+    })
 
 
 def test_activity_entry_required_fields():
@@ -98,3 +109,57 @@ def test_tokens_touched_and_stats_updated_are_filtered():
     bus.publish(AgentTokensTouched(agent_id="a1"))
     bus.publish(StatsUpdated(tokens_in=1, tokens_out=1, cost=0.0, active_agents=1))
     assert log.entries() == ()
+
+
+def test_log_captures_orchestrator_events():
+    bus = EventBus()
+    log = ActivityLog(bus)
+    bus.publish(UserMessageToOrchestrator(text="hi"))
+    bus.publish(OrchestratorReply(text="ok"))
+    bus.publish(OrchestratorSessionSwitched(session_id="s1", transcript_path="/tmp/t"))
+    kinds = [e.kind for e in log.entries()]
+    assert kinds == ["orch.user", "orch.reply", "orch.session"]
+
+
+def test_log_captures_layout_events():
+    bus = EventBus()
+    log = ActivityLog(bus)
+    bus.publish(LayoutApplied(spec=_spec(), layout_name="dashboard", tab_id="t1"))
+    bus.publish(LayoutFailed(error="boom", tab_id="t1"))
+    kinds = [e.kind for e in log.entries()]
+    assert kinds == ["layout.applied", "layout.failed"]
+    assert log.entries()[1].detail == "boom"
+
+
+def test_log_captures_tab_events():
+    bus = EventBus()
+    log = ActivityLog(bus)
+    bus.publish(TabAdded(tab_id="t1", title="Files"))
+    bus.publish(TabClosed(tab_id="t1"))
+    bus.publish(TabSwitched(tab_id="t2", title="Logs"))
+    kinds = [e.kind for e in log.entries()]
+    assert kinds == ["tab.added", "tab.closed", "tab.switched"]
+    assert log.entries()[0].tab_id == "t1"
+    assert log.entries()[2].summary == "Logs"
+
+
+def test_log_captures_workspace_and_file_events():
+    bus = EventBus()
+    log = ActivityLog(bus)
+    bus.publish(WorkspaceCwdChanged(cwd="/var/foo"))
+    bus.publish(FileSelected(path="/x/y.py"))
+    kinds = [e.kind for e in log.entries()]
+    assert kinds == ["workspace.cwd", "file.selected"]
+
+
+def test_log_evicts_when_buffer_full():
+    bus = EventBus()
+    log = ActivityLog(bus)
+    for i in range(ActivityLog.BUFFER_SIZE + 50):
+        bus.publish(TabAdded(tab_id=f"t{i}", title=f"Tab {i}"))
+    entries = log.entries()
+    assert len(entries) == ActivityLog.BUFFER_SIZE
+    # Most recent retained.
+    assert entries[-1].tab_id == f"t{ActivityLog.BUFFER_SIZE + 49}"
+    # Oldest dropped.
+    assert entries[0].tab_id == "t50"
