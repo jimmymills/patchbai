@@ -1125,6 +1125,10 @@ class PatchbaiApp(App):
 
     def _on_permission_requested(self, event: PermissionRequested) -> None:
         from patchbai.widgets.permission_modal import PermissionModal
+        # Defensive: grants may have just been swapped to None by
+        # set_bypass_permissions before this in-flight event lands.
+        if self._permission_grants is None:
+            return
         # The modal's own subscription handles queueing once it's mounted.
         # Skip pushing a second one if it's already on the stack.
         if self._permission_modal_open:

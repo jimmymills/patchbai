@@ -6,16 +6,6 @@ from patchbai.app import PatchbaiApp
 from patchbai.events import OrchestratorReply, UserMessageToOrchestrator
 
 
-async def _wait_for_reply(replies: list, keyword: str, timeout: float = 5.0) -> bool:
-    """Poll until a reply containing `keyword` appears or timeout expires."""
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        if any(keyword in r.text.lower() for r in replies):
-            return True
-        await asyncio.sleep(0.05)
-    return False
-
-
 @pytest.mark.asyncio
 async def test_slash_bypass_permissions_publishes_reply(tmp_path):
     """/bypass-permissions publishes a reply mentioning 'bypass'."""
@@ -89,16 +79,6 @@ async def test_slash_bypass_permissions_refused_with_running_agents(tmp_path):
     from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
     from patchbai.agents.state import AgentState
     from claude_agent_sdk import AssistantMessage, ResultMessage, TextBlock
-
-    def _ok():
-        return [
-            AssistantMessage(content=[TextBlock(text="ok")], model="m"),
-            ResultMessage(
-                subtype="success", duration_ms=1, duration_api_ms=1, is_error=False,
-                num_turns=1, session_id="s", total_cost_usd=0.0,
-                usage={"input_tokens": 1, "output_tokens": 1}, result="ok",
-            ),
-        ]
 
     app = PatchbaiApp(cwd=tmp_path, global_dir=tmp_path / "cfg")
     replies: list[OrchestratorReply] = []
