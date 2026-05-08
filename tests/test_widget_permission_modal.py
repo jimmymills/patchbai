@@ -146,3 +146,23 @@ async def test_modal_queues_second_request_until_first_resolves(tmp_path: Path):
         await pilot.click("#allow-once")
         await pilot.pause()
         assert app.screen._current_request.request_id == rid2
+
+
+@pytest.mark.asyncio
+async def test_modal_dismisses_when_last_request_resolved(tmp_path: Path):
+    bus = EventBus()
+    inbox = PermissionInbox()
+    rid = inbox.register(tool_name="Read", tool_input={})
+    grants = PermissionGrants(cwd=tmp_path)
+
+    app = _Host(bus=bus, inbox=inbox, grants=grants)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        bus.publish(_request(rid=rid))
+        await pilot.pause()
+        # Modal is up.
+        assert isinstance(app.screen, PermissionModal)
+        # Resolve the only request — modal should auto-dismiss.
+        await pilot.click("#allow-once")
+        await pilot.pause()
+        assert not isinstance(app.screen, PermissionModal)

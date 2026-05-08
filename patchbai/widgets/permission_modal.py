@@ -122,10 +122,7 @@ class PermissionModal(ModalScreen[None]):
             self._render_current()
         else:
             self._current_request = None
-            self.query_one("#prompt", Label).update("(no pending request)")
-            self.query_one("#agent", Label).update("")
-            self.query_one("#tool-args", Label).update("")
-            self.query_one("#scope-hint", Label).update("")
+            self.dismiss(None)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._current_request is None:
