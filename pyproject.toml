@@ -31,9 +31,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jimmymills/patchbai"
-Repository = "https://github.com/jimmymills/patchbai"
-Issues = "https://github.com/jimmymills/patchbai/issues"
+Homepage = "https://github.com/jimmymills/patchfeld"
+Repository = "https://github.com/jimmymills/patchfeld"
+Issues = "https://github.com/jimmymills/patchfeld/issues"
 
 [project.optional-dependencies]
 dev = [

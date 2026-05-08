@@ -4,7 +4,7 @@
 orchestrator-managed workspace — and lets the agent reshape the UI to fit
 the work.**
 
-![patchfeld — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchbai/main/docs/images/screenshot.png)
+![patchfeld — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchfeld/main/docs/images/screenshot.png)
 
 ## The pitch
 
@@ -296,8 +296,8 @@ patchfeld
 ### From source (for hacking on patchfeld itself)
 
 ```bash
-git clone https://github.com/jimmymills/patchbai.git
-cd patchbai
+git clone https://github.com/jimmymills/patchfeld.git
+cd patchfeld
 uv sync --extra dev      # runtime + dev deps (pyright, pytest)
 uv run patchfeld          # or: uv run mt
 uv run pytest
