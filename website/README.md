@@ -118,9 +118,9 @@ technical, slightly playful. When you add or rewrite a section, read the
 project root README first and match its register. Don't slip into
 generic SaaS phrasing.
 
-GitHub URL: the repo is currently `jimmymills/patchbai` (pre-rename).
-GitHub will redirect once it's renamed to `patchfeld`, but until then,
-the original URL is what's wired up everywhere.
+GitHub URL: the repo is `jimmymills/patchfeld`. The old `patchbai` URL
+still redirects via GitHub's rename redirect, but everything in the site
+points at the canonical name.
 
 ## License
 
