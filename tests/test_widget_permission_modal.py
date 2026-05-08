@@ -100,9 +100,9 @@ async def test_always_allow_for_orchestrator_writes_disk(tmp_path: Path):
         await pilot.pause()
         bus.publish(_request(rid=rid, agent_name="orchestrator", tool="Bash"))
         await pilot.pause()
-        # The "always allow" button label should reference "the orchestrator".
-        button = app.screen.query_one("#allow-always")
-        assert "orchestrator" in str(button.label).lower()
+        # The scope-hint label should reference "the orchestrator".
+        hint = app.screen.query_one("#scope-hint")
+        assert "orchestrator" in str(hint.render()).lower()
         await pilot.click("#allow-always")
         await pilot.pause()
     fresh = PermissionGrants(cwd=tmp_path)

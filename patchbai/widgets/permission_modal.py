@@ -17,18 +17,6 @@ from patchbai.events import (
 _ORCHESTRATOR = "orchestrator"
 
 
-def _scope_label_always_allow(*, agent_name: str, tool_name: str) -> str:
-    if agent_name == _ORCHESTRATOR:
-        return f"Always allow {tool_name} for the orchestrator"
-    return f"Always allow {tool_name} for any future agent named {agent_name!r}"
-
-
-def _scope_label_always_deny(*, agent_name: str, tool_name: str) -> str:
-    if agent_name == _ORCHESTRATOR:
-        return f"Always deny {tool_name} for the orchestrator"
-    return f"Always deny {tool_name} for any future agent named {agent_name!r}"
-
-
 class PermissionModal(ModalScreen[None]):
     """Global permission-prompt modal.
 
@@ -47,6 +35,7 @@ class PermissionModal(ModalScreen[None]):
         background: $surface; border: round $warning;
     }
     PermissionModal #title { text-style: bold; }
+    PermissionModal #scope-hint { color: $text-muted; text-style: italic; }
     PermissionModal #buttons { height: 3; align-horizontal: center; }
     PermissionModal Button { margin: 0 1; }
     """
@@ -74,6 +63,7 @@ class PermissionModal(ModalScreen[None]):
             yield Label("(no pending request)", id="prompt")
             yield Label("", id="agent")
             yield Label("", id="tool-args")
+            yield Label("", id="scope-hint")
             with Horizontal(id="buttons"):
                 yield Button("Allow once", id="allow-once", variant="success")
                 yield Button(
@@ -120,12 +110,11 @@ class PermissionModal(ModalScreen[None]):
         self.query_one("#tool-args", Label).update(
             f"{req.tool_name}({_short_repr(req.tool_input)})"
         )
-        self.query_one("#allow-always", Button).label = _scope_label_always_allow(
-            agent_name=req.agent_name, tool_name=req.tool_name,
-        )
-        self.query_one("#deny-always", Button).label = _scope_label_always_deny(
-            agent_name=req.agent_name, tool_name=req.tool_name,
-        )
+        if req.agent_name == _ORCHESTRATOR:
+            scope_text = "Always applies to the orchestrator session"
+        else:
+            scope_text = f"Always applies to future agents named {req.agent_name!r}"
+        self.query_one("#scope-hint", Label).update(scope_text)
 
     def _advance(self) -> None:
         if self._queue:
@@ -136,6 +125,7 @@ class PermissionModal(ModalScreen[None]):
             self.query_one("#prompt", Label).update("(no pending request)")
             self.query_one("#agent", Label).update("")
             self.query_one("#tool-args", Label).update("")
+            self.query_one("#scope-hint", Label).update("")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if self._current_request is None:

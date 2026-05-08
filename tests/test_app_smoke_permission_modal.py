@@ -144,9 +144,9 @@ async def test_e2e_orchestrator_allow_once_unblocks_callback(tmp_path: Path):
             await pilot.pause()
             if isinstance(app.screen, PermissionModal):
                 break
-        # The modal should advertise "the orchestrator" on the always-allow button.
-        button = app.screen.query_one("#allow-always")
-        assert "orchestrator" in str(button.label).lower()
+        # The modal should advertise "the orchestrator" on the scope-hint label.
+        hint = app.screen.query_one("#scope-hint")
+        assert "orchestrator" in str(hint.render()).lower()
         await pilot.click("#allow-once")
         await pilot.pause()
         result = await asyncio.wait_for(cb_task, timeout=2.0)
