@@ -9,6 +9,7 @@ from textual.keys import _character_to_key
 from textual.widgets import DataTable, TabbedContent, TabPane
 
 from patchbai.actions import ActionRegistry
+from patchbai.activity.log import ActivityLog
 from patchbai.agents.manager import AgentManager
 from patchbai.agents.sdk_adapter import RealSDKAdapter
 from patchbai.config import ConfigStore
@@ -49,7 +50,7 @@ from patchbai.widgets.resume_screen import ResumeScreen
 from patchbai.widgets.theme_switcher import ThemeSwitcherScreen
 from patchbai.widgets.new_tab_screen import NewTabScreen
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 from patchbai.widgets.terminal import Terminal
 from patchbai.widgets.transcript_screen import TranscriptScreen
 from patchbai.workspace.spec import Tab, Workspace, workspace_from_layout, _contains_chat
@@ -273,6 +274,7 @@ class PatchbaiApp(App):
         import asyncio as _asyncio
         self._cwd_swap_lock = _asyncio.Lock()
         self.event_bus = EventBus()
+        self.activity_log = ActivityLog(self.event_bus)
         self._global_dir = Path(global_dir) if global_dir else global_config_dir()
         self.registry = registry or build_default_registry()
         self._local_widget_outcomes: list[LoadOutcome] = []

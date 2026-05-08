@@ -7,7 +7,7 @@ from patchbai.layout.engine import apply
 from patchbai.layout.registry import WidgetRegistry
 from patchbai.layout.spec import LayoutSpec
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 from patchbai.widgets.log_tail import LogTail
 
 

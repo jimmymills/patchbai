@@ -12,7 +12,7 @@ from patchbai.orchestrator.session import OrchestratorSession
 from patchbai.widgets.agent_table import AgentTable
 from patchbai.widgets.chrome import CommandBar, StatusBar
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 
 
 def _ok_script() -> list:

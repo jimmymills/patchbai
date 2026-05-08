@@ -180,6 +180,24 @@ class FileSelected:
     path: str
 
 
+@dataclass(frozen=True)
+class ActivityLogged:
+    """A new entry was appended to the app's ActivityLog. Subscribers (e.g.,
+    ActivityFeed widgets) consume this to render the new entry. The `entry`
+    field is an `ActivityEntry` from `patchbai.activity.log`; we leave it
+    typed as `object` here to avoid a circular import."""
+    entry: object
+
+
+@dataclass(frozen=True)
+class AgentFocusRequested:
+    """An ActivityFeed row click (or other UI affordance) wants to focus a
+    specific agent. AgentTable subscribes and selects + scrolls to the
+    matching row; if no AgentTable is mounted the click handler falls back
+    to opening the agent's TranscriptScreen."""
+    agent_id: str
+
+
 # --- The bus ---------------------------------------------------------------
 
 class EventBus:

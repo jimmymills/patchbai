@@ -9,7 +9,7 @@ from patchbai.layout.spec import LayoutSpec
 from patchbai.layout.splitter import Splitter
 from patchbai.widgets.agent_table import AgentTable
 from patchbai.widgets.orchestrator_chat import OrchestratorChat
-from patchbai.widgets.placeholders import ActivityFeed
+from patchbai.widgets.activity_feed import ActivityFeed
 
 
 class _HostApp(App):
