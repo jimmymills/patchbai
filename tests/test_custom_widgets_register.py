@@ -97,3 +97,14 @@ WIDGET_CLASS = MyPanelV2
     register_custom_widget(reg, "Panel", src_v2)
     cls = reg.get("Panel")
     assert cls.__name__ == "MyPanelV2"
+
+
+def test_register_custom_widget_marks_source_inline():
+    reg = WidgetRegistry()
+    src = """
+from textual.widgets import Static
+class Banner(Static):
+    pass
+"""
+    register_custom_widget(reg, "Banner", src)
+    assert reg.describe("Banner").source == "inline"
