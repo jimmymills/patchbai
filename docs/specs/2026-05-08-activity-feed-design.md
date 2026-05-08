@@ -70,7 +70,7 @@ The singleton captures the union; modes filter `entry.kind`. Coverage:
 |---|---|:-:|:-:|:-:|:-:|
 | `agent.spawned` | `AgentSpawned` | ✓ | ✓ |  | ✓ |
 | `agent.state` | `AgentStateChanged` (non-terminal) | ✓ | ✓ |  | ✓ |
-| `agent.done` | `AgentStateChanged` (DONE / ERROR / CANCELLED) | ✓ | ✓ | ✓ | ✓ |
+| `agent.done` | `AgentStateChanged` (DONE / ERROR — `AgentState.is_terminal`) | ✓ | ✓ | ✓ | ✓ |
 | `agent.message` | `AgentMessageAppended` (role ∈ {user, assistant}) |  | ✓ |  | ✓ |
 | `agent.tool` | `AgentMessageAppended` (role ∈ {tool_use, tool_result}) |  |  |  | ✓ |
 | `agent.ask` | `AgentRequestedUserInput` | ✓ | ✓ | ✓ | ✓ |
@@ -95,7 +95,7 @@ The singleton captures the union; modes filter `entry.kind`. Coverage:
 
 Three variants. All share a left gutter `[HH:MM:SS]` timestamp and a colored kind chip.
 
-**Compact** — one line. For: `tab.added`, `tab.closed`, `tab.switched`, `layout.applied`, `workspace.cwd`, `agent.state`, `agent.archive`, `agent.done` (when state is `DONE` or `CANCELLED`), `file.selected`, `agent.tool`, `orch.session`.
+**Compact** — one line. For: `tab.added`, `tab.closed`, `tab.switched`, `layout.applied`, `workspace.cwd`, `agent.state`, `agent.archive`, `agent.done` (when state is `DONE`), `file.selected`, `agent.tool`, `orch.session`.
 ```
 [15:42:01] tab.added         "Files"
 [15:42:14] agent.state       research-bot: RUNNING → IDLE
