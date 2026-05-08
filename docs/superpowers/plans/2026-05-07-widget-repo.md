@@ -17,6 +17,7 @@
 - **Discovery**: auto-walk at startup, register every Widget subclass found, gate the whole feature behind a `widgets.local_dir_enabled` config flag (default `True`).
 - **Trust model**: in-process, full privileges, documented in README and a one-line WARN-level startup banner. Sandboxing options explicitly rejected for v1 (subprocess kills Textual integration; RestrictedPython is brittle vs. Textual class hierarchy). No first-run consent prompt.
 - **Failures**: a broken widget never crashes patchbai — collect a per-file `LoadOutcome` with status and traceback, expose them through `list_widgets` so the orchestrator (and the user, debugging) can see why something didn't load.
+- **Authoring affordance**: a new `save_widget(name, source)` MCP tool validates the source, writes it atomically to `~/.config/patchbai/widgets/<name>.py`, AND registers the resulting class into the live `WidgetRegistry` so the orchestrator can reference it in the same conversation — no restart required for first-time saves.
 
 ---
 
@@ -140,6 +141,8 @@ Why not hot reload:
 - `sys.modules` caching, parent-class identity, descriptor identity, signal subscriptions — every one of those is a footgun if we touch it in v1.
 - Watcher overhead (watchdog/inotify) brings a new dependency for marginal benefit.
 
+**Narrow exception: `save_widget` MCP tool (see §10).** When the orchestrator persists a *new* widget via `save_widget`, the tool registers the class into the live registry at the moment of save. This is NOT hot reload — there's no file watcher, and we never re-import an already-loaded file. The tool just controls both the write and the registration in one atomic step, so the new widget is usable in the same conversation. Re-saves of an existing local widget overwrite the registration; already-mounted instances of the previous class survive (Textual won't replace them) — same semantics as inline `LayoutSpec.custom_widgets` collisions today.
+
 V2 candidate: file-watcher → re-discovery → diff → re-mount of affected panels. Out of scope for this plan.
 
 ### 6. Failure handling — never crash patchbai, surface every outcome
@@ -239,6 +242,54 @@ V1 builds NO distribution mechanism. The v1 design avoids painting v2 into a cor
 
 **Explicitly out of scope for v1:** signature verification, signed widget bundles, cross-user installation flows, a `patchbai widget install <url>` CLI, dependency resolution, version pinning.
 
+### 10. Authoring affordance — `save_widget` MCP tool
+
+**Problem.** Today the orchestrator can `Write` a Python file anywhere via the generic Claude Code tool, but there's no patchbai-blessed path for *creating a custom widget that the loader will pick up*. The orchestrator has to: know the home-dir convention, write the file there, tell the user to restart, and hope the source is loadable. Three failure modes — wrong path, broken Python, no Widget subclass — all of which surface only after restart.
+
+**Solution.** Add `save_widget` alongside `save_layout` / `save_theme`. Same idiom: orchestrator hands us a `name` + a `source`; we validate, write atomically, and register-now into the live registry.
+
+**Tool shape:**
+
+```python
+save_widget(name: str, source: str) -> { content: [{ type: "text", text: "..." }] }
+```
+
+- `name`: validated by `re.fullmatch(r"[A-Za-z0-9_\-]+", name)` (same regex `NamedLayoutsStore` uses for layout names — keeps disk paths sane).
+- `source`: full Python source, including imports and any `__patchbai_widget__` metadata block. The orchestrator owns the metadata; the tool does not synthesize one. (Reasoning: avoids two sources of truth when the source already declares `__patchbai_widget__`. The MCP tool description tells the orchestrator how to embed metadata.)
+
+**Validation flow (no side effects until validation passes):**
+
+1. Reject names that don't match the regex.
+2. Reject names that collide with a `source="builtin"` registration in the live registry. Built-ins always win (§7).
+3. Compile + class-detect the source via a new pure helper `validate_widget_source(name, source) -> (cls, error_msg)` exported from `patchbai/layout/local_widgets.py`. The helper writes the source into a `tempfile.TemporaryDirectory()`, imports it, runs the §2 precedence logic, and returns either the resolved Widget subclass or a descriptive error string. NOTHING is written to the real `~/.config/patchbai/widgets/` until validation succeeds.
+
+**Commit flow (only after validation passes):**
+
+4. Atomic write to `local_widgets_dir(global_dir=app._global_dir) / f"{name}.py"` via a new `write_text_atomic()` helper (mirroring `write_json_atomic` in `patchbai/persistence/atomic.py`).
+5. Register the resolved class into `app.registry` with `source="local"`. If a prior registration existed under the same name (e.g., an inline registration from a previous `set_layout`), `register()` overwrites it — same flow as today's `register_custom_widget`.
+
+**Response:** on success, `"Saved widget 'X' to <path>. Registered live; use it in set_layout immediately."` On failure, `"Cannot save widget 'X': <reason>"` with the validator's error string.
+
+**Concurrency:** atomic rename handles concurrent saves of the same name (last-writer wins on disk; in-memory registration is also last-writer because `register()` is a dict assignment).
+
+**System-prompt update.** Append one line to `_ORCHESTRATOR_SYSTEM_APPEND` in `patchbai/orchestrator/session.py:72`:
+
+> *Custom widgets: prefer `save_widget` (persists to `~/.config/patchbai/widgets/` and registers live) over `Write`-ing the file via the generic tool. For one-off, throwaway widgets that should NOT be persisted, use `LayoutSpec.custom_widgets` (inline source) instead.*
+
+This signposts the choice the orchestrator now has: persistent (`save_widget`) vs. transient (`custom_widgets`).
+
+**Companion tools deliberately omitted:**
+
+| Tool | Why omitted from v1 |
+| --- | --- |
+| `delete_widget(name)` | The user can `rm` the file; we don't need a tool for it yet. Adds an unmount-cascade question (what about layouts that reference the deleted widget?) that's out of scope. |
+| `list_local_widget_files` | `list_widgets` already shows `source="local"`; `errors` covers the broken cases. A separate filesystem-listing tool would duplicate that. |
+| `read_widget_source(name)` | The orchestrator can `Read` the file directly via the generic tool. No need for a wrapper. |
+
+These can land in a follow-up plan if real friction shows up.
+
+**Trust note.** `save_widget` does NOT broaden the trust model — the file lands in the same directory the loader trusts (§4), and the validation pass doesn't sandbox the source it imports. The tool's MCP description must repeat the warning: *"the source is exec'd in-process during validation AND on every subsequent app start; only ship `source` you have personally authored — anything you save here can read files, hit the network, and execute arbitrary code with the user's permissions."*
+
 ---
 
 ## Affected files
@@ -248,16 +299,20 @@ V1 builds NO distribution mechanism. The v1 design avoids painting v2 into a cor
 | `patchbai/persistence/paths.py` | **+1 function**: `local_widgets_dir(global_dir: Path | None = None) -> Path`. |
 | `patchbai/layout/registry.py` | Add `source: Literal["builtin", "local", "inline"] = "builtin"` field to `WidgetInfo`. Extend `register(...)` to accept a `source` keyword. |
 | `patchbai/layout/custom_widgets.py` | Pass `source="inline"` through to `registry.register(...)`. Factor the class-detection heuristic into a shared helper module-level function used by both this file AND the new loader. |
-| `patchbai/layout/local_widgets.py` | **NEW.** `LoadOutcome` dataclass, `LocalWidgetLoader.load()` method, module import via `importlib.util.spec_from_file_location`, class-detection delegate, name-collision check. |
+| `patchbai/layout/local_widgets.py` | **NEW.** `LoadOutcome` dataclass, `LocalWidgetLoader.load()` method, module import via `importlib.util.spec_from_file_location`, class-detection delegate, name-collision check. Plus `validate_widget_source(name, source) -> (cls, error_msg)` for `save_widget`'s validation pass (no side effects on the registry). |
 | `patchbai/config.py` | Add `WidgetsSection(local_dir_enabled: bool = True)` and wire into `Config`, `ConfigStore.load`, `ConfigStore.save`. |
+| `patchbai/persistence/atomic.py` | Add `write_text_atomic(path, text)` companion to the existing `write_json_atomic`. Used by `save_widget`. |
 | `patchbai/app.py` | In `PatchbaiApp.__init__`, after `self.registry = registry or build_default_registry()` and before constructing `OrchestratorSession`, call the loader (gated on config). Stash outcomes on `self._local_widget_outcomes`. Annotate built-ins with `source="builtin"` (already the default; no behavior change, just defensive). |
-| `patchbai/orchestrator/tools.py` | `_list_widgets_handler`: emit new envelope `{widgets: [...], errors: [...]}` with `source` per widget. Update the SDK tool description string in `build_orchestrator_mcp_server`. |
-| `tests/test_local_widgets_loader.py` | **NEW.** Unit tests for the loader: discovery, precedence, metadata parsing, error collection, missing-dir behavior, name-collision-with-builtins. |
+| `patchbai/orchestrator/tools.py` | `_list_widgets_handler`: emit new envelope `{widgets: [...], errors: [...]}` with `source` per widget. Add `_save_widget_handler` and corresponding entries in `build_orchestrator_tools` and `build_orchestrator_mcp_server`. Update the SDK tool description strings. |
+| `patchbai/orchestrator/session.py` | Append a one-line `save_widget` recommendation to `_ORCHESTRATOR_SYSTEM_APPEND`. |
+| `tests/test_local_widgets_loader.py` | **NEW.** Unit tests for the loader: discovery, precedence, metadata parsing, error collection, missing-dir behavior, name-collision-with-builtins. Plus tests for `validate_widget_source`. |
 | `tests/test_layout_registry_source_field.py` | **NEW.** Verifies `WidgetInfo.source` round-trips through `register/describe/describe_all`. |
 | `tests/test_orchestrator_tools_list_widgets.py` | Extend existing tests to cover the new `{widgets, errors}` envelope and `source` field. |
+| `tests/test_orchestrator_tools_save_widget.py` | **NEW.** Unit tests for `save_widget`: happy path writes file + registers live, validation rejects pre-write, builtin collision rejects, invalid name rejects, overwrite re-registers. |
 | `tests/test_app_smoke_local_widgets.py` | **NEW.** Integration smoke: drop a widget file under `tmp_path/.config/patchbai/widgets/`, set `XDG_CONFIG_HOME=tmp_path/.config`, boot `PatchbaiApp`, verify the widget is registered AND can be referenced from a `LayoutSpec`. |
-| `README.md` | New "Custom widgets" subsection with the trust-model warning + a 10-line authoring example. |
-| `docs/superpowers/notes/widget-authoring.md` | **NEW.** Author guide: shape, metadata, precedence, common errors, troubleshooting. |
+| `tests/test_persistence_atomic_text.py` | **NEW.** Round-trip + crash-safety test for `write_text_atomic`. |
+| `README.md` | New "Custom widgets" subsection with the trust-model warning + a 10-line authoring example. Mention `save_widget` as the orchestrator-driven path. |
+| `docs/superpowers/notes/widget-authoring.md` | **NEW.** Author guide: shape, metadata, precedence, common errors, troubleshooting, and a "let the orchestrator do it via `save_widget`" subsection. |
 
 ---
 
@@ -295,6 +350,20 @@ V1 builds NO distribution mechanism. The v1 design avoids painting v2 into a cor
 
 **Integration (negative-path):**
 - Drop a syntactically broken widget; boot the app; assert it starts cleanly and the broken file is reported in `app._local_widget_outcomes` with `status="import_error"`.
+
+**Unit (`tests/test_orchestrator_tools_save_widget.py`):**
+- Happy path: a valid source writes `<widgets_dir>/<name>.py` AND registers the class into the live registry with `source="local"`. The on-disk content matches the input source exactly.
+- Validation rejection: a source with no Widget subclass returns an error AND does NOT create a file.
+- Validation rejection: syntactically broken source returns an error with the syntax-error text AND does NOT create a file.
+- Name validation: names containing `/`, `..`, spaces, or empty string are rejected.
+- Builtin collision: `save_widget("OrchestratorChat", ...)` returns an error AND does NOT create a file. The built-in registration is unaffected.
+- Overwrite: saving twice under the same name overwrites the file AND re-registers the new class. The old registration is gone (`reg.get("X")` returns the new class).
+- Inline-source overwrite: a `set_layout` registers `Fancy` inline with `source="inline"`; a subsequent `save_widget("Fancy", ...)` overwrites both the disk and the registry, with the new registration tagged `source="local"`.
+
+**Unit (`tests/test_persistence_atomic_text.py`):**
+- Round-trip: `write_text_atomic(p, "hello")` then `p.read_text() == "hello"`.
+- Parent dir creation: target path under a non-existent dir is written successfully.
+- Same-dir tempfile: the implementation must use `tempfile.mkstemp(dir=path.parent)` so the rename is atomic on POSIX (assert no `*.tmp` files remain after the call).
 
 ---
 
@@ -1253,7 +1322,530 @@ git commit -m "feat(orchestrator): list_widgets emits source and errors envelope
 
 ---
 
-### Task 8: README + author guide
+### Task 8: Add `write_text_atomic` helper
+
+**Files:**
+- Modify: `patchbai/persistence/atomic.py`
+- Test: `tests/test_persistence_atomic_text.py` (NEW)
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# tests/test_persistence_atomic_text.py
+from pathlib import Path
+
+from patchbai.persistence.atomic import write_text_atomic
+
+
+def test_write_text_atomic_round_trip(tmp_path):
+    p = tmp_path / "out.txt"
+    write_text_atomic(p, "hello world")
+    assert p.read_text(encoding="utf-8") == "hello world"
+
+
+def test_write_text_atomic_creates_parent(tmp_path):
+    p = tmp_path / "nested" / "deep" / "out.txt"
+    write_text_atomic(p, "nested")
+    assert p.read_text(encoding="utf-8") == "nested"
+
+
+def test_write_text_atomic_leaves_no_tmp_files(tmp_path):
+    p = tmp_path / "out.txt"
+    write_text_atomic(p, "x")
+    leftovers = [f.name for f in tmp_path.iterdir() if f.name != "out.txt"]
+    assert leftovers == []
+
+
+def test_write_text_atomic_overwrites_existing(tmp_path):
+    p = tmp_path / "out.txt"
+    write_text_atomic(p, "v1")
+    write_text_atomic(p, "v2")
+    assert p.read_text(encoding="utf-8") == "v2"
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `uv run pytest tests/test_persistence_atomic_text.py -v`
+Expected: FAIL with `ImportError: cannot import name 'write_text_atomic'`.
+
+- [ ] **Step 3: Implement**
+
+In `patchbai/persistence/atomic.py`:
+
+```python
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write `text` to `path` atomically: write to a temp file in the same
+    directory, fsync, then rename. Same-directory rename is atomic on POSIX.
+    Parent directories are created if missing."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp",
+                                    dir=str(path.parent))
+    tmp_path = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
+```
+
+- [ ] **Step 4: Run tests to verify**
+
+Run: `uv run pytest tests/test_persistence_atomic_text.py -v`
+Expected: PASS for all four.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add patchbai/persistence/atomic.py tests/test_persistence_atomic_text.py
+git commit -m "feat(persistence): add write_text_atomic helper"
+```
+
+---
+
+### Task 9: Add `validate_widget_source` to the loader module
+
+This is the side-effect-free validation pass that `save_widget` uses *before* writing to disk.
+
+**Files:**
+- Modify: `patchbai/layout/local_widgets.py`
+- Test: extend `tests/test_local_widgets_loader.py`
+
+- [ ] **Step 1: Add failing tests**
+
+Append to `tests/test_local_widgets_loader.py`:
+
+```python
+from patchbai.layout.local_widgets import validate_widget_source
+
+
+def test_validate_returns_class_and_meta_for_valid_source():
+    src = """
+from textual.widgets import Static
+__patchbai_widget__ = {
+    "name": "Banner",
+    "description": "A banner.",
+    "props_schema": {"text": str},
+}
+class Banner(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("Banner", src)
+    assert cls is not None and cls.__name__ == "Banner"
+    assert meta["description"] == "A banner."
+    assert meta["props_schema"] == {"text": str}
+    assert err == ""
+
+
+def test_validate_returns_empty_meta_when_absent():
+    src = """
+from textual.widgets import Static
+class X(Static):
+    pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None
+    assert meta == {}
+    assert err == ""
+
+
+def test_validate_uses_metadata_entry_point():
+    src = """
+from textual.widgets import Static
+class Real(Static):
+    pass
+class Decoy(Static):
+    pass
+__patchbai_widget__ = {"name": "X", "entry_point": Real}
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is not None and cls.__name__ == "Real"
+    assert err == ""
+
+
+def test_validate_rejects_syntax_error():
+    cls, meta, err = validate_widget_source("X", "this is not python\n")
+    assert cls is None
+    assert meta == {}
+    assert "SyntaxError" in err or "syntax" in err.lower()
+
+
+def test_validate_rejects_no_widget_class():
+    cls, meta, err = validate_widget_source("X", "x = 42\n")
+    assert cls is None
+    assert "no_widget_class" in err or "no Widget" in err.lower()
+
+
+def test_validate_rejects_ambiguous():
+    src = """
+from textual.widgets import Static
+class A(Static): pass
+class B(Static): pass
+"""
+    cls, meta, err = validate_widget_source("X", src)
+    assert cls is None
+    assert "ambiguous" in err.lower()
+
+
+def test_validate_does_not_touch_filesystem(tmp_path, monkeypatch):
+    # Validation must not write anywhere under cwd; tempfile lands in the
+    # OS tempdir.
+    monkeypatch.chdir(tmp_path)
+    src = "from textual.widgets import Static\nclass X(Static):\n    pass\n"
+    validate_widget_source("X", src)
+    assert list(tmp_path.iterdir()) == []  # nothing written under cwd
+```
+
+- [ ] **Step 2: Run to verify**
+
+Run: `uv run pytest tests/test_local_widgets_loader.py -v -k validate`
+Expected: FAIL with `ImportError: cannot import name 'validate_widget_source'`.
+
+- [ ] **Step 3: Implement**
+
+In `patchbai/layout/local_widgets.py`, add:
+
+```python
+import tempfile
+from typing import Tuple
+
+
+def validate_widget_source(
+    name: str, source: str,
+) -> tuple[type[Widget] | None, dict, str]:
+    """Compile `source` and run the §2 class-detection precedence WITHOUT
+    registering anything. Returns (cls, meta, "") on success, or
+    (None, {}, error_text) on failure. `error_text` is one of: a one-line
+    syntax error excerpt, "no_widget_class", "ambiguous_class", or another
+    short description. `meta` is the imported module's `__patchbai_widget__`
+    dict (or `{}` if absent) — used by `save_widget` to register description
+    and props_schema in the live registry.
+
+    Used by the `save_widget` MCP tool to validate orchestrator-supplied
+    source before committing it to ~/.config/patchbai/widgets/.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / f"{name}.py"
+        try:
+            path.write_text(source, encoding="utf-8")
+        except OSError as e:
+            return None, {}, f"could not stage source for validation: {e}"
+
+        mod_name = f"_patchbai_validate_widget_{name}"
+        try:
+            spec = importlib.util.spec_from_file_location(mod_name, path)
+            assert spec is not None and spec.loader is not None
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[mod_name] = module
+            try:
+                spec.loader.exec_module(module)
+            finally:
+                # Don't leak a module entry that points at a deleted tempdir.
+                sys.modules.pop(mod_name, None)
+        except Exception as e:
+            return None, {}, f"{type(e).__name__}: {e}"
+
+        meta = getattr(module, "__patchbai_widget__", {}) or {}
+        if not isinstance(meta, dict):
+            meta = {}
+        cls, err = _find_widget_class_in_module(module, meta, name)
+        if cls is None:
+            return None, {}, err or "no_widget_class"
+        return cls, meta, ""
+```
+
+- [ ] **Step 4: Run tests to verify**
+
+Run: `uv run pytest tests/test_local_widgets_loader.py -v`
+Expected: PASS for all (the original 10 + 7 new validator tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add patchbai/layout/local_widgets.py tests/test_local_widgets_loader.py
+git commit -m "feat(local-widgets): add validate_widget_source helper"
+```
+
+---
+
+### Task 10: Add `save_widget` MCP tool
+
+**Files:**
+- Modify: `patchbai/orchestrator/tools.py` (add handler + wire into both `build_orchestrator_tools` and `build_orchestrator_mcp_server`)
+- Modify: `patchbai/orchestrator/session.py:72` (system prompt update)
+- Test: `tests/test_orchestrator_tools_save_widget.py` (NEW)
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# tests/test_orchestrator_tools_save_widget.py
+import pytest
+from textual.widgets import Static
+
+from patchbai.agents.fake_sdk_adapter import FakeSDKAdapter
+from patchbai.agents.manager import AgentManager
+from patchbai.events import EventBus
+from patchbai.layout.registry import WidgetRegistry
+from patchbai.orchestrator.tools import build_orchestrator_tools
+from patchbai.persistence.layouts_store import NamedLayoutsStore
+
+
+class _FakeApp:
+    """Minimal stand-in for PatchbaiApp — save_widget reads `_global_dir`
+    and `registry` from the app reference."""
+    def __init__(self, global_dir, registry):
+        self._global_dir = global_dir
+        self.registry = registry
+
+
+def _tools(tmp_path, registry):
+    manager = AgentManager(
+        cwd=tmp_path, bus=EventBus(),
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[[]]),
+    )
+    store = NamedLayoutsStore(global_dir=tmp_path)
+    app = _FakeApp(tmp_path, registry)
+    return build_orchestrator_tools(
+        manager,
+        layouts_store=store,
+        widget_registry=registry,
+        app=app,
+    )
+
+
+@pytest.mark.asyncio
+async def test_save_widget_writes_file_and_registers_live(tmp_path):
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+    src = (
+        "from textual.widgets import Static\n"
+        "class Sparkline(Static):\n"
+        "    pass\n"
+    )
+    out = await tools["save_widget"]({"name": "Sparkline", "source": src})
+    assert "saved" in out["content"][0]["text"].lower()
+    # File on disk.
+    written = tmp_path / "widgets" / "Sparkline.py"
+    assert written.exists()
+    assert written.read_text(encoding="utf-8") == src
+    # Live registration.
+    assert reg.get("Sparkline").__name__ == "Sparkline"
+    assert reg.describe("Sparkline").source == "local"
+
+
+@pytest.mark.asyncio
+async def test_save_widget_rejects_invalid_source(tmp_path):
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+    out = await tools["save_widget"]({
+        "name": "Broken",
+        "source": "this is not valid python\n",
+    })
+    assert "cannot save" in out["content"][0]["text"].lower()
+    # No file, no registration.
+    assert not (tmp_path / "widgets" / "Broken.py").exists()
+    assert "Broken" not in reg.known()
+
+
+@pytest.mark.asyncio
+async def test_save_widget_rejects_no_widget_subclass(tmp_path):
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+    out = await tools["save_widget"]({
+        "name": "NotAWidget",
+        "source": "x = 42\n",
+    })
+    assert "cannot save" in out["content"][0]["text"].lower()
+    assert not (tmp_path / "widgets" / "NotAWidget.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_save_widget_rejects_invalid_name(tmp_path):
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+    for bad in ["", "../escape", "with space", "slash/y"]:
+        out = await tools["save_widget"]({"name": bad, "source": "pass\n"})
+        assert "invalid" in out["content"][0]["text"].lower()
+
+
+@pytest.mark.asyncio
+async def test_save_widget_rejects_builtin_collision(tmp_path):
+    reg = WidgetRegistry()
+    reg.register("OrchestratorChat", Static)  # source="builtin" by default
+    tools = _tools(tmp_path, reg)
+    src = (
+        "from textual.widgets import Static\n"
+        "class Evil(Static):\n"
+        "    pass\n"
+    )
+    out = await tools["save_widget"]({"name": "OrchestratorChat", "source": src})
+    assert "cannot save" in out["content"][0]["text"].lower()
+    assert not (tmp_path / "widgets" / "OrchestratorChat.py").exists()
+    # Built-in unaffected.
+    assert reg.get("OrchestratorChat") is Static
+
+
+@pytest.mark.asyncio
+async def test_save_widget_overwrite_re_registers(tmp_path):
+    reg = WidgetRegistry()
+    tools = _tools(tmp_path, reg)
+    src_v1 = (
+        "from textual.widgets import Static\n"
+        "class Fancy(Static):\n"
+        "    VERSION = 1\n"
+    )
+    src_v2 = (
+        "from textual.widgets import Static\n"
+        "class Fancy(Static):\n"
+        "    VERSION = 2\n"
+    )
+    await tools["save_widget"]({"name": "Fancy", "source": src_v1})
+    assert reg.get("Fancy").VERSION == 1
+    await tools["save_widget"]({"name": "Fancy", "source": src_v2})
+    assert reg.get("Fancy").VERSION == 2
+    written = tmp_path / "widgets" / "Fancy.py"
+    assert "VERSION = 2" in written.read_text(encoding="utf-8")
+```
+
+- [ ] **Step 2: Run to verify they fail**
+
+Run: `uv run pytest tests/test_orchestrator_tools_save_widget.py -v`
+Expected: FAIL with `KeyError: 'save_widget'`.
+
+- [ ] **Step 3: Implement the handler**
+
+In `patchbai/orchestrator/tools.py`, near the other handlers:
+
+```python
+import re
+
+from patchbai.layout.local_widgets import validate_widget_source
+from patchbai.persistence.atomic import write_text_atomic
+from patchbai.persistence.paths import local_widgets_dir
+
+_VALID_WIDGET_NAME = re.compile(r"^[A-Za-z0-9_\-]+$")
+
+
+def _save_widget_handler(app):
+    async def save_widget_tool(args: dict) -> dict:
+        name = (args.get("name") or "").strip()
+        source = args.get("source") or ""
+        if not _VALID_WIDGET_NAME.fullmatch(name):
+            return {"content": [{"type": "text", "text":
+                f"Invalid widget name: {name!r} (allowed: letters, digits, _, -)"}]}
+
+        registry = getattr(app, "registry", None)
+        if registry is None:
+            return {"content": [{"type": "text",
+                "text": "save_widget unavailable: no registry on app."}]}
+
+        existing = registry._infos.get(name)
+        if existing is not None and existing.source == "builtin":
+            return {"content": [{"type": "text", "text":
+                f"Cannot save widget {name!r}: name reserved by built-in registry."}]}
+
+        cls, meta, err = validate_widget_source(name, source)
+        if cls is None:
+            return {"content": [{"type": "text",
+                "text": f"Cannot save widget {name!r}: {err}"}]}
+
+        widgets_dir = local_widgets_dir(global_dir=app._global_dir)
+        path = widgets_dir / f"{name}.py"
+        try:
+            write_text_atomic(path, source)
+        except OSError as e:
+            return {"content": [{"type": "text",
+                "text": f"Cannot save widget {name!r}: write failed: {e}"}]}
+
+        registry.unregister(name)
+        registry.register(
+            name, cls,
+            description=meta.get("description", ""),
+            props_schema=dict(meta.get("props_schema") or {}),
+            source="local",
+        )
+
+        return {"content": [{"type": "text", "text":
+            f"Saved widget {name!r} to {path}. Registered live; "
+            f"use it in set_layout immediately."}]}
+    return save_widget_tool
+```
+
+- [ ] **Step 4: Wire the handler into `build_orchestrator_tools` and `build_orchestrator_mcp_server`**
+
+In `build_orchestrator_tools`, in the `if app is not None:` block (the same block that wires `add_tab` etc.):
+
+```python
+        handlers["save_widget"] = _save_widget_handler(app)
+```
+
+Note: `save_widget` requires both `widget_registry` AND `app`. Guard with `if widget_registry is not None and app is not None:` (or just check `app.registry` inside the handler — already done).
+
+In `build_orchestrator_mcp_server`, append a tool registration with the trust warning in its description:
+
+```python
+        sdk_tools.append(tool(
+            "save_widget",
+            "Persist a custom Textual widget to "
+            "~/.config/patchbai/widgets/<name>.py and register it into the "
+            "live registry so it's available immediately for `set_layout`. "
+            "`name` is the widget's registered name (letters, digits, _, -); "
+            "the file is written as `<name>.py`. `source` is the full "
+            "Python source for the widget — including imports and an "
+            "OPTIONAL module-level `__patchbai_widget__ = {\"name\": ..., "
+            "\"description\": ..., \"props_schema\": {...}}` block to "
+            "supply metadata visible in `list_widgets`. Use `WIDGET_CLASS = "
+            "<class>` or include the metadata's `entry_point` field if your "
+            "source defines more than one Widget subclass. **Trust note: "
+            "the source is exec'd in-process during validation AND on "
+            "every subsequent app start with full Python privileges. Only "
+            "save source you have personally authored.** Returns an error "
+            "without writing to disk if the source fails to import, doesn't "
+            "yield a Widget subclass, or the name collides with a built-in.",
+            {"name": str, "source": str},
+        )(_save_widget_handler(app)))
+```
+
+- [ ] **Step 5: Update the orchestrator system prompt**
+
+In `patchbai/orchestrator/session.py`, append to `_ORCHESTRATOR_SYSTEM_APPEND` (inside the bullet list, after the "Theme / config / keys" line):
+
+```
+- Custom widgets: prefer `save_widget` (persists to
+  ~/.config/patchbai/widgets/ and registers live for use in the same
+  conversation) over `Write`-ing the file via the generic tool. For
+  one-off, throwaway widgets that should NOT be persisted, embed the
+  source in `LayoutSpec.custom_widgets` instead.
+```
+
+- [ ] **Step 6: Run the full save_widget test file**
+
+Run: `uv run pytest tests/test_orchestrator_tools_save_widget.py -v`
+Expected: PASS for all 6 tests.
+
+- [ ] **Step 7: Run the full suite**
+
+Run: `uv run pytest -x -q`
+Expected: PASS.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add patchbai/orchestrator/tools.py patchbai/orchestrator/session.py \
+        patchbai/layout/local_widgets.py \
+        tests/test_orchestrator_tools_save_widget.py \
+        tests/test_local_widgets_loader.py
+git commit -m "feat(orchestrator): save_widget MCP tool persists + registers live"
+```
+
+---
+
+### Task 11: README + author guide
 
 **Files:**
 - Modify: `README.md`
@@ -1280,7 +1872,7 @@ git commit -m "docs: custom widgets — storage, shape, trust model, authoring"
 
 ---
 
-### Task 9: End-to-end sanity check
+### Task 12: End-to-end sanity check
 
 **Files:** none — this is a manual/automated final sweep.
 
@@ -1291,10 +1883,10 @@ Expected: PASS, with `test_app_smoke_local_widgets.py` and `test_local_widgets_l
 
 - [ ] **Step 2: Run pyright**
 
-Run: `uv run pyright patchbai/layout/local_widgets.py patchbai/layout/registry.py patchbai/layout/custom_widgets.py patchbai/app.py patchbai/orchestrator/tools.py`
+Run: `uv run pyright patchbai/layout/local_widgets.py patchbai/layout/registry.py patchbai/layout/custom_widgets.py patchbai/app.py patchbai/orchestrator/tools.py patchbai/orchestrator/session.py patchbai/persistence/atomic.py patchbai/config.py`
 Expected: 0 errors. Address any type-narrowing issues by adding annotations.
 
-- [ ] **Step 3: Smoke-test interactively**
+- [ ] **Step 3: Smoke-test interactively (file-on-disk path)**
 
 ```bash
 mkdir -p ~/.config/patchbai/widgets
@@ -1318,9 +1910,21 @@ uv run patchbai
 In the orchestrator chat: "list_widgets" — confirm `Banner` appears with `source: local`.
 Then: "set_layout to a horizontal split with OrchestratorChat at 60% and Banner at 40%" — confirm the panel mounts.
 
-Restore your widgets dir afterwards (or just delete `banner.py`).
+- [ ] **Step 4: Smoke-test interactively (`save_widget` path, no restart)**
 
-- [ ] **Step 4: No commit needed** (this is verification only).
+In a fresh `uv run patchbai` session, ask the orchestrator:
+
+> Build a small Textual widget called `TimeNow` that displays the current local time, updated every second. Save it via `save_widget` and then put it in a 25% sidebar next to the orchestrator.
+
+Confirm:
+- The orchestrator calls `save_widget` (visible in transcript) and reports the save path.
+- A new file appears at `~/.config/patchbai/widgets/TimeNow.py`.
+- The widget mounts immediately in the layout — no restart prompted.
+- Quit + relaunch patchbai; confirm `TimeNow` is loaded by the startup loader (`source: local` in `list_widgets`).
+
+Restore your widgets dir afterwards (or just delete `banner.py` and `TimeNow.py`).
+
+- [ ] **Step 5: No commit needed** (this is verification only).
 
 ---
 
@@ -1337,6 +1941,8 @@ Documented to keep scope creep at bay during review:
 - **First-run consent prompt.** Rejected for v1 (§4); revisit when authorship boundary changes (community widgets).
 - **Widget versioning / compat checks.** `__patchbai_widget__["version"]` is reserved but unused.
 - **Hot-reload of `widgets.local_dir_enabled`.** The flag is read once at startup; flipping it requires restart.
+- **`delete_widget` MCP tool.** v1 ships only `save_widget`; deletion is `rm ~/.config/patchbai/widgets/<name>.py`. Adding a tool raises questions about cascading effects on saved layouts that reference the widget — defer until that's a real complaint.
+- **`save_widget` immediate-metadata accuracy for `description`/`props_schema`.** v1 reads metadata from the imported module during validation and registers it live. If a future change moves metadata derivation out of `validate_widget_source`, ensure live registrations match what the next startup would produce — covered by Task 10 step 3.
 
 ---
 
