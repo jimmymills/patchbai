@@ -284,17 +284,36 @@ def _list_bindings_handler(config_store: ConfigStore):
     return list_bindings_tool
 
 
-def _list_widgets_handler(registry: WidgetRegistry):
+def _list_widgets_handler(registry: WidgetRegistry, outcomes_provider=None):
+    """outcomes_provider: optional zero-arg callable returning a list of
+    LoadOutcome (or compatible dicts). When provided, failed outcomes are
+    emitted under `errors`. When None, `errors` is `[]`.
+    """
     async def list_widgets_tool(_args: dict) -> dict:
-        out = []
+        widgets = []
         for info in registry.describe_all():
-            out.append({
+            widgets.append({
                 "name": info.name,
                 "description": info.description,
-                "props_schema": {k: getattr(v, "__name__", str(v))
-                                 for k, v in info.props_schema.items()},
+                "props_schema": {
+                    k: getattr(v, "__name__", str(v))
+                    for k, v in info.props_schema.items()
+                },
+                "source": info.source,
             })
-        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
+        errors = []
+        if outcomes_provider is not None:
+            for o in outcomes_provider():
+                if getattr(o, "status", "ok") == "ok":
+                    continue
+                errors.append({
+                    "path": str(getattr(o, "path", "")),
+                    "name": getattr(o, "name", ""),
+                    "status": getattr(o, "status", ""),
+                    "error": getattr(o, "error", None),
+                })
+        envelope = {"widgets": widgets, "errors": errors}
+        return {"content": [{"type": "text", "text": json.dumps(envelope, indent=2)}]}
     return list_widgets_tool
 
 
@@ -602,7 +621,8 @@ def build_orchestrator_tools(
         handlers["list_actions"] = _list_actions_handler(actions)
         handlers["list_bindings"] = _list_bindings_handler(config_store)
     if widget_registry is not None:
-        handlers["list_widgets"] = _list_widgets_handler(widget_registry)
+        provider = (lambda: getattr(app, "_local_widget_outcomes", []))
+        handlers["list_widgets"] = _list_widgets_handler(widget_registry, provider)
     if widget_registry is not None and current_layout is not None:
         handlers["get_layout"] = _get_layout_handler(current_layout, widget_registry, app=app)
     if themes_store is not None and app is not None:
@@ -794,13 +814,18 @@ def build_orchestrator_mcp_server(
         for name, desc, schema, handler in config_specs:
             sdk_tools.append(tool(name, desc, schema)(handler))
     if widget_registry is not None:
+        provider = (lambda: getattr(app, "_local_widget_outcomes", []))
         sdk_tools.append(tool(
             "list_widgets",
-            "List all widgets registered in the layout registry, with their "
-            "descriptions and prop schemas. Use this to discover what widgets "
-            "you can include in a set_layout call.",
+            "List all widgets registered in the layout registry. Returns "
+            "{widgets: [{name, description, props_schema, source}], "
+            "errors: [{path, name, status, error}]}. `source` is one of "
+            "'builtin' (compiled-in), 'local' (loaded from "
+            "~/.config/patchbai/widgets/), or 'inline' (registered via a "
+            "LayoutSpec.custom_widgets source). `errors` lists widget files "
+            "in the local dir that failed to load.",
             {},
-        )(_list_widgets_handler(widget_registry)))
+        )(_list_widgets_handler(widget_registry, provider)))
     if widget_registry is not None and current_layout is not None:
         sdk_tools.append(tool(
             "get_layout",
