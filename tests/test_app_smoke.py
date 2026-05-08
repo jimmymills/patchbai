@@ -132,11 +132,17 @@ async def test_ctrl_c_in_agent_transcript_does_not_interrupt_orchestrator(tmp_pa
     async with app.run_test() as pilot:
         await pilot.pause()
 
+        # Spawn a real child agent so its agent_id is in manager._sessions —
+        # the widget's stale-panel guard uses get_session() to decide whether
+        # to call interrupt at all, so we need a live session here.
+        agent_id = await app.manager.spawn(name="a1", prompt="hi")
+        await pilot.pause()
+
         manager_calls: list[str] = []
         orch_calls: list[str] = []
 
-        async def _manager_spy(agent_id: str) -> None:
-            manager_calls.append(agent_id)
+        async def _manager_spy(aid: str) -> None:
+            manager_calls.append(aid)
 
         async def _orch_spy() -> None:
             orch_calls.append("interrupt")
@@ -145,7 +151,7 @@ async def test_ctrl_c_in_agent_transcript_does_not_interrupt_orchestrator(tmp_pa
         app.orchestrator.interrupt = _orch_spy  # type: ignore[method-assign]
 
         # Mount an AgentTranscript directly so we can focus its input.
-        widget = AgentTranscript(agent_id="a1", event_bus=app.event_bus)
+        widget = AgentTranscript(agent_id=agent_id, event_bus=app.event_bus)
         await app.mount(widget)
         await pilot.pause()
 
@@ -155,7 +161,7 @@ async def test_ctrl_c_in_agent_transcript_does_not_interrupt_orchestrator(tmp_pa
         await pilot.press("ctrl+c")
         await pilot.pause()
 
-        assert manager_calls == ["a1"]
+        assert manager_calls == [agent_id]
         assert orch_calls == []  # did NOT bubble up to OrchestratorChat
         assert input_box.has_focus  # app didn't quit / lose focus
 

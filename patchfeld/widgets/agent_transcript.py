@@ -86,7 +86,27 @@ class AgentTranscript(Vertical):
         manager = getattr(self.app, "manager", None)
         if manager is None:
             return
+        # Stale-panel guard: if no live session matches this panel's
+        # agent_id, manager.interrupt would silently no-op. Surface that
+        # to the user instead — otherwise ctrl+c looks broken when in
+        # fact the panel is bound to an agent that no longer exists
+        # (e.g. opened from a stale agents.json entry).
+        if manager.get_session(self._agent_id) is None:
+            try:
+                self.app.notify(
+                    f"no active agent “{self._agent_id}” — panel may be stale",
+                    severity="warning", timeout=5,
+                )
+            except Exception:
+                pass
+            return
         await manager.interrupt(self._agent_id)
+        try:
+            self.app.notify(
+                f"interrupted {self._agent_id}", timeout=3,
+            )
+        except Exception:
+            pass
 
     def rendered_text(self) -> str:
         """Test helper — delegates to the inner RichTranscript."""
