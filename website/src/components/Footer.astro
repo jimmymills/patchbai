@@ -1,0 +1,79 @@
+---
+const githubUrl = "https://github.com/jimmymills/patchfeld";
+---
+
+<footer class="border-t border-[var(--color-border)] py-12 mt-12">
+  <div class="container-page">
+    <div class="grid grid-cols-1 gap-10 sm:grid-cols-3">
+      <div>
+        <div class="flex items-center gap-2">
+          <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="4" y="6" width="9" height="20" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[color:var(--color-accent)]"/>
+            <rect x="15" y="6" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[color:var(--color-accent)]"/>
+            <rect x="15" y="17" width="13" height="9" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5" class="text-[color:var(--color-accent)]"/>
+          </svg>
+          <span class="mono font-semibold">patchfeld</span>
+        </div>
+        <p class="mt-3 text-sm text-[color:var(--color-fg-muted)]">
+          The room you wish you had.
+        </p>
+      </div>
+
+      <div>
+        <p class="mono text-xs uppercase tracking-wider text-[color:var(--color-fg-dim)]">Project</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li>
+            <a href={githubUrl} target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              GitHub
+            </a>
+          </li>
+          <li>
+            <a href={`${githubUrl}#readme`} target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              Docs (README)
+            </a>
+          </li>
+          <li>
+            <a href={`${githubUrl}/issues`} target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              Issues
+            </a>
+          </li>
+          <li>
+            <a href={`${githubUrl}/blob/main/LICENSE`} target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              License (MIT)
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <p class="mono text-xs uppercase tracking-wider text-[color:var(--color-fg-dim)]">Built on</p>
+        <ul class="mt-3 space-y-2 text-sm">
+          <li>
+            <a href="https://textual.textualize.io" target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              Textual
+            </a>
+          </li>
+          <li>
+            <a href="https://docs.anthropic.com/en/api/agent-sdk" target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              Claude Agent SDK
+            </a>
+          </li>
+          <li>
+            <a href="https://modelcontextprotocol.io" target="_blank" rel="noreferrer noopener" class="text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)] transition-colors">
+              MCP
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="mt-12 flex flex-col items-start justify-between gap-3 border-t border-[var(--color-border)] pt-6 text-sm text-[color:var(--color-fg-dim)] sm:flex-row sm:items-center">
+      <p class="mono">
+        MIT &copy; Jimmy Mills
+      </p>
+      <p class="mono text-xs">
+        not affiliated with Anthropic
+      </p>
+    </div>
+  </div>
+</footer>

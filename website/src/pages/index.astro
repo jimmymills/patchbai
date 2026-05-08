@@ -1,0 +1,27 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Hero from "../components/Hero.astro";
+import Features from "../components/Features.astro";
+import Screenshot from "../components/Screenshot.astro";
+import Examples from "../components/Examples.astro";
+import Permissions from "../components/Permissions.astro";
+import Widgets from "../components/Widgets.astro";
+import Install from "../components/Install.astro";
+import Footer from "../components/Footer.astro";
+---
+
+<Base>
+  <Nav />
+  <main>
+    <Hero />
+    <div class="section-divider container-page"></div>
+    <Features />
+    <Screenshot />
+    <Examples />
+    <Permissions />
+    <Widgets />
+    <Install />
+  </main>
+  <Footer />
+</Base>

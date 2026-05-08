@@ -1,0 +1,165 @@
+---
+const tabs = [
+  {
+    id: "pipx",
+    label: "pipx",
+    blurb: "Recommended — isolated, on PATH.",
+    cmd: "pipx install patchfeld",
+  },
+  {
+    id: "uv",
+    label: "uv",
+    blurb: "Fast, modern. Same isolation as pipx.",
+    cmd: "uv tool install patchfeld",
+  },
+  {
+    id: "pip",
+    label: "pip",
+    blurb: "Plain pip, into a venv.",
+    cmd: "pip install patchfeld",
+  },
+];
+---
+
+<section id="install" class="py-20 sm:py-28">
+  <div class="container-page">
+    <div class="reveal mx-auto max-w-2xl text-center">
+      <p class="mono text-sm text-[color:var(--color-accent)]">/* install */</p>
+      <h2 class="mt-3 text-3xl sm:text-4xl">Three install paths. Pick one.</h2>
+      <p class="mt-4 text-[color:var(--color-fg-muted)]">
+        Patchfeld needs Python 3.11+ and the Claude CLI installed and authenticated.
+        It uses your <code class="mono text-[color:var(--color-fg)]">~/.claude/settings.json</code>
+        for permissions and tool allowlists.
+      </p>
+    </div>
+
+    <div
+      id="install-tabs"
+      class="reveal mx-auto mt-10 max-w-2xl rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-card)] p-2"
+    >
+      <div role="tablist" aria-label="Install method" class="flex gap-1 border-b border-[var(--color-border)] px-2 pb-2">
+        {
+          tabs.map((t, i) => (
+            <button
+              type="button"
+              role="tab"
+              data-tab={t.id}
+              aria-selected={i === 0 ? "true" : "false"}
+              class:list={[
+                "mono rounded-md px-3 py-1.5 text-sm transition-colors",
+                i === 0
+                  ? "bg-[var(--color-bg-elev)] text-[color:var(--color-fg)]"
+                  : "text-[color:var(--color-fg-muted)] hover:text-[color:var(--color-fg)]",
+              ]}
+            >
+              {t.label}
+            </button>
+          ))
+        }
+      </div>
+
+      {
+        tabs.map((t, i) => (
+          <div
+            role="tabpanel"
+            data-panel={t.id}
+            class:list={[i === 0 ? "" : "hidden", "p-4"]}
+          >
+            <p class="text-sm text-[color:var(--color-fg-muted)]">{t.blurb}</p>
+            <div
+              class="mt-3 group flex items-center gap-3 rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-bg)] px-4 py-3 hover:border-[var(--color-accent-dim)] transition-colors cursor-pointer"
+              data-copy={t.cmd}
+            >
+              <span class="mono text-[color:var(--color-accent)]">$</span>
+              <code class="mono flex-1 text-sm text-[color:var(--color-fg)] sm:text-base">
+                {t.cmd}
+              </code>
+              <span class="inline-flex h-6 w-6 items-center justify-center text-[color:var(--color-fg-muted)] group-hover:text-[color:var(--color-fg)]">
+                <svg
+                  data-icon="copy"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  aria-hidden="true"
+                >
+                  <rect x="4" y="4" width="8" height="9" rx="1" />
+                  <path d="M3 11V3a1 1 0 0 1 1-1h7" />
+                </svg>
+                <svg
+                  data-icon="check"
+                  class="hidden"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.75"
+                  aria-hidden="true"
+                >
+                  <path d="M3 8.5l3 3 7-7" />
+                </svg>
+              </span>
+            </div>
+            <p class="mono mt-3 text-xs text-[color:var(--color-fg-dim)]">
+              then run: <span class="text-[color:var(--color-fg-muted)]">patchfeld</span>
+            </p>
+          </div>
+        ))
+      }
+    </div>
+
+    <p class="reveal mx-auto mt-6 max-w-2xl text-center text-sm text-[color:var(--color-fg-dim)]">
+      First launch in a directory seeds the built-in dashboard and creates
+      <code class="mono">.patchfeld/</code>. Add it to your
+      <code class="mono">.gitignore</code>.
+    </p>
+  </div>
+
+  <script>
+    const root = document.getElementById("install-tabs");
+    if (root) {
+      // tab switching
+      const buttons = root.querySelectorAll<HTMLButtonElement>('[data-tab]');
+      const panels = root.querySelectorAll<HTMLDivElement>('[data-panel]');
+      buttons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.tab;
+          buttons.forEach((b) => {
+            const active = b.dataset.tab === id;
+            b.setAttribute("aria-selected", active ? "true" : "false");
+            b.classList.toggle("bg-[var(--color-bg-elev)]", active);
+            b.classList.toggle("text-[color:var(--color-fg)]", active);
+            b.classList.toggle("text-[color:var(--color-fg-muted)]", !active);
+          });
+          panels.forEach((p) => {
+            p.classList.toggle("hidden", p.dataset.panel !== id);
+          });
+        });
+      });
+
+      // copy buttons
+      const copies = root.querySelectorAll<HTMLDivElement>('[data-copy]');
+      copies.forEach((el) => {
+        el.addEventListener("click", async () => {
+          const text = el.dataset.copy ?? "";
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+            return;
+          }
+          const copyIcon = el.querySelector<HTMLElement>('[data-icon="copy"]');
+          const checkIcon = el.querySelector<HTMLElement>('[data-icon="check"]');
+          copyIcon?.classList.add("hidden");
+          checkIcon?.classList.remove("hidden");
+          setTimeout(() => {
+            copyIcon?.classList.remove("hidden");
+            checkIcon?.classList.add("hidden");
+          }, 1600);
+        });
+      });
+    }
+  </script>
+</section>

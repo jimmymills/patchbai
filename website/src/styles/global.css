@@ -1,0 +1,179 @@
+@import "tailwindcss";
+
+/* ---------- design tokens ---------- */
+
+@theme {
+  --font-sans: "Inter", "Geist", ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", "SF Mono", Menlo, Consolas,
+    ui-monospace, monospace;
+
+  /* near-black with a faint warm undertone, lifts away from pure #000 */
+  --color-bg: #0a0a0c;
+  --color-bg-soft: #111114;
+  --color-bg-card: #14141a;
+  --color-bg-elev: #1a1a22;
+  --color-border: #232330;
+  --color-border-strong: #2e2e3e;
+
+  --color-fg: #ededf2;
+  --color-fg-muted: #a0a0ae;
+  --color-fg-dim: #6b6b7a;
+
+  /* single accent — a warm amber/peach that reads as "terminal-prompt-on-dark" without being lime */
+  --color-accent: #f5a06a;
+  --color-accent-soft: #ffb98a;
+  --color-accent-dim: #b87143;
+}
+
+/* ---------- base ---------- */
+
+html {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  font-feature-settings: "ss01", "cv11";
+  /* subtle radial glow behind the hero — sits under the content, very low opacity */
+  background-image:
+    radial-gradient(
+      ellipse 80% 50% at 50% -10%,
+      rgba(245, 160, 106, 0.08),
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse 60% 40% at 80% 110%,
+      rgba(245, 160, 106, 0.04),
+      transparent 60%
+    );
+  background-attachment: fixed;
+}
+
+/* ---------- typography ---------- */
+
+.mono {
+  font-family: var(--font-mono);
+  font-feature-settings: "ss01", "cv11", "calt";
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+/* hero wordmark — heavy, monospace */
+.wordmark {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+}
+
+/* ---------- utilities ---------- */
+
+.container-page {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
+}
+
+/* a soft horizontal rule with a glow at the centre */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    var(--color-border-strong),
+    transparent
+  );
+}
+
+/* ---------- selection ---------- */
+
+::selection {
+  background: rgba(245, 160, 106, 0.3);
+  color: var(--color-fg);
+}
+
+/* ---------- code blocks ---------- */
+
+pre,
+code {
+  font-family: var(--font-mono);
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* ---------- scroll-fade animation ---------- */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  opacity: 0;
+  animation: fadeUp 600ms ease-out forwards;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 700ms ease-out,
+    transform 700ms ease-out;
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- focus ring ---------- */
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------- prose links inside body copy ---------- */
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* ---------- prefers-reduced-motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

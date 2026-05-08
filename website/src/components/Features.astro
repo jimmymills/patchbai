@@ -1,0 +1,122 @@
+---
+const features = [
+  {
+    title: "Run several Claude sessions side by side",
+    body:
+      "The orchestrator spawns children with their own prompts, allowed tools, and cwd. Each gets a transcript you can scroll, a state machine you can introspect, and a direct-message input box when you want to bypass the orchestrator.",
+    icon: "agents",
+  },
+  {
+    title: "Talk to the UI like you talk to the agent",
+    body:
+      "“Open a diff viewer for the last edit”, “give me a 3-pane layout with file tree on the left”, “save that as review” — all of it routes through orchestrator tools and persists.",
+    icon: "ui",
+  },
+  {
+    title: "Structured introspection, not screen scraping",
+    body:
+      "Reads transcripts, sends messages, interrupts, kills — all via in-process MCP tools layered on the Claude Agent SDK. No PTY parsing. No fragile regex.",
+    icon: "scope",
+  },
+  {
+    title: "Persistent everything",
+    body:
+      "Workspaces (per-cwd), layouts, themes, keybindings, transcripts, and a full agent history are stored on disk and restored on next launch. Atomic writes, append-only JSONL.",
+    icon: "disk",
+  },
+  {
+    title: "Real escape hatches",
+    body:
+      "A Terminal widget is a real PTY — drop into the actual claude CLI, or your shell, in any panel. Mode-C custom widgets let the orchestrator ship Python at runtime when the curated library isn't enough.",
+    icon: "terminal",
+  },
+  {
+    title: "One shared StatusBar of truth",
+    body:
+      "Tokens, cost, and active children roll up across every running session. One window, one budget — refactor + tests + review without juggling tabs.",
+    icon: "status",
+  },
+];
+---
+
+<section id="why" class="py-20 sm:py-28">
+  <div class="container-page">
+    <div class="reveal max-w-2xl">
+      <p class="mono text-sm text-[color:var(--color-accent)]">/* why use it */</p>
+      <h2 class="mt-3 text-3xl sm:text-4xl">
+        One window. One orchestrator.<br />
+        Many agents under your supervision.
+      </h2>
+      <p class="mt-4 text-[color:var(--color-fg-muted)]">
+        Three Claude Code sessions across three terminal tabs is fine — until you're the one
+        mentally juggling which is waiting on what. Patchfeld is the room you wish you had.
+      </p>
+    </div>
+
+    <div class="mt-12 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-border)] sm:grid-cols-2 lg:grid-cols-3">
+      {
+        features.map((f, i) => (
+          <article
+            class="reveal group relative bg-[var(--color-bg-card)] p-6 sm:p-7 transition-colors hover:bg-[var(--color-bg-elev)]"
+            style={`transition-delay: ${i * 40}ms`}
+          >
+            <div class="flex items-start gap-4">
+              <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--color-border-strong)] bg-[var(--color-bg)] text-[color:var(--color-accent)]"
+                aria-hidden="true"
+              >
+                {f.icon === "agents" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="5" height="4" rx="1" />
+                    <rect x="9" y="3" width="5" height="4" rx="1" />
+                    <rect x="2" y="9" width="5" height="4" rx="1" />
+                    <rect x="9" y="9" width="5" height="4" rx="1" />
+                  </svg>
+                )}
+                {f.icon === "ui" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="3" width="12" height="10" rx="1" />
+                    <path d="M2 6h12M6 13V6" />
+                  </svg>
+                )}
+                {f.icon === "scope" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="8" cy="8" r="5.5" />
+                    <path d="M8 4v4l2.5 2.5" />
+                  </svg>
+                )}
+                {f.icon === "disk" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <ellipse cx="8" cy="4" rx="5.5" ry="2" />
+                    <path d="M2.5 4v8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2V4" />
+                    <path d="M2.5 8c0 1.1 2.5 2 5.5 2s5.5-.9 5.5-2" />
+                  </svg>
+                )}
+                {f.icon === "terminal" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="1.5" y="3" width="13" height="10" rx="1.5" />
+                    <path d="M4 7l2 2-2 2M8.5 11h3.5" />
+                  </svg>
+                )}
+                {f.icon === "status" && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M2 11l3-4 3 3 5-7" />
+                    <path d="M2 14h12" />
+                  </svg>
+                )}
+              </div>
+              <div class="flex-1">
+                <h3 class="text-base font-semibold text-[color:var(--color-fg)]">
+                  {f.title}
+                </h3>
+                <p class="mt-2 text-sm leading-relaxed text-[color:var(--color-fg-muted)]">
+                  {f.body}
+                </p>
+              </div>
+            </div>
+          </article>
+        ))
+      }
+    </div>
+  </div>
+</section>
