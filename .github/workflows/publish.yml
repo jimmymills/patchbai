@@ -1,0 +1,38 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/patchbai
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify tag matches pyproject.toml version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg_version=$(grep -E '^version = ' pyproject.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          if [ "$tag" != "$pkg_version" ]; then
+            echo "::error::Release tag '$GITHUB_REF_NAME' (stripped: '$tag') does not match pyproject.toml version '$pkg_version'"
+            exit 1
+          fi
+          echo "Tag and pyproject.toml version both at $pkg_version"
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish --trusted-publishing always
