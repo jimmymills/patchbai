@@ -54,3 +54,29 @@ def test_save_rejects_invalid_name(tmp_path: Path):
         store.save("name/with/slashes", _spec())
     with pytest.raises(ValueError):
         store.save("", _spec())
+
+
+def test_delete_unlinks_file_and_returns_true(tmp_path: Path):
+    store = NamedLayoutsStore(global_dir=tmp_path)
+    store.save("triage", _spec())
+    assert (tmp_path / "layouts" / "triage.json").exists()
+
+    assert store.delete("triage") is True
+
+    assert not (tmp_path / "layouts" / "triage.json").exists()
+    assert store.list() == []
+
+
+def test_delete_missing_returns_false(tmp_path: Path):
+    store = NamedLayoutsStore(global_dir=tmp_path)
+    assert store.delete("nope") is False
+
+
+def test_delete_rejects_invalid_name(tmp_path: Path):
+    store = NamedLayoutsStore(global_dir=tmp_path)
+    with pytest.raises(ValueError):
+        store.delete("../escape")
+    with pytest.raises(ValueError):
+        store.delete("name/with/slashes")
+    with pytest.raises(ValueError):
+        store.delete("")
