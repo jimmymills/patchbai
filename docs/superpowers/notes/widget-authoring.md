@@ -11,14 +11,15 @@ between layouts.
 ~/.config/patchbai/widgets/<name>.py
 ```
 
-The directory is auto-created if missing. Files starting with `_` or
-`.` are skipped (handy for staging `_wip.py` or vendoring deps under
-`_helpers.py`). One file per widget; the loader does not recurse into
-subdirectories.
+If `~/.config/patchbai/widgets/` doesn't exist, patchbai won't create
+it for you — `mkdir -p ~/.config/patchbai/widgets` before dropping your
+first file. (The `save_widget` MCP tool will create the directory on
+first save.) Files starting with `_` or `.` are skipped (handy for
+staging `_wip.py` or vendoring deps under `_helpers.py`). One file per
+widget; the loader does not recurse into subdirectories.
 
 The directory is resolved through `local_widgets_dir()` in
-`patchbai/persistence/paths.py`, which respects `XDG_CONFIG_HOME` and
-the `PATCHBAI_GLOBAL_DIR` test override.
+`patchbai/persistence/paths.py`, which honors `XDG_CONFIG_HOME`.
 
 ## Shape of a widget file
 
