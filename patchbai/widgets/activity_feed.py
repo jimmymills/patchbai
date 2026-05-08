@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.widgets import Static
 
 from patchbai.activity.log import ActivityEntry, ActivityKind
-from patchbai.events import ActivityLogged
+from patchbai.events import ActivityLogged, AgentFocusRequested
 
 MODES: tuple[str, ...] = ("audit", "agents", "notifs", "debug")
 
@@ -81,6 +83,56 @@ def _variant_for(entry: ActivityEntry) -> str:
     return _VARIANT.get(entry.kind, "compact")
 
 
+def _click_agent(app, entry: ActivityEntry) -> None:
+    if entry.agent_id is None:
+        return
+    app.event_bus.publish(AgentFocusRequested(agent_id=entry.agent_id))
+
+
+def _click_layout_failed(app, entry: ActivityEntry) -> None:
+    msg = entry.detail or "layout failed"
+    app.notify(msg, severity="error")
+
+
+def _click_tab_added(app, entry: ActivityEntry) -> None:
+    if entry.tab_id is None:
+        return
+    from textual.widgets import TabbedContent
+    try:
+        tc = app.query_one("#app-tabs", TabbedContent)
+    except Exception:
+        return
+    target = f"tab-{entry.tab_id}"
+    try:
+        tc.active = target
+    except Exception:
+        pass
+
+
+def _click_orch_session(app, _entry: ActivityEntry) -> None:
+    # _entry is unused; the signature is fixed by _CLICK_HANDLERS' Callable type.
+    try:
+        target = app.query("OrchestratorChat #orch-input").first()
+    except Exception:
+        return
+    target.focus()
+
+
+_CLICK_HANDLERS: dict[str, Callable[[object, ActivityEntry], None]] = {
+    ActivityKind.AGENT_SPAWNED: _click_agent,
+    ActivityKind.AGENT_STATE: _click_agent,
+    ActivityKind.AGENT_DONE: _click_agent,
+    ActivityKind.AGENT_MESSAGE: _click_agent,
+    ActivityKind.AGENT_TOOL: _click_agent,
+    ActivityKind.AGENT_ASK: _click_agent,
+    ActivityKind.AGENT_NOTIFY: _click_agent,
+    ActivityKind.AGENT_ARCHIVE: _click_agent,
+    ActivityKind.LAYOUT_FAILED: _click_layout_failed,
+    ActivityKind.TAB_ADDED: _click_tab_added,
+    ActivityKind.ORCH_SESSION: _click_orch_session,
+}
+
+
 class _ModeChip(Static):
     """Clickable mode label inside the chip strip. Carries the mode string;
     parent ActivityFeed reads `event.widget.mode` on click."""
@@ -128,7 +180,9 @@ class _ModeChips(Horizontal):
 
 class _ActivityRow(Static):
     """One feed row. Variant comes from `_variant_for(entry)`; CSS classes
-    `-variant-compact|expanded|card` drive presentation."""
+    `-variant-compact|expanded|card` drive presentation. Rows for kinds
+    with click handlers in `_CLICK_HANDLERS` add a `-clickable` class for
+    hover styling and dispatch on click."""
 
     DEFAULT_CSS = """
     _ActivityRow {
@@ -139,6 +193,9 @@ class _ActivityRow(Static):
         border: round $warning;
         padding: 0 1;
         margin: 0 0 1 0;
+    }
+    _ActivityRow.-clickable:hover {
+        background: $boost;
     }
     """
 
@@ -152,6 +209,15 @@ class _ActivityRow(Static):
         # public API; consumers (tests, click handlers) read this instead.
         self.text = text
         self.add_class(f"-variant-{variant}")
+        if entry.kind in _CLICK_HANDLERS:
+            self.add_class("-clickable")
+
+    def on_click(self, event) -> None:
+        handler = _CLICK_HANDLERS.get(self.entry.kind)
+        if handler is None:
+            return
+        handler(self.app, self.entry)
+        event.stop()
 
     @staticmethod
     def _format(entry: ActivityEntry, variant: str) -> str:

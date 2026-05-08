@@ -7,6 +7,7 @@ from patchbai.agents.sort import sort_agents
 from patchbai.agents.state import AgentInfo
 from patchbai.events import (
     AgentArchiveChanged,
+    AgentFocusRequested,
     AgentMessageAppended,
     AgentSpawned,
     AgentStateChanged,
@@ -97,6 +98,9 @@ class AgentTable(Container):
         self._unsubs.append(
             bus.subscribe(AgentArchiveChanged, self._on_archive_changed)
         )
+        self._unsubs.append(
+            bus.subscribe(AgentFocusRequested, self._on_focus_requested)
+        )
 
     def on_unmount(self) -> None:
         for u in self._unsubs:
@@ -131,6 +135,21 @@ class AgentTable(Container):
     def _on_archive_changed(self, event: AgentArchiveChanged) -> None:
         self._infos[event.info.id] = event.info
         self._rebuild_sorted()
+
+    def _on_focus_requested(self, event: AgentFocusRequested) -> None:
+        """Select the row matching event.agent_id and scroll it into view."""
+        agent_id = event.agent_id
+        if agent_id not in self._rows:
+            return
+        try:
+            table = self.query_one(DataTable)
+        except Exception:
+            return
+        for index, row_key in enumerate(table.rows.keys()):
+            if str(row_key.value) == agent_id:
+                table.move_cursor(row=index)
+                table.scroll_to(0, index, animate=False)
+                return
 
     # --- actions ----------------------------------------------------------
 
