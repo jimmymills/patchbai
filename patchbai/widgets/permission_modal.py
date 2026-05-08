@@ -183,8 +183,3 @@ class PermissionModal(ModalScreen[None]):
             agent_id=req.agent_id, request_id=req.request_id,
             behavior=behavior,
         ))
-
-
-def _short_repr(value: object, limit: int = 200) -> str:
-    s = repr(value)
-    return s if len(s) <= limit else s[: limit - 1] + "…"
