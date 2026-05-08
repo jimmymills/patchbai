@@ -42,3 +42,20 @@ class NamedLayoutsStore:
             if p.is_file() and p.suffix == ".json":
                 names.append(p.stem)
         return sorted(names)
+
+    def delete(self, name: str) -> bool:
+        """Remove the named layout's JSON file. Returns True if a file was
+        removed, False if no such file existed. Raises ValueError on names
+        that don't match the same charset enforced by `save()` — this guards
+        against any caller smuggling in `..` segments or path separators.
+        """
+        if not name or not _VALID_NAME.match(name):
+            raise ValueError(
+                f"layout name must match {_VALID_NAME.pattern!r}, got {name!r}"
+            )
+        path = self._dir / f"{name}.json"
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            return False
+        return True
