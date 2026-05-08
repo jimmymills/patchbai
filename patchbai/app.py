@@ -1266,5 +1266,23 @@ class PatchbaiApp(App):
     async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if isinstance(self.screen, (HistoryScreen, LayoutSwitcherScreen, ResumeScreen)):
             return
+        # Only treat the row as an agent_id if the originating DataTable lives
+        # inside the built-in AgentTable. Without this guard, ANY user-authored
+        # widget that owns a DataTable (e.g. MulticaIssues, whose row keys are
+        # issue identifiers like "BUO-597") would have its RowSelected message
+        # bubble here and push a TranscriptScreen modal with a bogus agent_id.
+        # That modal then sits on top of the screen stack and intercepts every
+        # subsequent tab-strip click, which is the visible "I can't click back
+        # into the Agents tab" symptom users hit after visiting Multica.
+        table = event.data_table
+        node = table.parent
+        is_agent_row = False
+        while node is not None:
+            if isinstance(node, AgentTable):
+                is_agent_row = True
+                break
+            node = node.parent
+        if not is_agent_row:
+            return
         agent_id = str(event.row_key.value)
         await self.push_screen(TranscriptScreen(agent_id=agent_id, event_bus=self.event_bus))
