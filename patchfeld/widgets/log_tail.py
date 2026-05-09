@@ -64,6 +64,22 @@ class LogTail(VerticalScroll):
             self._fp = None
 
     def _tick(self) -> None:
+        """Hand the I/O off to a worker so stat() / read() don't run on
+        the asyncio main loop. exclusive=True drops a previous tick that
+        hasn't finished yet, which is fine — we'll catch up on the next
+        interval. Mirrors the SystemUsage widget's pattern."""
+        self.run_worker(
+            self._tick_async(), exclusive=True, name="log-tail-tick",
+        )
+
+    async def _tick_async(self) -> None:
+        import asyncio
+        changed = await asyncio.to_thread(self._do_io)
+        if changed:
+            self._update_static()
+            self.scroll_end(animate=False)
+
+    def _do_io(self) -> bool:
         # Detect rotation: if the file's inode changed (or it disappeared
         # and a new one took its place), close the old fp and reopen.
         try:
@@ -88,13 +104,12 @@ class LogTail(VerticalScroll):
                         pass
 
         if self._fp is None:
-            return
+            return False
         new = self._fp.read()
         if not new:
-            return
+            return False
         self.text = (self.text + "\n" + new).strip("\n")
-        self._update_static()
-        self.scroll_end(animate=False)
+        return True
 
     def _update_static(self) -> None:
         # Wrap in Rich Text so arbitrary file content (which may contain

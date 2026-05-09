@@ -59,7 +59,7 @@ def _spawn_handler(manager: AgentManager):
 def _list_handler(manager: AgentManager):
     async def list_agents(_args: dict) -> dict:
         infos = [info.to_dict() for info in manager.list_infos()]
-        return {"content": [{"type": "text", "text": json.dumps(infos, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(infos)}]}
     return list_agents
 
 
@@ -276,7 +276,7 @@ def _list_actions_handler(actions: ActionRegistry):
             {"name": s.name, "description": s.description, "args_schema": list(s.args_schema.keys())}
             for s in actions.list()
         ]
-        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(out)}]}
     return list_actions_tool
 
 
@@ -287,7 +287,7 @@ def _list_bindings_handler(config_store: ConfigStore):
             {"key": k, "action": b.action, "args": b.args}
             for k, b in sorted(cfg.bindings.items())
         ]
-        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(out)}]}
     return list_bindings_tool
 
 
@@ -320,7 +320,7 @@ def _list_widgets_handler(registry: WidgetRegistry, outcomes_provider=None):
                     "error": getattr(o, "error", None),
                 })
         envelope = {"widgets": widgets, "errors": errors}
-        return {"content": [{"type": "text", "text": json.dumps(envelope, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(envelope)}]}
     return list_widgets_tool
 
 
@@ -351,7 +351,7 @@ def _get_layout_handler(current_layout, widget_registry: WidgetRegistry, app=Non
         except Exception:
             pass  # Titles are advisory; never block the dump.
         out = {"tab_id": tab_id, "tab_title": tab_title, "spec": dumped}
-        return {"content": [{"type": "text", "text": json.dumps(out, indent=2)}]}
+        return {"content": [{"type": "text", "text": json.dumps(out)}]}
 
     return get_layout_tool
 

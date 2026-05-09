@@ -378,3 +378,48 @@ async def test_terminal_drain_loop_respects_read_budget():
         # Scrollback should be substantial — proves we didn't drop bytes at the cap boundary.
         assert len(term._screen.history.top) > 100
         term._teardown()
+
+
+@pytest.mark.asyncio
+async def test_refresh_skips_static_update_when_screen_unchanged(tmp_path):
+    """A no-op _refresh (same Text as the last frame) must not push the
+    Static through Textual's update path. Many PTY chunks (cursor blinks,
+    escape continuations, idle reads) produce no visible change, and the
+    Static.update() that follows triggers a layout pass we want to avoid."""
+    from textual.widgets import Static
+
+    app = _Host(command=["/bin/sh", "-c", "echo unchanged"])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        term = app.query_one(Terminal)
+        # Drain the initial output.
+        for _ in range(20):
+            term._tick()
+            await pilot.pause()
+
+        # Capture the rendered text after the first refresh.
+        first = term._last_text
+        assert first is not None
+
+        # Spy on Static.update calls so we can confirm the second _refresh
+        # (with no new PTY data) doesn't reach it.
+        screen_widget = term.query_one("#terminal-screen", Static)
+        update_calls = 0
+        real_update = screen_widget.update
+
+        def counting_update(*args, **kwargs):
+            nonlocal update_calls
+            update_calls += 1
+            return real_update(*args, **kwargs)
+
+        screen_widget.update = counting_update  # type: ignore[method-assign]
+
+        # No new bytes fed → render produces identical Text → must skip.
+        term._refresh()
+        term._refresh()
+        term._refresh()
+
+        assert update_calls == 0, (
+            f"Static.update fired {update_calls}x for an unchanged screen"
+        )
+        term._teardown()

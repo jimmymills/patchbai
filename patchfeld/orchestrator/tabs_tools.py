@@ -5,13 +5,13 @@ from patchfeld.layout.spec import LayoutSpec
 
 
 def _ok(payload: dict | list) -> dict:
-    return {"content": [{"type": "text", "text": json.dumps(payload, indent=2)}]}
+    return {"content": [{"type": "text", "text": json.dumps(payload)}]}
 
 
 def _err(message: str, **extra: Any) -> dict:
     body = {"error": message}
     body.update(extra)
-    return {"content": [{"type": "text", "text": json.dumps(body, indent=2)}]}
+    return {"content": [{"type": "text", "text": json.dumps(body)}]}
 
 
 def _panel_ids(node) -> list[str]:

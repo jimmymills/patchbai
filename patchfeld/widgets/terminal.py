@@ -74,6 +74,11 @@ class Terminal(Container):
         self._timer = None
         self._reader_registered: bool = False
         self._last_write: bytes | None = None
+        # Cache of the last rendered Text so _refresh can skip Static.update
+        # (and the layout pass it triggers) when the screen is unchanged.
+        # Many PTY chunks (cursor blinks, escape continuations, idle reads)
+        # produce no visible change.
+        self._last_text = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="terminal-screen")
@@ -216,6 +221,10 @@ class Terminal(Container):
         except Exception:
             return
         text = render_screen(self._screen, show_cursor=True)
+        if self._last_text is not None and text == self._last_text:
+            # Identical to last frame — skip the Static.update + layout pass.
+            return
+        self._last_text = text
         screen.update(text)
 
     def _show_error(self, msg: str) -> None:
