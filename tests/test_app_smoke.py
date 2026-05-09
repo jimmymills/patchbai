@@ -120,6 +120,53 @@ async def test_ctrl_c_interrupts_orchestrator_from_input(tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_ctrl_c_in_agent_transcript_does_not_interrupt_orchestrator(tmp_path: Path):
+    """Symmetry: when ctrl+c fires inside an AgentTranscript input, it must
+    interrupt that child agent — NOT bubble up to the orchestrator chat or
+    the App-level handler (which would quit the app)."""
+    from textual.widgets import Input
+
+    from patchfeld.widgets.agent_transcript import AgentTranscript
+
+    app = _build_test_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        # Spawn a real child agent so its agent_id is in manager._sessions —
+        # the widget's stale-panel guard uses get_session() to decide whether
+        # to call interrupt at all, so we need a live session here.
+        agent_id = await app.manager.spawn(name="a1", prompt="hi")
+        await pilot.pause()
+
+        manager_calls: list[str] = []
+        orch_calls: list[str] = []
+
+        async def _manager_spy(aid: str) -> None:
+            manager_calls.append(aid)
+
+        async def _orch_spy() -> None:
+            orch_calls.append("interrupt")
+
+        app.manager.interrupt = _manager_spy  # type: ignore[method-assign]
+        app.orchestrator.interrupt = _orch_spy  # type: ignore[method-assign]
+
+        # Mount an AgentTranscript directly so we can focus its input.
+        widget = AgentTranscript(agent_id=agent_id, event_bus=app.event_bus)
+        await app.mount(widget)
+        await pilot.pause()
+
+        input_box = widget.query_one(Input)
+        input_box.focus()
+        await pilot.pause()
+        await pilot.press("ctrl+c")
+        await pilot.pause()
+
+        assert manager_calls == [agent_id]
+        assert orch_calls == []  # did NOT bubble up to OrchestratorChat
+        assert input_box.has_focus  # app didn't quit / lose focus
+
+
+@pytest.mark.asyncio
 async def test_layout_persists_across_app_runs(tmp_path: Path):
     # First run.
     app1 = _build_test_app(tmp_path)

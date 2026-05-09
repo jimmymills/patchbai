@@ -50,6 +50,13 @@ class AgentSession:
         self._send_lock = asyncio.Lock()
         self._pre_wait_state: AgentState | None = None
         self._pre_perm_state: AgentState | None = None
+        # Tasks created by queue_send() that are still pending or in-flight.
+        # Tracked so interrupt() can cancel them before they call
+        # adapter.query — otherwise a DirectMessageToAgent queued behind
+        # the active stream (e.g. an orchestrator's send_to_agent payload)
+        # would wake up the moment the SDK signals end-of-stream and run
+        # the queued prompt against the now-interrupted session.
+        self._queued_send_tasks: list[asyncio.Task] = []
 
     @property
     def session_id(self) -> str | None:
@@ -79,14 +86,37 @@ class AgentSession:
         in the same task will correctly block until the send completes —
         without it, wait_idle could return before the send task acquires the
         send lock.
+
+        The task is also tracked so `interrupt()` can cancel it if the user
+        interrupts before it has issued its query.
         """
         self._idle_event.clear()
-        return asyncio.create_task(self.send(prompt))
+        task = asyncio.create_task(self.send(prompt))
+        # Drop completed tasks before appending so the list doesn't grow.
+        self._queued_send_tasks = [
+            t for t in self._queued_send_tasks if not t.done()
+        ]
+        self._queued_send_tasks.append(task)
+        task.add_done_callback(self._queued_send_tasks.remove)
+        return task
 
     async def wait_idle(self) -> None:
         await self._idle_event.wait()
 
     async def interrupt(self) -> None:
+        # Cancel any send tasks that are still queued (blocked behind the
+        # active stream) BEFORE signalling the SDK. Otherwise the SDK's
+        # end-of-stream wakes them up and they post their prompt against
+        # the now-interrupted session — which is how an orchestrator's
+        # `send_to_agent` payload was landing on the child agent after
+        # the user pressed ctrl+c.
+        pending = [t for t in self._queued_send_tasks if not t.done()]
+        for task in pending:
+            task.cancel()
+        # Wait for cancellations to propagate so the lock is released
+        # before the SDK starts winding down the stream.
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
         await self._adapter.interrupt()
 
     async def stop(self) -> None:
