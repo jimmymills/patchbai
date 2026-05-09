@@ -489,7 +489,9 @@ class RichTranscript(Vertical):
             self._current_turn = None
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
-            self._unsub_msg = bus.subscribe(AgentMessageAppended, self._on_appended)
+            self._unsub_msg = bus.subscribe(
+                AgentMessageAppended, self._on_appended, agent_id=self._agent_id,
+            )
             self._unsub_state = bus.subscribe(AgentStateChanged, self._on_state_changed)
             self._unsub_switched = bus.subscribe(
                 OrchestratorSessionSwitched, self._on_session_switched,
@@ -528,8 +530,7 @@ class RichTranscript(Vertical):
         self.replace_source(Path(event.transcript_path))
 
     def _on_appended(self, event: AgentMessageAppended) -> None:
-        if event.agent_id != self._agent_id:
-            return
+        # Bus-level keyed subscription guarantees event.agent_id == self._agent_id.
         self._dispatch_entry(TranscriptEntry(
             role=event.role, text=event.text,
             tool_id=event.tool_id, tool_name=event.tool_name,
