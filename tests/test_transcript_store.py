@@ -68,3 +68,47 @@ def test_agent_transcript_path_override_reads_back(tmp_path):
     t.append(TranscriptEntry(role="assistant", text="hi"))
     out = AgentTranscript(cwd=tmp_path, agent_id="ignored", path=custom).read_all()
     assert [e.text for e in out] == ["hello", "hi"]
+
+
+def test_appends_reuse_open_handle(tmp_path):
+    """Holding a single open handle across appends collapses three
+    syscalls per append (open + write + close) to one (write). Streaming
+    agents emit many small chunks per turn, so this is on the hot path."""
+    store = OrchestratorTranscript(cwd=tmp_path)
+    store.append(TranscriptEntry(role="user", text="m0"))
+    handle = store._handle  # type: ignore[attr-defined]
+    assert handle is not None and not handle.closed
+
+    for i in range(1, 20):
+        store.append(TranscriptEntry(role="user", text=f"m{i}"))
+
+    assert store._handle is handle  # type: ignore[attr-defined]
+    assert not handle.closed
+
+
+def test_close_flushes_and_releases_handle(tmp_path):
+    """Explicit close() must flush in-flight writes and close the
+    handle so the file descriptor is released when the agent stops."""
+    store = OrchestratorTranscript(cwd=tmp_path)
+    store.append(TranscriptEntry(role="user", text="hi"))
+    handle = store._handle  # type: ignore[attr-defined]
+    assert handle is not None
+
+    store.close()
+
+    assert handle.closed
+    assert store._handle is None  # type: ignore[attr-defined]
+    # Reading back works after close.
+    out = OrchestratorTranscript(cwd=tmp_path).read_all()
+    assert [e.text for e in out] == ["hi"]
+
+
+def test_append_after_close_reopens(tmp_path):
+    """If something appends after close (e.g. resume), the store
+    transparently re-opens the handle."""
+    store = OrchestratorTranscript(cwd=tmp_path)
+    store.append(TranscriptEntry(role="user", text="a"))
+    store.close()
+    store.append(TranscriptEntry(role="user", text="b"))
+    out = OrchestratorTranscript(cwd=tmp_path).read_all()
+    assert [e.text for e in out] == ["a", "b"]
