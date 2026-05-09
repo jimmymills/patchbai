@@ -4,6 +4,8 @@
 orchestrator-managed workspace — and lets the agent reshape the UI to fit
 the work.**
 
+**[patchfeld.com](https://patchfeld.com)** · [PyPI](https://pypi.org/project/patchfeld/) · [GitHub](https://github.com/jimmymills/patchfeld)
+
 ![patchfeld — orchestrator chat on the left, agent table and activity feed on the right](https://raw.githubusercontent.com/jimmymills/patchfeld/main/docs/images/screenshot.png)
 
 ## The pitch
@@ -13,7 +15,7 @@ one's writing tests, one's doing a security pass. They live in three
 terminal tabs with three scrollbacks, and you're the one mentally juggling
 which is waiting on what.
 
-**Patchfeld is the room you wish you had.** One TUI. One top-level Claude —
+**Patchfeld is a studio for orchestrating agents.** One TUI. One top-level Claude —
 the *orchestrator* — runs the show. You tell it what you want done in
 plain English; it spawns the right children with the right tool
 allowlists, watches their progress, and pulls them onscreen when they
@@ -83,7 +85,7 @@ the ideas.
   the actual `claude` CLI, or your shell, in any panel. Mode-C custom
   widgets let the orchestrator ship Python at runtime when the curated
   widget library isn't enough.
-- **Approve tool calls without leaving the room.** When a child wants
+- **Approve tool calls without leaving the workspace.** When a child wants
   to use a tool that isn't auto-approved, a modal pops in patchfeld with
   the tool name and full arguments. Approve once, deny once, always
   allow this tool for any agent named X (persisted to disk), or always
