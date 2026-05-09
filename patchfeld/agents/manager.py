@@ -12,6 +12,7 @@ from claude_agent_sdk import (
     PermissionResultDeny,
     ToolPermissionContext,
 )
+from claude_agent_sdk.types import SystemPromptPreset
 
 from patchfeld.agents.child_tools import build_child_mcp_server
 from patchfeld.agents.permission_grants import PermissionGrants
@@ -31,6 +32,37 @@ from patchfeld.events import (
 )
 from patchfeld.persistence.agents_index import AgentsIndex
 from patchfeld.persistence.transcript_store import AgentTranscript, TranscriptEntry
+
+
+# Appended to every child agent's Claude Code system prompt. Tells the model
+# about the `patchfeld_child` MCP tools (visible as
+# `mcp__patchfeld_child__notify_orchestrator` and
+# `mcp__patchfeld_child__ask_orchestrator`) — without this nudge, freshly
+# spawned children don't reliably reach for them when they should be pinging
+# status or asking the parent a real blocking question.
+_CHILD_SYSTEM_APPEND = """\
+## Talking to the orchestrator (patchfeld_child)
+
+You are a child agent spawned by an orchestrator (the parent). The
+`patchfeld_child` MCP server gives you two tools — they are the ONLY way
+the parent sees what you are doing between turns; nobody is tailing your
+transcript.
+
+- `mcp__patchfeld_child__notify_orchestrator(message)` — fire-and-forget
+  status ping shown in the parent's UI. Use it at real milestones:
+  "starting investigation", "finished investigation", "tests passing",
+  "hit X, working around it". Do not spam — one ping per minor file edit
+  is noise. Do not restate things already visible in your transcript.
+- `mcp__patchfeld_child__ask_orchestrator(question)` — synchronous Q→A
+  that blocks your turn until the parent/user replies (default 300s
+  timeout, then returns a timeout message instead of raising — handle
+  that case, do not loop on it). Use ONLY when truly blocked on a
+  decision: ambiguous spec, missing credential, choice between two
+  valid designs. Do not use it to confirm routine progress, ask
+  permission you already have, or defer your own judgment.
+
+Default posture: just do the task and `notify_orchestrator` at the end.
+Reach for `ask_orchestrator` only for real blockers."""
 
 
 class AgentManager:
@@ -163,8 +195,20 @@ class AgentManager:
             kwargs["disallowed_tools"] = opts["disallowed_tools"]
         if opts.get("model") is not None:
             kwargs["model"] = opts["model"]
-        if opts.get("system_prompt") is not None:
-            kwargs["system_prompt"] = opts["system_prompt"]
+        # Always inject the orchestrator-comms guidance into the child's
+        # system prompt via the claude_code preset's `append` slot. If a
+        # caller supplied their own `system_prompt`, prepend it to the
+        # guidance so neither is lost — the caller's role/persona stays in
+        # the system prompt AND the child still learns about
+        # notify_orchestrator / ask_orchestrator.
+        user_sp = opts.get("system_prompt")
+        if user_sp is None:
+            append = _CHILD_SYSTEM_APPEND
+        else:
+            append = f"{user_sp}\n\n{_CHILD_SYSTEM_APPEND}"
+        kwargs["system_prompt"] = SystemPromptPreset(
+            type="preset", preset="claude_code", append=append,
+        )
         if resume_session_id is not None:
             kwargs["resume"] = resume_session_id
         return ClaudeAgentOptions(**kwargs)
