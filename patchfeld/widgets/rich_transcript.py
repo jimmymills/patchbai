@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 from rich.markdown import Markdown as _RichMarkdown
@@ -31,6 +32,49 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _SPINNER_INTERVAL_S = 0.08
 
 
+class _SpinnerHub:
+    """One Textual timer drives every running spinner.
+
+    Each spinning Collapsible used to schedule its own 12.5 Hz timer;
+    a single turn could have a tool call + thinking group + outer
+    process group all spinning, costing ~37 title-rebuilds/second on
+    the Textual main loop. Subscribing to the hub coalesces all of
+    that onto a single timer, started lazily on first subscribe and
+    stopped when the last subscriber leaves.
+    """
+
+    def __init__(self) -> None:
+        self._subscribers: dict[Callable[[], None], None] = {}  # ordered set
+        self._timer: object | None = None
+        self.phase: int = 0
+
+    def subscribe(self, widget, on_tick: Callable[[], None]) -> object:
+        self._subscribers[on_tick] = None
+        if self._timer is None:
+            self._timer = widget.app.set_interval(_SPINNER_INTERVAL_S, self._tick)
+        return on_tick
+
+    def unsubscribe(self, on_tick: Callable[[], None]) -> None:
+        self._subscribers.pop(on_tick, None)
+        if not self._subscribers and self._timer is not None:
+            try:
+                self._timer.stop()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            self._timer = None
+
+    def _tick(self) -> None:
+        self.phase = (self.phase + 1) % len(_SPINNER_FRAMES)
+        for cb in list(self._subscribers):
+            try:
+                cb()
+            except Exception:
+                pass
+
+
+_spinner_hub = _SpinnerHub()
+
+
 class _ToolCall(Collapsible):
     """One tool invocation. Expanded while running, collapsed on result."""
 
@@ -44,8 +88,7 @@ class _ToolCall(Collapsible):
         self.tool_id = tool_id
         self.tool_name = tool_name or "?"
         self._args_text = args_text
-        self._spinner_idx = 0
-        self._spinner_timer = None
+        self._spinner_timer = None  # tracking handle: None = not subscribed
         self._done = False
         self._args_static = Static(self._build_args_text())
         self._result_static = Static(Text("(running…)", style="dim"))
@@ -59,10 +102,9 @@ class _ToolCall(Collapsible):
     def on_mount(self) -> None:
         if self._done:
             return
-        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
+        self._spinner_timer = _spinner_hub.subscribe(self, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
-        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
         self.title = self._build_running_title()
 
     def _build_args_text(self) -> Text:
@@ -75,7 +117,7 @@ class _ToolCall(Collapsible):
         # Truncated, plain-string title — Collapsible accepts str.
         # Escape user-provided text so brackets don't get parsed as markup.
         short = self._args_text if len(self._args_text) <= 60 else self._args_text[:57] + "…"
-        return f"{_SPINNER_FRAMES[self._spinner_idx]} {_markup_escape(self.tool_name)}({_markup_escape(short)})"
+        return f"{_SPINNER_FRAMES[_spinner_hub.phase]} {_markup_escape(self.tool_name)}({_markup_escape(short)})"
 
     def _build_done_title(self, result_text: str, *, error: bool) -> str:
         marker = "✗" if error else "✓"
@@ -84,11 +126,14 @@ class _ToolCall(Collapsible):
             short = short[:77] + "…"
         return f"{marker} {_markup_escape(self.tool_name)} → {_markup_escape(short)}"
 
+    def _stop_spinner(self) -> None:
+        if self._spinner_timer is not None:
+            _spinner_hub.unsubscribe(self._tick_spinner)
+            self._spinner_timer = None
+
     def attach_result(self, content_text: str, *, error: bool = False) -> None:
         self._done = True
-        if self._spinner_timer is not None:
-            self._spinner_timer.stop()
-            self._spinner_timer = None
+        self._stop_spinner()
         body = Text()
         body.append("result: ", style="bold")
         body.append(content_text, style="red" if error else "")
@@ -98,9 +143,7 @@ class _ToolCall(Collapsible):
 
     def mark_done(self) -> None:
         self._done = True
-        if self._spinner_timer is not None:
-            self._spinner_timer.stop()
-            self._spinner_timer = None
+        self._stop_spinner()
         # Called when the turn ends. If no result ever attached (shouldn't
         # normally happen), still collapse the foldable.
         # NOTE: use .content (not .renderable) for this Textual version.
@@ -123,7 +166,6 @@ class _ThinkingGroup(Collapsible):
         self._body_static = Static(Text(""))
         self._started = time.monotonic()
         self._done = False
-        self._spinner_idx = 0
         self._spinner_timer = None
         super().__init__(
             self._body_static,
@@ -132,15 +174,14 @@ class _ThinkingGroup(Collapsible):
         )
 
     def _build_running_title(self) -> str:
-        return f"{_SPINNER_FRAMES[self._spinner_idx]} Thinking…"
+        return f"{_SPINNER_FRAMES[_spinner_hub.phase]} Thinking…"
 
     def on_mount(self) -> None:
         if self._done:
             return
-        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick_spinner)
+        self._spinner_timer = _spinner_hub.subscribe(self, self._tick_spinner)
 
     def _tick_spinner(self) -> None:
-        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
         self.title = self._build_running_title()
 
     def append(self, text: str) -> None:
@@ -156,7 +197,7 @@ class _ThinkingGroup(Collapsible):
             return
         self._done = True
         if self._spinner_timer is not None:
-            self._spinner_timer.stop()
+            _spinner_hub.unsubscribe(self._tick_spinner)
             self._spinner_timer = None
         elapsed = time.monotonic() - self._started
         self.title = f"Thought for {elapsed:.1f}s"
@@ -187,7 +228,6 @@ class _ProcessGroup(Collapsible):
         self._tool_count = 0
         self._started = time.monotonic()
         self._done = False
-        self._spinner_idx = 0
         self._spinner_timer = None
         super().__init__(
             self._body,
@@ -196,7 +236,7 @@ class _ProcessGroup(Collapsible):
         )
 
     def _build_running_title(self) -> str:
-        return f"{_SPINNER_FRAMES[self._spinner_idx]} Working…"
+        return f"{_SPINNER_FRAMES[_spinner_hub.phase]} Working…"
 
     def on_mount(self) -> None:
         # _body is mounted via Collapsible.compose → Contents → _body. By
@@ -205,10 +245,9 @@ class _ProcessGroup(Collapsible):
         self._flush_pending()
         if self._done:
             return
-        self._spinner_timer = self.set_interval(_SPINNER_INTERVAL_S, self._tick)
+        self._spinner_timer = _spinner_hub.subscribe(self, self._tick)
 
     def _tick(self) -> None:
-        self._spinner_idx = (self._spinner_idx + 1) % len(_SPINNER_FRAMES)
         self.title = self._build_running_title()
 
     def _flush_pending(self) -> None:
@@ -235,7 +274,7 @@ class _ProcessGroup(Collapsible):
             return
         self._done = True
         if self._spinner_timer is not None:
-            self._spinner_timer.stop()
+            _spinner_hub.unsubscribe(self._tick)
             self._spinner_timer = None
         # Propagate done to pending children so they don't start spinners
         # when they finally mount inside a collapsed group.
