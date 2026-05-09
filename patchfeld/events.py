@@ -229,20 +229,46 @@ class EventBus:
 
     Handlers are called in subscription order. Handler exceptions are logged
     and swallowed so one bad handler can't take down the others.
+
+    Subscribers can optionally key on `agent_id`: with N agent transcripts
+    mounted, every `AgentMessageAppended` used to fan out to all N
+    subscribers, each of which immediately filtered out events for other
+    agents. Passing `agent_id=...` to `subscribe` moves that filter into
+    the bus so the dispatch list is already O(matching) instead of O(all).
+    Type-wide subscribers (no `agent_id` kwarg) keep their existing
+    semantics — they receive every event of the matching type.
     """
 
     def __init__(self) -> None:
         self._subs: dict[type, list[Callable]] = {}
+        self._keyed_subs: dict[tuple[type, str], list[Callable]] = {}
 
-    def subscribe(self, event_type: type[E], handler: Callable[[E], None]) -> Unsubscribe:
-        self._subs.setdefault(event_type, []).append(handler)
+    def subscribe(
+        self,
+        event_type: type[E],
+        handler: Callable[[E], None],
+        *,
+        agent_id: str | None = None,
+    ) -> Unsubscribe:
+        if agent_id is None:
+            self._subs.setdefault(event_type, []).append(handler)
 
-        def unsubscribe() -> None:
-            handlers = self._subs.get(event_type)
+            def unsubscribe() -> None:
+                handlers = self._subs.get(event_type)
+                if handlers and handler in handlers:
+                    handlers.remove(handler)
+
+            return unsubscribe
+
+        key = (event_type, agent_id)
+        self._keyed_subs.setdefault(key, []).append(handler)
+
+        def unsubscribe_keyed() -> None:
+            handlers = self._keyed_subs.get(key)
             if handlers and handler in handlers:
                 handlers.remove(handler)
 
-        return unsubscribe
+        return unsubscribe_keyed
 
     def publish(self, event: object) -> None:
         """Dispatch `event` to all current subscribers of `type(event)`.
@@ -252,8 +278,24 @@ class EventBus:
         publish — their removal takes effect on subsequent publishes.
 
         Subscribers of subclasses are NOT matched (exact-type dispatch only).
+
+        Keyed subscribers (those that passed `agent_id` to `subscribe`) are
+        only invoked when the event carries a matching `agent_id` attribute.
         """
-        for handler in list(self._subs.get(type(event), [])):
+        event_type = type(event)
+        for handler in list(self._subs.get(event_type, [])):
+            try:
+                handler(event)
+            except Exception:
+                log.exception("EventBus handler raised")
+
+        agent_id = getattr(event, "agent_id", None)
+        if agent_id is None:
+            return
+        keyed = self._keyed_subs.get((event_type, agent_id))
+        if not keyed:
+            return
+        for handler in list(keyed):
             try:
                 handler(event)
             except Exception:

@@ -51,23 +51,25 @@ class AgentTranscript(Vertical):
     def on_mount(self) -> None:
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
-            self._unsub_perm_req = bus.subscribe(PermissionRequested, self._on_perm_request)
-            self._unsub_perm_res = bus.subscribe(PermissionResolved, self._on_perm_resolved)
+            self._unsub_perm_req = bus.subscribe(
+                PermissionRequested, self._on_perm_request, agent_id=self._agent_id,
+            )
+            self._unsub_perm_res = bus.subscribe(
+                PermissionResolved, self._on_perm_resolved, agent_id=self._agent_id,
+            )
 
     def on_unmount(self) -> None:
         self._unsub_perm_req()
         self._unsub_perm_res()
 
     def _on_perm_request(self, event: PermissionRequested) -> None:
-        if event.agent_id != self._agent_id:
-            return
+        # Bus-level keyed subscription guarantees event.agent_id == self._agent_id.
         from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         bar = PermissionRequestBar(request=event)
         self.mount(bar, before=self.query_one(RichTranscript))
 
     def _on_perm_resolved(self, event: PermissionResolved) -> None:
-        if event.agent_id != self._agent_id:
-            return
+        # Bus-level keyed subscription guarantees event.agent_id == self._agent_id.
         from patchfeld.widgets.permission_request_bar import PermissionRequestBar
         for bar in list(self.query(PermissionRequestBar)):
             if bar.request_id == event.request_id:

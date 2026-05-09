@@ -185,6 +185,78 @@ def test_open_resume_picker_event_is_constructible():
     OpenResumePicker()  # smoke
 
 
+def test_keyed_subscribe_only_receives_events_for_matching_agent_id():
+    """A subscriber that opts into agent_id keying must NOT see events from
+    other agents. With many agents mounted this avoids N-way fanout where
+    every subscriber re-checks event.agent_id itself."""
+    from patchfeld.events import AgentMessageAppended
+
+    bus = EventBus()
+    a1, a2 = [], []
+    bus.subscribe(AgentMessageAppended, a1.append, agent_id="a1")
+    bus.subscribe(AgentMessageAppended, a2.append, agent_id="a2")
+
+    bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="hi"))
+    bus.publish(AgentMessageAppended(agent_id="a2", role="assistant", text="ho"))
+    bus.publish(AgentMessageAppended(agent_id="a3", role="assistant", text="ignored"))
+
+    assert [e.text for e in a1] == ["hi"]
+    assert [e.text for e in a2] == ["ho"]
+
+
+def test_typewide_subscribers_still_receive_all_events_after_keyed_subs_added():
+    """Adding keyed subscribers must not change behavior for type-only
+    subscribers — they still see every event, regardless of agent_id."""
+    from patchfeld.events import AgentMessageAppended
+
+    bus = EventBus()
+    type_wide: list[AgentMessageAppended] = []
+    keyed_a1: list[AgentMessageAppended] = []
+
+    bus.subscribe(AgentMessageAppended, type_wide.append)  # no agent_id
+    bus.subscribe(AgentMessageAppended, keyed_a1.append, agent_id="a1")
+
+    bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="x"))
+    bus.publish(AgentMessageAppended(agent_id="a2", role="assistant", text="y"))
+
+    assert [e.agent_id for e in type_wide] == ["a1", "a2"]
+    assert [e.agent_id for e in keyed_a1] == ["a1"]
+
+
+def test_keyed_subscribe_unsubscribe_works():
+    """The returned Unsubscribe callable removes a keyed subscription
+    without affecting other keys or type-wide subscribers."""
+    from patchfeld.events import AgentMessageAppended
+
+    bus = EventBus()
+    received: list[AgentMessageAppended] = []
+    unsub = bus.subscribe(AgentMessageAppended, received.append, agent_id="a1")
+
+    bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="first"))
+    unsub()
+    bus.publish(AgentMessageAppended(agent_id="a1", role="assistant", text="second"))
+
+    assert [e.text for e in received] == ["first"]
+
+
+def test_keyed_subscribers_handle_event_with_no_agent_id_field():
+    """If the event class has no agent_id (e.g. StatsUpdated), keyed
+    subscribers are simply not eligible — only type-wide subs receive it.
+    This guards against accidentally dispatching the wrong shape of event."""
+    from patchfeld.events import StatsUpdated
+
+    bus = EventBus()
+    type_wide: list[StatsUpdated] = []
+    keyed: list[StatsUpdated] = []
+    bus.subscribe(StatsUpdated, type_wide.append)
+    bus.subscribe(StatsUpdated, keyed.append, agent_id="a1")
+
+    bus.publish(StatsUpdated(tokens_in=1))
+
+    assert len(type_wide) == 1
+    assert keyed == []
+
+
 def test_permission_request_events_carry_required_fields():
     from patchfeld.events import PermissionRequested, PermissionResolved
     req = PermissionRequested(

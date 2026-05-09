@@ -367,7 +367,7 @@ class OrchestratorSession:
             UserMessageToOrchestrator, self._on_user_message
         )
         self._unsub_msg = self._bus.subscribe(
-            AgentMessageAppended, self._on_message_appended
+            AgentMessageAppended, self._on_message_appended, agent_id=self.AGENT_ID,
         )
         self._unsub_notify = self._bus.subscribe(
             AgentNotifiedOrchestrator, self._on_child_notified
@@ -819,8 +819,7 @@ class OrchestratorSession:
         ))
 
     def _on_message_appended(self, event: AgentMessageAppended) -> None:
-        if event.agent_id != self.AGENT_ID:
-            return
+        # Bus-level keyed subscription guarantees event.agent_id == self.AGENT_ID.
         # RichTranscript subscribes to AgentMessageAppended directly for tool
         # use/result/thinking — only re-publish assistant text, which is the
         # public "the orchestrator said something" signal other code asserts on.
