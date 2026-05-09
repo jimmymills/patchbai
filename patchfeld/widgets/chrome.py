@@ -6,7 +6,7 @@ from textual.containers import Horizontal
 from textual.widgets import Input, Static
 
 from patchfeld.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
-from patchfeld.orchestrator.slash_completion import SlashCompleter
+from patchfeld.orchestrator.slash_completion import SlashCompleter, SlashSuggester
 
 
 def _format_cwd(path: Path, *, available_width: int) -> str:
@@ -85,6 +85,18 @@ class CommandBar(Horizontal):
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_reply = bus.subscribe(OrchestratorReply, self._on_reply)
+        # Attach the ghost-text suggester after mount so we can fall back to
+        # `app.slash_completer` when no completer was injected at construction.
+        # Set every time on_mount fires (theme/cwd swap rebuilds the widget)
+        # so the suggester always points at the live completer instance.
+        completer = self._resolve_completer()
+        if completer is not None:
+            try:
+                self.query_one("#cmd-input", Input).suggester = (
+                    SlashSuggester(completer)
+                )
+            except Exception:
+                pass
 
     def on_unmount(self) -> None:
         self._unsub_reply()

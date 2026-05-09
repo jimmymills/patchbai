@@ -36,6 +36,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
+from textual.suggester import Suggester
+
 from patchfeld.orchestrator.skills import SkillsIndex
 
 
@@ -205,3 +207,41 @@ class SlashCompleter:
             "last_set": new_text,
         }
         return CompletionResult(text=new_text, cursor=len(new_text))
+
+
+class SlashSuggester(Suggester):
+    """Textual `Suggester` adapter exposing a `SlashCompleter`'s first
+    match as in-input ghost text.
+
+    The Textual `Input` widget polls a `Suggester` whenever its value
+    changes; if `get_suggestion(value)` returns a string that has `value`
+    as a (case-insensitive) prefix, Input renders the suffix in a faded
+    color after the cursor — the user sees what Tab is about to fill.
+
+    We share `SlashCompleter` rather than carry our own candidate set so
+    the preview cannot drift from the Tab-completion behaviour: identical
+    trigger predicate, identical match function, identical sort order →
+    the previewed command is always the very command Tab will fill.
+    """
+
+    def __init__(self, completer: SlashCompleter) -> None:
+        # use_cache=False because the underlying SkillsIndex is already a
+        # cheap dict lookup — caching adds nothing — and disabling it
+        # avoids surprising staleness if anyone ever swaps the completer
+        # at runtime. case_sensitive=False so the user sees a sensible
+        # preview when they type `/K` and the canonical command is
+        # lowercase (`/kb-query`).
+        super().__init__(use_cache=False, case_sensitive=False)
+        self._completer = completer
+
+    async def get_suggestion(self, value: str) -> str | None:
+        # Re-use the same trigger predicate that gates the Tab handler so
+        # the preview can never appear in positions where Tab is a no-op
+        # (mid-argument, no leading slash, trailing space after a fresh
+        # completion, …).
+        if not SlashCompleter._is_fresh_trigger(value):
+            return None
+        matches = self._completer.match(value)
+        if not matches:
+            return None
+        return matches[0]

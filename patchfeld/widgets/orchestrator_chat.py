@@ -4,7 +4,7 @@ from textual.containers import Vertical
 from textual.widgets import Input
 
 from patchfeld.events import EventBus, UserMessageToOrchestrator
-from patchfeld.orchestrator.slash_completion import SlashCompleter
+from patchfeld.orchestrator.slash_completion import SlashCompleter, SlashSuggester
 from patchfeld.widgets.rich_transcript import RichTranscript
 
 
@@ -57,6 +57,20 @@ class OrchestratorChat(Vertical):
             ),
             id="orch-input",
         )
+
+    def on_mount(self) -> None:
+        """Attach the ghost-text suggester to the chat input as soon as we
+        have access to the host app's `slash_completer`. Re-runs on every
+        remount (theme/cwd swap rebuilds this widget) so the suggester
+        always points at the live completer instance."""
+        completer = self._resolve_completer()
+        if completer is not None:
+            try:
+                self.query_one("#orch-input", Input).suggester = (
+                    SlashSuggester(completer)
+                )
+            except Exception:
+                pass
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if not event.value.strip():
