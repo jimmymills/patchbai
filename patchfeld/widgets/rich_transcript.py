@@ -217,6 +217,12 @@ class _ProcessGroup(Collapsible):
     _ProcessGroup {
         margin: 0;
     }
+    /* Vertical defaults to height: 1fr, which inside Collapsible's auto-sized
+       Contents grows to fill the viewport and bloats the expanded fold. The
+       body should hug its child steps. */
+    _ProcessGroup Vertical {
+        height: auto;
+    }
     """
 
     def __init__(self) -> None:
