@@ -23,6 +23,7 @@ from patchfeld.layout.local_widgets import LocalWidgetLoader, LoadOutcome
 from patchfeld.layout.registry import WidgetRegistry
 from patchfeld.layout.spec import LayoutSpec
 from patchfeld.orchestrator.session import OrchestratorSession
+from patchfeld.orchestrator.skills import SkillsIndex, default_skills_index
 from patchfeld.persistence.layouts_store import NamedLayoutsStore
 from patchfeld.persistence.themes_store import NamedThemesStore
 from patchfeld.persistence.paths import global_config_dir, local_widgets_dir
@@ -340,6 +341,18 @@ class PatchfeldApp(App):
         # Unsub callable for the PermissionRequested handler; None when bypass mode.
         self._unsub_permission_requested: "callable | None" = None
 
+        # Discover locally-installed skills once at app construction. The
+        # set is reused on every orchestrator rebuild (after /cd or
+        # /bypass-permissions) so the user sees a stable list of `/<skill>`
+        # commands across sessions. To pick up a newly-installed skill,
+        # restart the app — same as the widget loader.
+        from patchfeld.orchestrator.session import (
+            _BUILTIN_COMMAND_NAMES as _ORCH_BUILTINS,
+        )
+        self._skills_index: SkillsIndex = default_skills_index(
+            builtin_command_names=_ORCH_BUILTINS,
+        )
+
         self.manager = manager or AgentManager(
             cwd=self.cwd,
             bus=self.event_bus,
@@ -360,6 +373,7 @@ class PatchfeldApp(App):
             current_layout=lambda: self._active_layout(),
             app=self,
             permission_grants=self._permission_grants,
+            skills=self._skills_index,
         )
         # Production opts in to LLM-summarized session titles.
         self.orchestrator._auto_title_enabled = True
@@ -1071,6 +1085,7 @@ class PatchfeldApp(App):
                 current_layout=lambda: self._active_layout(),
                 app=self,
                 permission_grants=self._permission_grants,
+                skills=self._skills_index,
             )
             self.orchestrator._auto_title_enabled = True
             await self.orchestrator.start()
@@ -1169,6 +1184,7 @@ class PatchfeldApp(App):
                 current_layout=lambda: self._active_layout(),
                 app=self,
                 permission_grants=self._permission_grants,
+                skills=self._skills_index,
             )
             self.orchestrator._auto_title_enabled = True
             await self.orchestrator.start()

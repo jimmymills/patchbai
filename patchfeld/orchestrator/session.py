@@ -38,6 +38,7 @@ from patchfeld.events import (
     UserMessageToOrchestrator,
 )
 
+from patchfeld.orchestrator.skills import SkillsIndex
 from patchfeld.orchestrator.tools import build_orchestrator_mcp_server
 from patchfeld.persistence.orchestrator_sessions import (
     OrchestratorSessionEntry,
@@ -58,8 +59,23 @@ _HELP_RE = re.compile(r"^/help\s*$")
 _CD_RE = re.compile(r"^/cd\s+(.+?)\s*$")
 _BYPASS_PERMS_RE = re.compile(r"^/bypass-permissions\s*$")
 _REQUIRE_PERMS_RE = re.compile(r"^/require-permissions\s*$")
+# /<skill-name> <args...> — dispatch order is: built-in first, then skill,
+# then unknown-slash error. Name alphabet matches `_SKILL_NAME_RE` in
+# `patchfeld.orchestrator.skills`, anchored so we never match accidental
+# leading-slash text like "/path/to/file".
+_SKILL_RE = re.compile(r"^/([A-Za-z0-9][A-Za-z0-9_\-]*)(?:\s+(.*))?$")
 
-_HELP_TEXT = (
+# Names of all built-in slash commands. Used for two purposes:
+#   1) Skill discovery logs a warning when a skill collides with one of these.
+#   2) An "unknown slash command" reply must NOT fire for these — but in
+#      practice the explicit per-command regexes already handle them, so this
+#      list is informational. Keep it in sync with the regexes above.
+_BUILTIN_COMMAND_NAMES: frozenset[str] = frozenset({
+    "reset", "resume", "rename", "help", "cd",
+    "bypass-permissions", "require-permissions",
+})
+
+_HELP_TEXT_BASE = (
     "Available commands:\n"
     "  /reset                     Start a fresh orchestrator session\n"
     "  /resume [<session_id>]     Resume a past session (no arg → picker)\n"
@@ -69,6 +85,42 @@ _HELP_TEXT = (
     "  /require-permissions       Re-enable the permission modal (default)\n"
     "  /help                      Show this list"
 )
+
+
+def _format_skill_invocation(name: str, args: str) -> str:
+    """Translate `/<skill> <args>` into a prose prompt that nudges the LLM
+    to call the `Skill` tool with `skill=<name>` and `args=<args>`.
+
+    Implementation note: the harness's `Skill` tool uses two parameters —
+    `skill` (the bare name) and `args` (a free-form string). We surface both
+    explicitly. We also tell the model to invoke the skill *immediately* so
+    it doesn't ask clarifying questions before reading the SKILL.md body.
+    """
+    if args:
+        return (
+            f"Use the `Skill` tool to invoke the `{name}` skill now. "
+            f"Pass the following text as the `args` parameter: {args}"
+        )
+    return (
+        f"Use the `Skill` tool to invoke the `{name}` skill now "
+        f"(no extra arguments)."
+    )
+
+
+def _format_help_text(skills: SkillsIndex) -> str:
+    """Compose the /help reply: built-in commands plus a `Skills:` section
+    listing discovered skill names. The skills section is omitted entirely
+    when the index is empty so the output stays clean on bare installs."""
+    text = _HELP_TEXT_BASE
+    names = skills.names()
+    if not names:
+        return text
+    skills_line = "Skills: " + ", ".join(f"/{n}" for n in names)
+    note = (
+        "  (run any with `/<name> <args>` to invoke. Built-in commands above "
+        "win on name collisions — collided skills are still reachable via prose.)"
+    )
+    return text + "\n\n" + skills_line + "\n" + note
 
 _TITLE_PROMPT = (
     "Summarize the following user message in 5-7 words for use as a session "
@@ -137,6 +189,7 @@ class OrchestratorSession:
         current_layout=None,
         app=None,
         permission_grants: PermissionGrants | None = None,
+        skills: SkillsIndex | None = None,
     ) -> None:
         self._cwd = cwd
         self._bus = bus
@@ -179,6 +232,9 @@ class OrchestratorSession:
         self._auto_title_enabled: bool = False
         self._title_task: asyncio.Task | None = None
         self._grants = permission_grants
+        # Skills registry (immutable for the lifetime of the session). Empty
+        # default keeps tests and headless callers from having to pass one.
+        self._skills: SkillsIndex = skills if skills is not None else SkillsIndex()
         self._can_use_tool_callback: CanUseTool | None = None
         if permission_grants is not None:
             self._perm_inbox: PermissionInbox | None = PermissionInbox(
@@ -509,9 +565,36 @@ class OrchestratorSession:
             )
             return
         if _HELP_RE.match(text):
-            self._publish_notice(_HELP_TEXT)
+            self._publish_notice(_format_help_text(self._skills))
             return
-        # Fall through: ordinary prompt.
+        # --- skill slash commands (after all built-ins) -------------------
+        # Built-ins win on name collisions: by the time we get here, every
+        # built-in regex has had its chance, so any `/name ...` left over is
+        # either a skill or unknown.
+        m = _SKILL_RE.match(text)
+        if m:
+            name = m.group(1)
+            args = (m.group(2) or "").strip()
+            entry = self._skills.get(name)
+            if entry is not None:
+                # Translate (design decision a): rewrite the slash line into a
+                # prose prompt that nudges the orchestrator's LLM to invoke
+                # the matching `Skill` tool. We don't synthesize a tool_use
+                # block ourselves — the SDK has no public seam for that.
+                self._send_tasks = [t for t in self._send_tasks if not t.done()]
+                rewritten = _format_skill_invocation(name, args)
+                task = self._inner.queue_send(rewritten)
+                self._send_tasks.append(task)
+                return
+            # Unknown slash — clear error rather than wasting tokens by
+            # forwarding `/<typo>` to the LLM as a raw prompt.
+            self._publish_notice(
+                f"unknown command or skill: /{name}. Try /help."
+            )
+            return
+        # Fall through: ordinary prompt (no leading slash, or a slash followed
+        # by something that doesn't look like a skill name — e.g. the user
+        # pasted "/path/to/file" as part of a sentence).
         if self._current_session_first_message is None:
             self._current_session_first_message = text
         self._send_tasks = [t for t in self._send_tasks if not t.done()]

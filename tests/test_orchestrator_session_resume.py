@@ -293,16 +293,31 @@ async def test_open_resume_picker_published_on_bare_resume(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_unknown_slash_command_falls_through_to_sdk(tmp_path):
+async def test_unknown_slash_command_replies_with_error(tmp_path):
+    """A slash command that matches neither a built-in nor a discovered
+    skill should NOT be forwarded to the SDK — the orchestrator instead
+    publishes an `OrchestratorReply` naming the command and pointing at
+    `/help`. Forwarding `/<typo>` to the LLM wastes tokens and the model
+    typically apologizes / asks for clarification, which isn't useful UX.
+
+    (Plain text without a leading `/` still falls through; see
+    `tests/test_orchestrator_skills.py::test_non_slash_message_still_forwards_to_sdk`.)
+    """
+    from patchfeld.events import OrchestratorReply, UserMessageToOrchestrator
+
     adapter = _RecordingAdapter(scripts=[_ok_script(), _ok_script()])
     orch, bus = _build_orch(tmp_path, adapter=adapter)
+    replies: list[OrchestratorReply] = []
+    bus.subscribe(OrchestratorReply, replies.append)
     await orch.start()
     try:
-        from patchfeld.events import UserMessageToOrchestrator
         bus.publish(UserMessageToOrchestrator("/notacommand"))
         await orch.wait_idle()
-        # Adapter saw the prompt as a query.
-        assert adapter._next_query_index == 1
+        # The SDK was NOT queried with the unknown slash text.
+        assert adapter._next_query_index == 0
+        # The user got a clear error reply.
+        joined = "\n".join(r.text for r in replies)
+        assert "notacommand" in joined and "unknown" in joined.lower()
     finally:
         await orch.stop()
 
