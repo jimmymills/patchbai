@@ -342,6 +342,13 @@ class PatchfeldApp(App):
         # Unsub callable for the PermissionRequested handler; None when bypass mode.
         self._unsub_permission_requested: "callable | None" = None
 
+        # Stats aggregation cache. Per-agent snapshots let AgentTokensTouched
+        # update the totals incrementally instead of re-walking every agent's
+        # info on every ResultMessage. Refreshed in full on spawn/state change.
+        self._stats_per_agent: dict[str, tuple[int, int, float]] = {}
+        self._stats_totals: tuple[int, int, float] = (0, 0, 0.0)
+        self._stats_active: int = 0
+
         # Discover locally-installed skills once at app construction. The
         # set is reused on every orchestrator rebuild (after /cd or
         # /bypass-permissions) so the user sees a stable list of `/<skill>`
@@ -1203,11 +1210,11 @@ class PatchfeldApp(App):
 
     # --- stats aggregation -------------------------------------------------
 
-    def _on_stats_changed(self, _event) -> None:
-        """Re-aggregate token / cost / active-agent counters across the
-        orchestrator and every child agent, and publish a StatsUpdated event
-        so the StatusBar repaints. Fired by AgentTokensTouched (every
-        ResultMessage), AgentSpawned, and AgentStateChanged."""
+    def _full_rescan_stats(self) -> tuple[int, int, float, int]:
+        """Walk every agent's info to compute fresh totals and active count.
+        The canonical path; cheap (in-memory dataclass attrs), but called
+        only on rare events (spawn / state change). Per-token-touch updates
+        go through the incremental path in `_on_tokens_touched`."""
         tokens_in = 0
         tokens_out = 0
         cost = 0.0
@@ -1228,12 +1235,74 @@ class PatchfeldApp(App):
                     active += 1
         except Exception:
             pass
+        # Refresh the per-agent snapshot used by the incremental path so
+        # subsequent deltas are computed against the correct baseline.
+        self._stats_per_agent.clear()
+        try:
+            self._stats_per_agent[self.orchestrator.info.id] = (
+                self.orchestrator.info.tokens_in,
+                self.orchestrator.info.tokens_out,
+                self.orchestrator.info.cost,
+            )
+        except Exception:
+            pass
+        try:
+            for info in self.manager.list_infos():
+                self._stats_per_agent[info.id] = (
+                    info.tokens_in, info.tokens_out, info.cost,
+                )
+        except Exception:
+            pass
+        self._stats_totals = (tokens_in, tokens_out, cost)
+        self._stats_active = active
+        return tokens_in, tokens_out, cost, active
+
+    def _publish_stats(self) -> None:
+        ti, to, cost = self._stats_totals
         self.event_bus.publish(StatsUpdated(
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            cost=cost,
-            active_agents=active,
+            tokens_in=ti, tokens_out=to, cost=cost,
+            active_agents=self._stats_active,
         ))
+
+    def _lookup_agent_info(self, agent_id: str):
+        try:
+            if agent_id == self.orchestrator.info.id:
+                return self.orchestrator.info
+        except Exception:
+            pass
+        try:
+            session = self.manager.get_session(agent_id)
+            return session.info if session is not None else None
+        except Exception:
+            return None
+
+    def _on_tokens_touched(self, event: AgentTokensTouched) -> None:
+        """Delta-update the running totals using the touched agent's
+        current info. Avoids walking every agent on every ResultMessage,
+        which used to dominate this handler when many child agents were
+        active. Active-agent count is unchanged on this path."""
+        info = self._lookup_agent_info(event.agent_id)
+        if info is None:
+            self._full_rescan_stats()
+            self._publish_stats()
+            return
+        prev = self._stats_per_agent.get(event.agent_id, (0, 0, 0.0))
+        ti, to, cost = self._stats_totals
+        ti += info.tokens_in - prev[0]
+        to += info.tokens_out - prev[1]
+        cost += info.cost - prev[2]
+        self._stats_totals = (ti, to, cost)
+        self._stats_per_agent[event.agent_id] = (
+            info.tokens_in, info.tokens_out, info.cost,
+        )
+        self._publish_stats()
+
+    def _on_stats_changed(self, _event) -> None:
+        """Spawn / state-change path: full rescan because active_agents
+        may have changed and a brand-new agent's prior snapshot is None.
+        These events are rare relative to AgentTokensTouched."""
+        self._full_rescan_stats()
+        self._publish_stats()
 
     def _on_permission_requested(self, event: PermissionRequested) -> None:
         from patchfeld.widgets.permission_modal import PermissionModal
@@ -1385,7 +1454,7 @@ class PatchfeldApp(App):
         await self.orchestrator.start()
         self.event_bus.subscribe(OpenResumePicker, self._on_open_resume_picker)
         self.event_bus.subscribe(LayoutResized, self._on_layout_resized)
-        self.event_bus.subscribe(AgentTokensTouched, self._on_stats_changed)
+        self.event_bus.subscribe(AgentTokensTouched, self._on_tokens_touched)
         self.event_bus.subscribe(AgentStateChanged, self._on_stats_changed)
         self.event_bus.subscribe(AgentSpawned, self._on_stats_changed)
         if self._permission_grants is not None:
