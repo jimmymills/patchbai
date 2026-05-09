@@ -388,6 +388,45 @@ async def test_thinking_and_tools_wrap_in_process_group(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_expanded_process_group_hugs_its_content(tmp_path):
+    """Expanded outer fold must size to its children, not fill the viewport.
+
+    Regression: _body Vertical defaulted to height: 1fr, which under the
+    auto-sized Collapsible Contents grew to fill the screen (e.g. 80 rows
+    in an 80-row test viewport) even when inner thinking/tool blocks were
+    only a few rows each.
+    """
+    from patchfeld.widgets.rich_transcript import _ProcessGroup
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test(size=(120, 80)) as pilot:
+        await pilot.pause()
+        bus.publish(AgentMessageAppended(agent_id="a1", role="user", text="go"))
+        bus.publish(AgentMessageAppended(agent_id="a1", role="thinking", text="planning"))
+        bus.publish(AgentMessageAppended(
+            agent_id="a1", role="tool_use", text="{'cmd': 'ls'}",
+            tool_id="t1", tool_name="bash",
+        ))
+        await pilot.pause()
+        await pilot.pause()
+
+        proc = app.query_one(_ProcessGroup)
+        # Expanded while still running.
+        assert proc.collapsed is False
+        # The fold should be at most ~half the viewport for a 2-step turn —
+        # well below the full-screen bloat that motivated this regression.
+        assert proc.region.height < 40, (
+            f"_ProcessGroup expanded height={proc.region.height} "
+            "is too tall — should fit its children"
+        )
+        # And the inner body should hug its content.
+        body = proc._body
+        assert body.region.height < 30
+
+
+@pytest.mark.asyncio
 async def test_assistant_text_closes_process_group(tmp_path):
     from patchfeld.widgets.rich_transcript import _ProcessGroup
 
