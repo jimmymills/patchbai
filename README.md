@@ -295,6 +295,30 @@ pip install patchfeld
 patchfeld
 ```
 
+### Updating
+
+Same tool you installed with — patchfeld releases regularly, so check for
+updates whenever something feels stale:
+
+```bash
+pipx upgrade patchfeld                  # if installed via pipx
+uv tool upgrade patchfeld               # if installed via `uv tool`
+pip install --upgrade patchfeld         # if installed via pip in a venv
+```
+
+To force a specific version (e.g., pinning or rolling back):
+
+```bash
+pipx install --force patchfeld==0.2.2
+uv tool install --force patchfeld==0.2.2
+pip install patchfeld==0.2.2
+```
+
+The latest release lives on
+[PyPI](https://pypi.org/project/patchfeld/) and tagged releases on
+[GitHub](https://github.com/jimmymills/patchfeld/releases) — release
+notes call out behavior changes and any migration steps.
+
 ### From source (for hacking on patchfeld itself)
 
 ```bash
