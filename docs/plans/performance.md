@@ -93,6 +93,18 @@ Sections are ranked by likely user-perceived impact. Each is independent — the
 - **Effort.** M.
 - **Suggested branch.** `perf/permission-modal-persistent`.
 
+#### 7a. Deferred 2026-05-09 — exploratory notes
+
+After reading `patchfeld/app.py:1238-1266` and `patchfeld/widgets/permission_modal.py` end-to-end, the original framing is slightly off and the fix is more invasive than its tier suggests. Recording what's known so a future attempt doesn't repeat the audit.
+
+- **Re-framing the cost.** The remount is **per-burst**, not per-request. `app._on_permission_requested` latches `_permission_modal_open` and pushes one modal; subsequent requests while it's up are queued *inside* the modal's own `PermissionRequested` subscription (`permission_modal.py:90-104`). The remount only happens when (a) the queue empties and the modal `dismiss()`es, then (b) a new request arrives. So the user-visible flicker is "modal closes briefly, opens again" between bursts — not on every prompt.
+- **Three approaches considered.**
+  1. **Install + cache the `ModalScreen`.** Use Textual's `SCREENS = {...}` install pattern, push the cached instance instead of constructing fresh. Smallest test diff, but Textual's screen lifecycle still re-runs `compose` and `on_mount` on each `push_screen`, so the perf win is partial. Worth measuring before committing.
+  2. **Convert to a non-screen overlay `Container`.** Mount once on app boot inside the main screen, toggle visibility via class. Biggest perf win and cleanest mental model, but breaks the screen-stack focus trap and the existing tests assume `app.screen is PermissionModal` (see `tests/test_widget_permission_modal.py:164-168` and `tests/test_app_smoke_permission_modal.py:39, 59, 80, 118, 131`). Substantial test-API churn.
+  3. **Defer.** The hot path inside a burst already queues without remount. The remaining cost is one mount per burst, which on a Mac is on the order of single-digit ms — only painful if permission bursts arrive every few hundred ms.
+- **Recommendation when revisited.** Try (1) first — it's the smallest delta and quickest to evaluate. Drop a `time.perf_counter` around `compose`/`on_mount` and run the manual spam test (10 quick prompts). If (1) doesn't move the needle, commit to (2) and budget for the test rewrite (~7 tests need to switch from `app.screen` to a `query_one(PermissionModal)` shape).
+- **Surprising-finding hook.** The `_permission_modal_open` latch in `app.py` is a good clue this code already had a "don't push twice" instinct — the cached-instance path is its natural extension.
+
 ### 8. Debounce notebook saves
 
 - **Symptom.** `Notebook` writes to disk on every `TextArea.Changed` (`patchfeld/widgets/notebook.py:36-38`).
