@@ -6,6 +6,7 @@ from textual.containers import Horizontal
 from textual.widgets import Input, Static
 
 from patchfeld.events import EventBus, OrchestratorReply, UserMessageToOrchestrator
+from patchfeld.orchestrator.slash_completion import SlashCompleter, SlashSuggester
 
 
 def _format_cwd(path: Path, *, available_width: int) -> str:
@@ -54,9 +55,19 @@ class CommandBar(Horizontal):
     }
     """
 
-    def __init__(self, *, event_bus: EventBus | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        event_bus: EventBus | None = None,
+        slash_completer: SlashCompleter | None = None,
+    ) -> None:
         super().__init__()
         self._bus = event_bus
+        # Optional injected completer. When unset we fall back to the host
+        # app's `slash_completer` attribute on first use — production wiring
+        # exposes one there at app construction so newly-mounted CommandBars
+        # share the same snapshot across `/cd` rebuilds.
+        self._completer = slash_completer
         # True between a command-bar submit and the next OrchestratorReply.
         # Gates the toast so replies from other input surfaces (the
         # orchestrator chat panel) don't pop a toast as well.
@@ -74,12 +85,84 @@ class CommandBar(Horizontal):
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_reply = bus.subscribe(OrchestratorReply, self._on_reply)
+        # Attach the ghost-text suggester after mount so we can fall back to
+        # `app.slash_completer` when no completer was injected at construction.
+        # Set every time on_mount fires (theme/cwd swap rebuilds the widget)
+        # so the suggester always points at the live completer instance.
+        completer = self._resolve_completer()
+        if completer is not None:
+            try:
+                self.query_one("#cmd-input", Input).suggester = (
+                    SlashSuggester(completer)
+                )
+            except Exception:
+                pass
 
     def on_unmount(self) -> None:
         self._unsub_reply()
 
     def focus_input(self) -> None:
         self.query_one("#cmd-input", Input).focus()
+
+    def _resolve_completer(self) -> SlashCompleter | None:
+        """Late-bound completer lookup: prefer the constructor-injected one,
+        fall back to whatever the host app exposes. Returning None disables
+        completion entirely (Tab falls through)."""
+        if self._completer is not None:
+            return self._completer
+        return getattr(self.app, "slash_completer", None)
+
+    def on_key(self, event) -> None:
+        """Intercept Tab / Shift+Tab to apply slash-command completion in
+        place. When completion does not apply (no completer, empty input,
+        text without a leading slash, mid-argument), we leave the event
+        alone so Textual's default focus traversal still runs."""
+        if event.key not in ("tab", "shift+tab"):
+            return
+        completer = self._resolve_completer()
+        if completer is None:
+            return
+        try:
+            inp = self.query_one("#cmd-input", Input)
+        except Exception:
+            return
+        # Only intercept when the input owns focus — otherwise we'd shadow
+        # Tab traversal between widgets.
+        if not inp.has_focus:
+            return
+        direction = -1 if event.key == "shift+tab" else 1
+        result = completer.cycle(
+            key=inp.id or "cmd-input",
+            current_text=inp.value,
+            direction=direction,
+        )
+        if result is None:
+            return  # let Tab fall through to focus_next/_previous
+        inp.value = result.text
+        try:
+            inp.cursor_position = result.cursor
+        except Exception:
+            pass
+        event.stop()
+        event.prevent_default()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Reset the completer's cycle state on any user-driven edit. The
+        cycle path detects "user did not edit between Tabs" by comparing
+        the input value to its own last write — that comparison stays
+        correct without an explicit reset, but wiping state here also
+        frees memory once the user moves on to a different prefix."""
+        if event.input.id != "cmd-input":
+            return
+        completer = self._resolve_completer()
+        if completer is None:
+            return
+        # Skip resets that fired as a side-effect of our own write — those
+        # cases keep the cycle anchor intact so consecutive Tabs advance.
+        state = completer._cycle_state.get(event.input.id or "cmd-input")
+        if state is not None and state.get("last_set") == event.input.value:
+            return
+        completer.reset(event.input.id or "cmd-input")
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if not event.value.strip():

@@ -4,6 +4,7 @@ from textual.containers import Vertical
 from textual.widgets import Input
 
 from patchfeld.events import EventBus, UserMessageToOrchestrator
+from patchfeld.orchestrator.slash_completion import SlashCompleter, SlashSuggester
 from patchfeld.widgets.rich_transcript import RichTranscript
 
 
@@ -57,6 +58,20 @@ class OrchestratorChat(Vertical):
             id="orch-input",
         )
 
+    def on_mount(self) -> None:
+        """Attach the ghost-text suggester to the chat input as soon as we
+        have access to the host app's `slash_completer`. Re-runs on every
+        remount (theme/cwd swap rebuilds this widget) so the suggester
+        always points at the live completer instance."""
+        completer = self._resolve_completer()
+        if completer is not None:
+            try:
+                self.query_one("#orch-input", Input).suggester = (
+                    SlashSuggester(completer)
+                )
+            except Exception:
+                pass
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if not event.value.strip():
             return
@@ -65,6 +80,58 @@ class OrchestratorChat(Vertical):
         event.input.value = ""
         if bus is not None:
             bus.publish(UserMessageToOrchestrator(text))
+
+    def _resolve_completer(self) -> SlashCompleter | None:
+        """Late-bound lookup of the host app's SlashCompleter. None disables
+        Tab completion (Tab falls through to default focus traversal)."""
+        return getattr(self.app, "slash_completer", None)
+
+    def on_key(self, event) -> None:
+        """Apply slash-command completion in place when the chat input owns
+        focus, the value triggers completion (`/` prefix, no whitespace
+        outside an active cycle), and there is at least one match. Falls
+        through silently otherwise — Textual's default Tab traversal still
+        runs."""
+        if event.key not in ("tab", "shift+tab"):
+            return
+        completer = self._resolve_completer()
+        if completer is None:
+            return
+        try:
+            inp = self.query_one("#orch-input", Input)
+        except Exception:
+            return
+        if not inp.has_focus:
+            return
+        direction = -1 if event.key == "shift+tab" else 1
+        result = completer.cycle(
+            key=inp.id or "orch-input",
+            current_text=inp.value,
+            direction=direction,
+        )
+        if result is None:
+            return
+        inp.value = result.text
+        try:
+            inp.cursor_position = result.cursor
+        except Exception:
+            pass
+        event.stop()
+        event.prevent_default()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Drop cycle state on edits the user (not us) made — keeps the
+        completer's per-widget state from leaking across unrelated prefixes.
+        Detection mirrors `CommandBar.on_input_changed`."""
+        if event.input.id != "orch-input":
+            return
+        completer = self._resolve_completer()
+        if completer is None:
+            return
+        state = completer._cycle_state.get(event.input.id or "orch-input")
+        if state is not None and state.get("last_set") == event.input.value:
+            return
+        completer.reset(event.input.id or "orch-input")
 
     async def action_interrupt(self) -> None:
         orch = getattr(self.app, "orchestrator", None)

@@ -24,6 +24,7 @@ from patchfeld.layout.registry import WidgetRegistry
 from patchfeld.layout.spec import LayoutSpec
 from patchfeld.orchestrator.session import OrchestratorSession
 from patchfeld.orchestrator.skills import SkillsIndex, default_skills_index
+from patchfeld.orchestrator.slash_completion import SlashCompleter
 from patchfeld.persistence.layouts_store import NamedLayoutsStore
 from patchfeld.persistence.themes_store import NamedThemesStore
 from patchfeld.persistence.paths import global_config_dir, local_widgets_dir
@@ -351,6 +352,15 @@ class PatchfeldApp(App):
         )
         self._skills_index: SkillsIndex = default_skills_index(
             builtin_command_names=_ORCH_BUILTINS,
+        )
+        # Tab-completion engine for `/`-prefixed commands. Both the top
+        # CommandBar and any OrchestratorChat input read this attribute
+        # via `getattr(self.app, "slash_completer", None)`. It's a snapshot
+        # taken once here so the candidate list is stable across orchestrator
+        # rebuilds (mirrors how _skills_index is reused above).
+        self.slash_completer: SlashCompleter = SlashCompleter.build(
+            builtin_commands=_ORCH_BUILTINS,
+            skills_index=self._skills_index,
         )
 
         self.manager = manager or AgentManager(
@@ -1357,7 +1367,9 @@ class PatchfeldApp(App):
     # --- composition & lifecycle -------------------------------------------
 
     def compose(self) -> ComposeResult:
-        yield CommandBar(event_bus=self.event_bus)
+        yield CommandBar(
+            event_bus=self.event_bus, slash_completer=self.slash_completer,
+        )
         yield TabbedContent(id="app-tabs")
         yield StatusBar(event_bus=self.event_bus)
 
