@@ -157,3 +157,33 @@ async def test_replay_does_not_start_spinner_on_completed_thinking(tmp_path):
         assert group._spinner_timer is None
         assert "Thought for" in group.title
         assert group.title[0] not in _SPINNER_FRAMES
+
+
+@pytest.mark.asyncio
+async def test_replay_runs_in_a_worker_not_inline(tmp_path):
+    """on_mount must drive replay from a worker — not inline — so a
+    transcript with hundreds of entries doesn't stall the UI on tab
+    open. We observe two signals:
+      * a named worker is spawned for replay
+      * a long history (100 turns) replays completely and correctly
+    """
+    store = Store(cwd=tmp_path, agent_id="a1")
+    n_turns = 100
+    for i in range(n_turns):
+        store.append(TranscriptEntry(role="user", text=f"q{i}"))
+        store.append(TranscriptEntry(role="assistant", text=f"a{i}"))
+
+    bus = EventBus()
+    app = _HostApp(bus, "a1")
+    app.cwd = tmp_path
+    async with app.run_test() as pilot:
+        widget = app.query_one(RichTranscript)
+        # Replay was driven by a worker (tracked even after completion).
+        assert widget._replay_worker is not None, (
+            "on_mount did not spawn a replay worker — replay would block the loop"
+        )
+
+        # Drain and verify all turns landed.
+        await pilot.pause(2.0)
+        full = len(widget.query(_TurnContainer))
+        assert full == n_turns, f"expected all {n_turns} turns, got {full}"
