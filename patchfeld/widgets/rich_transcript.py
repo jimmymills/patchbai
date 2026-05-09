@@ -454,6 +454,7 @@ class RichTranscript(Vertical):
         self._unsub_state = lambda: None
         self._unsub_switched = lambda: None
         self._current_turn: _TurnContainer | None = None
+        self._replay_worker: object | None = None
 
     @property
     def agent_id(self) -> str:
@@ -473,20 +474,16 @@ class RichTranscript(Vertical):
         except Exception:
             pass
         cwd: Path | None = getattr(self.app, "cwd", None)
+        store: TranscriptStore | None = None
         if self._transcript_path is not None:
             store = TranscriptStore(
                 cwd=cwd or Path("."), agent_id=self._agent_id,
                 path=self._transcript_path,
             )
-            for entry in store.read_all():
-                self._dispatch_entry(entry)
         elif cwd is not None:
             store = TranscriptStore(cwd=cwd, agent_id=self._agent_id)
-            for entry in store.read_all():
-                self._dispatch_entry(entry)
-        if self._current_turn is not None:
-            self._current_turn.mark_done()
-            self._current_turn = None
+        if store is not None:
+            self._spawn_replay(store)
         bus = self._bus or getattr(self.app, "event_bus", None)
         if bus is not None:
             self._unsub_msg = bus.subscribe(AgentMessageAppended, self._on_appended)
@@ -515,8 +512,39 @@ class RichTranscript(Vertical):
         store = TranscriptStore(
             cwd=cwd, agent_id=self._agent_id, path=transcript_path,
         )
-        for entry in store.read_all():
+        self._spawn_replay(store)
+
+    # --- replay --------------------------------------------------------
+
+    # How many entries to mount per event-loop yield. Small enough that
+    # the UI stays responsive on long histories, large enough that the
+    # per-yield overhead doesn't dominate.
+    _REPLAY_BATCH = 8
+
+    def _spawn_replay(self, store: "TranscriptStore") -> None:
+        """Drive the replay from a worker so on_mount returns immediately
+        and entries paint progressively. exclusive=True means a session
+        switch (replace_source) cancels any in-flight replay."""
+        self._replay_worker = self.run_worker(
+            self._replay_async(store),
+            name="rich-transcript-replay",
+            group="rich-transcript-replay",
+            exclusive=True,
+        )
+
+    # Real (sub-frame) sleep between batches so the event loop becomes
+    # idle and Textual can paint mounted widgets before we mount more.
+    # `sleep(0)` would just chain microtasks without ever marking the
+    # loop idle, so the user wouldn't see entries paint progressively.
+    _REPLAY_SLEEP_S = 0.001
+
+    async def _replay_async(self, store: "TranscriptStore") -> None:
+        import asyncio
+        entries = store.read_all()
+        for i, entry in enumerate(entries, start=1):
             self._dispatch_entry(entry)
+            if i % self._REPLAY_BATCH == 0:
+                await asyncio.sleep(self._REPLAY_SLEEP_S)
         if self._current_turn is not None:
             self._current_turn.mark_done()
             self._current_turn = None
