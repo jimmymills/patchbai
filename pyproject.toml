@@ -1,6 +1,6 @@
 [project]
 name = "patchfeld"
-version = "0.2.2"
+version = "0.2.3"
 description = "A Textual TUI for managing multiple Claude Code agent sessions"
 readme = "README.md"
 requires-python = ">=3.11"
