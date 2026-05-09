@@ -306,6 +306,11 @@ class _TurnContainer(Vertical):
         self._tool_widgets: dict = {}
         self._current_thinking: _ThinkingGroup | None = None
         self._current_process: _ProcessGroup | None = None
+        # Tracked at construction time so mark_done/mark_error don't have
+        # to walk the whole subtree with self.query() at turn end. Each
+        # _ToolCall is also keyed in _tool_widgets above.
+        self._all_thinking_groups: list[_ThinkingGroup] = []
+        self._all_processes: list[_ProcessGroup] = []
 
     def compose(self) -> ComposeResult:
         line = Text()
@@ -325,6 +330,7 @@ class _TurnContainer(Vertical):
         if self._current_process is None:
             group = _ProcessGroup()
             self._current_process = group
+            self._all_processes.append(group)
             self.mount(group)
         return self._current_process
 
@@ -333,6 +339,7 @@ class _TurnContainer(Vertical):
         if self._current_thinking is None:
             group = _ThinkingGroup()
             self._current_thinking = group
+            self._all_thinking_groups.append(group)
             process.add_step(group)
         self._current_thinking.append(text)
 
@@ -387,29 +394,28 @@ class _TurnContainer(Vertical):
         self.mount(Static(prefix, classes="msg-final-prefix"))
         self.mount(_AssistantBlock(text))
 
+    def _mark_children_done(self) -> None:
+        """Mark every still-running tool / thinking / process child as
+        done. Iterates the lists tracked at construction time instead of
+        re-querying the subtree, which avoids walking the whole DOM and
+        triggering CSS/layout work for unaffected widgets."""
+        for tool in self._tool_widgets.values():
+            tool.mark_done()
+        for group in self._all_thinking_groups:
+            group.mark_done()
+        for proc in self._all_processes:
+            proc.mark_done()
+        self._current_process = None
+
     def mark_done(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-done")
-        # query() recurses into _ProcessGroup, so this still finds tools and
-        # thinking groups even when they live inside a process group.
-        for tool in self.query(_ToolCall):
-            tool.mark_done()
-        for group in self.query(_ThinkingGroup):
-            group.mark_done()
-        for proc in self.query(_ProcessGroup):
-            proc.mark_done()
-        self._current_process = None
+        self._mark_children_done()
 
     def mark_error(self) -> None:
         self.remove_class("turn-running")
         self.add_class("turn-error")
-        for tool in self.query(_ToolCall):
-            tool.mark_done()
-        for group in self.query(_ThinkingGroup):
-            group.mark_done()
-        for proc in self.query(_ProcessGroup):
-            proc.mark_done()
-        self._current_process = None
+        self._mark_children_done()
 
     def rendered_text(self) -> str:
         parts: list[str] = []
