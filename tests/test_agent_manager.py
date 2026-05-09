@@ -326,6 +326,83 @@ async def test_direct_message_lazily_resumes_dead_agent(tmp_path: Path):
     assert user_texts == ["first", "hello again"]
 
 
+class _RecordingAdapter(FakeSDKAdapter):
+    """FakeSDKAdapter that exposes the last ClaudeAgentOptions it was started
+    with, so tests can assert on what AgentManager passed to the SDK."""
+
+    def __init__(self, scripts):
+        super().__init__(scripts)
+        self.last_options = None
+
+    async def start(self, *, options):
+        self.last_options = options
+        await super().start(options=options)
+
+
+@pytest.mark.asyncio
+async def test_spawn_appends_orchestrator_comms_guidance_to_system_prompt(
+    tmp_path: Path,
+):
+    """Newly spawned children must be told about the patchfeld_child MCP
+    tools (notify_orchestrator + ask_orchestrator) so they actually use
+    them. The guidance is appended to the default Claude Code preset so
+    the rest of the CLI behavior stays intact."""
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: adapter,
+    )
+    await manager.spawn(name="research", prompt="hi")
+
+    sp = adapter.last_options.system_prompt
+    assert isinstance(sp, dict), f"expected SystemPromptPreset dict, got {sp!r}"
+    assert sp.get("type") == "preset"
+    assert sp.get("preset") == "claude_code"
+    append = sp.get("append") or ""
+    # Both child tools called out by name so the model recognises them.
+    assert "notify_orchestrator" in append
+    assert "ask_orchestrator" in append
+    # The MCP server name is mentioned (helps the model route).
+    assert "patchfeld_child" in append
+    # Anti-spam / milestone guidance is present.
+    assert "milestone" in append.lower() or "spam" in append.lower()
+    # The 300s timeout behavior is documented so children don't loop.
+    assert "300" in append or "timeout" in append.lower()
+
+
+@pytest.mark.asyncio
+async def test_spawn_user_system_prompt_does_not_drop_orchestrator_guidance(
+    tmp_path: Path,
+):
+    """If a caller passes their own system_prompt to spawn(), the
+    orchestrator-comms guidance must STILL reach the child — it's never
+    silently replaced. The caller's content is combined with the guidance
+    inside the same SystemPromptPreset.append, so neither is lost."""
+    adapter = _RecordingAdapter(scripts=[_ok_script()])
+    manager = AgentManager(
+        cwd=tmp_path,
+        bus=EventBus(),
+        adapter_factory=lambda: adapter,
+    )
+    await manager.spawn(
+        name="r",
+        prompt="hi",
+        system_prompt="You are an obscure expert in foo.",
+    )
+
+    sp = adapter.last_options.system_prompt
+    assert isinstance(sp, dict)
+    assert sp.get("type") == "preset"
+    assert sp.get("preset") == "claude_code"
+    append = sp.get("append") or ""
+    # Caller's instructions are preserved verbatim.
+    assert "obscure expert in foo" in append
+    # The orchestrator-comms guidance is still injected alongside.
+    assert "notify_orchestrator" in append
+    assert "ask_orchestrator" in append
+
+
 @pytest.mark.asyncio
 async def test_get_inbox_returns_a_request_inbox_per_agent(tmp_path: Path):
     from patchfeld.agents.request_inbox import RequestInbox
