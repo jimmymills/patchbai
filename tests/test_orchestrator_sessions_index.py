@@ -70,6 +70,67 @@ def test_corrupt_file_is_treated_as_empty(tmp_path):
     assert OrchestratorSessionsIndex(cwd=tmp_path).list() == []
 
 
+def test_list_does_not_re_read_disk_when_unchanged(tmp_path):
+    """Repeated reads with no intervening write must not re-parse the
+    JSON file. This protects the orchestrator hot path from N disk
+    parses per turn. A sibling write (different mtime) is still
+    picked up — see test_sibling_write_is_observed_via_mtime."""
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(_entry("a"))  # one initial parse from empty disk
+
+    load_calls = 0
+    real_load = idx._load_from_disk
+
+    def counting_load() -> list:
+        nonlocal load_calls
+        load_calls += 1
+        return real_load()
+
+    idx._load_from_disk = counting_load  # type: ignore[method-assign]
+
+    for _ in range(10):
+        idx.list()
+        idx.get("a")
+        idx.most_recent()
+
+    assert load_calls == 0, f"expected no re-reads, got {load_calls}"
+
+
+def test_sibling_write_is_observed_via_mtime(tmp_path):
+    """Two index instances over the same cwd: writes from one are
+    visible to the other on the next read. The cache uses file mtime
+    to detect the sibling write."""
+    a = OrchestratorSessionsIndex(cwd=tmp_path)
+    b = OrchestratorSessionsIndex(cwd=tmp_path)
+    a.upsert(_entry("x"))
+
+    # Force mtime to advance so b's cache invalidates even if the
+    # filesystem mtime resolution would otherwise tie. (HFS+, some
+    # network filesystems.)
+    import os
+    import time as _time
+
+    p = tmp_path / ".patchfeld" / "orchestrator_sessions.json"
+    later = _time.time() + 1
+    os.utime(p, (later, later))
+
+    b.upsert(_entry("y"))
+    out = b.list()
+    assert {e.session_id for e in out} == {"x", "y"}
+
+
+def test_list_returns_independent_copy(tmp_path):
+    """list() must hand back a list the caller can mutate without
+    corrupting the cached state."""
+    idx = OrchestratorSessionsIndex(cwd=tmp_path)
+    idx.upsert(_entry("a"))
+    first = idx.list()
+    first.clear()
+    second = idx.list()
+    assert len(second) == 1
+    assert second[0].session_id == "a"
+
+
 def test_index_persists_to_expected_path(tmp_path):
     idx = OrchestratorSessionsIndex(cwd=tmp_path)
     idx.upsert(_entry("a"))

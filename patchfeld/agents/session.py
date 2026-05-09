@@ -127,6 +127,7 @@ class AgentSession:
             except (asyncio.CancelledError, Exception):
                 pass
         await self._adapter.stop()
+        self._transcript.close()
 
     # --- internals --------------------------------------------------------
 

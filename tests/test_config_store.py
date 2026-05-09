@@ -71,6 +71,58 @@ def test_active_theme_persists_round_trip(tmp_path: Path):
     assert reloaded.ui.active_theme == "nord"
 
 
+def test_load_does_not_re_parse_when_file_unchanged(tmp_path: Path):
+    """The orchestrator hot path calls config_store.load() inside many
+    tool handlers; back-to-back calls with no intervening write must
+    not re-parse the TOML each time."""
+    store = ConfigStore(global_dir=tmp_path)
+    cfg = store.load()
+    cfg.ui.active_theme = "nord"
+    store.save(cfg)
+
+    parse_calls = 0
+    real_load = store._load_from_disk
+
+    def counting_load() -> object:
+        nonlocal parse_calls
+        parse_calls += 1
+        return real_load()
+
+    store._load_from_disk = counting_load  # type: ignore[method-assign]
+
+    for _ in range(10):
+        store.load()
+
+    assert parse_calls == 0, f"expected no re-parses, got {parse_calls}"
+
+
+def test_load_picks_up_external_edit_via_mtime(tmp_path: Path):
+    """If config.toml changes on disk between loads (a sibling
+    ConfigStore wrote, or the user edited by hand), the next load
+    must observe the new state — the cache is mtime-keyed, not
+    forever."""
+    import os
+    import time as _time
+
+    store = ConfigStore(global_dir=tmp_path)
+    cfg = store.load()
+    cfg.ui.active_theme = "nord"
+    store.save(cfg)
+
+    # Hand-edit the file out from under the store, then bump mtime so
+    # the cache definitely sees a change even on coarse-mtime filesystems.
+    p = tmp_path / "config.toml"
+    p.write_text(
+        '[ui]\nactive_theme = "rose"\ndefault_model = ""\n[bindings]\n[widgets]\n',
+        encoding="utf-8",
+    )
+    later = _time.time() + 1
+    os.utime(p, (later, later))
+
+    again = store.load()
+    assert again.ui.active_theme == "rose"
+
+
 def test_legacy_ui_theme_key_silently_ignored(tmp_path: Path):
     """Old configs with `ui.theme = "dark"` must still load without raising;
     the dead key is just ignored."""

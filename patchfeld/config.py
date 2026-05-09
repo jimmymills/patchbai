@@ -1,3 +1,4 @@
+import copy
 import logging
 import tomllib
 from dataclasses import dataclass, field
@@ -64,13 +65,28 @@ class Config:
 
 
 class ConfigStore:
-    """Read/write ~/.config/patchfeld/config.toml. Defaults applied on missing file."""
+    """Read/write ~/.config/patchfeld/config.toml. Defaults applied on missing file.
+
+    `load()` is cached and invalidated by file mtime: the orchestrator
+    hot path calls `load()` inside many tool handlers, and re-parsing
+    the TOML on every call adds measurable latency. A sibling writer
+    (or the user editing by hand) is observed on the next load because
+    the cached mtime no longer matches disk.
+    """
 
     def __init__(self, global_dir: Path) -> None:
         self._dir = Path(global_dir)
         self._path = self._dir / "config.toml"
+        self._cache: Config | None = None
+        self._cache_mtime: float | None = None
 
-    def load(self) -> Config:
+    def _disk_mtime(self) -> float | None:
+        try:
+            return self._path.stat().st_mtime
+        except FileNotFoundError:
+            return None
+
+    def _load_from_disk(self) -> Config:
         cfg = Config()
         # Apply defaults first.
         for key, (action, args) in _DEFAULT_BINDINGS.items():
@@ -110,6 +126,15 @@ class ConfigStore:
                 cfg.widgets.local_dir_enabled = widgets_raw["local_dir_enabled"]
         return cfg
 
+    def load(self) -> Config:
+        disk_mtime = self._disk_mtime()
+        if self._cache is None or disk_mtime != self._cache_mtime:
+            self._cache = self._load_from_disk()
+            self._cache_mtime = disk_mtime
+        # Hand back a deep copy so callers can mutate freely without
+        # corrupting the cached state.
+        return copy.deepcopy(self._cache)
+
     def save(self, cfg: Config) -> None:
         self._dir.mkdir(parents=True, exist_ok=True)
         out = {
@@ -126,3 +151,5 @@ class ConfigStore:
             },
         }
         self._path.write_text(tomli_w.dumps(out), encoding="utf-8")
+        self._cache = copy.deepcopy(cfg)
+        self._cache_mtime = self._disk_mtime()

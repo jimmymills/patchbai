@@ -31,13 +31,28 @@ def _index_path(cwd: Path) -> Path:
 
 
 class OrchestratorSessionsIndex:
-    """Per-cwd index of past orchestrator sessions for resume/picker."""
+    """Per-cwd index of past orchestrator sessions for resume/picker.
+
+    Reads are cached in memory and invalidated by file mtime so the
+    orchestrator hot path (which calls `get()` and `upsert()` after
+    every assistant turn) does not re-parse the JSON file from disk
+    each time. A sibling instance writing the file will be observed
+    on the next read because the cached mtime no longer matches disk.
+    """
 
     def __init__(self, cwd: Path) -> None:
         self._cwd = cwd
         self._path = _index_path(cwd)
+        self._cache: list[OrchestratorSessionEntry] | None = None
+        self._cache_mtime: float | None = None
 
-    def list(self) -> list[OrchestratorSessionEntry]:
+    def _disk_mtime(self) -> float | None:
+        try:
+            return self._path.stat().st_mtime
+        except FileNotFoundError:
+            return None
+
+    def _load_from_disk(self) -> list[OrchestratorSessionEntry]:
         if not self._path.exists():
             return []
         try:
@@ -57,24 +72,34 @@ class OrchestratorSessionsIndex:
             log.exception("Failed to load orchestrator_sessions.json from %s", self._path)
             return []
 
+    def _ensure_cache(self) -> list[OrchestratorSessionEntry]:
+        disk_mtime = self._disk_mtime()
+        if self._cache is None or disk_mtime != self._cache_mtime:
+            self._cache = self._load_from_disk()
+            self._cache_mtime = disk_mtime
+        return self._cache
+
+    def list(self) -> list[OrchestratorSessionEntry]:
+        return list(self._ensure_cache())
+
     def upsert(self, entry: OrchestratorSessionEntry) -> None:
-        current = self.list()
-        for i, existing in enumerate(current):
+        cache = self._ensure_cache()
+        for i, existing in enumerate(cache):
             if existing.session_id == entry.session_id:
-                current[i] = entry
-                self._save(current)
+                cache[i] = entry
+                self._save(cache)
                 return
-        current.append(entry)
-        self._save(current)
+        cache.append(entry)
+        self._save(cache)
 
     def most_recent(self) -> OrchestratorSessionEntry | None:
-        entries = self.list()
+        entries = self._ensure_cache()
         if not entries:
             return None
         return max(entries, key=lambda e: e.last_activity)
 
     def get(self, session_id: str) -> OrchestratorSessionEntry | None:
-        for e in self.list():
+        for e in self._ensure_cache():
             if e.session_id == session_id:
                 return e
         return None
@@ -125,3 +150,5 @@ class OrchestratorSessionsIndex:
 
     def _save(self, entries: list[OrchestratorSessionEntry]) -> None:
         write_json_atomic(self._path, [asdict(e) for e in entries])
+        self._cache = entries
+        self._cache_mtime = self._disk_mtime()
