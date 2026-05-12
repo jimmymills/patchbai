@@ -127,6 +127,42 @@ class AgentNotifiedOrchestrator:
 
 
 @dataclass(frozen=True)
+class AskUserQuestionRequested:
+    """The session's Claude invoked the built-in `AskUserQuestion` tool.
+
+    The orchestrator intercepts this in its `can_use_tool` callback before
+    the CLI ever runs the tool — there is no TUI on the SDK side for the
+    built-in, so we render an inline answer widget in the chat instead and
+    return the choice back as the tool's deny-message. `questions` is the
+    raw input dict's `questions` list, frozen as a tuple of dicts so the
+    event remains hashable / immutable. `tool_id` is the SDK-issued
+    `tool_use_id` (used by the widget to register itself so the late-
+    arriving tool_result attaches to the right block).
+    """
+    agent_id: str
+    request_id: str
+    tool_id: str | None
+    questions: tuple[dict, ...]
+
+
+@dataclass(frozen=True)
+class AskUserQuestionAnswered:
+    """User submitted answers to an AskUserQuestion block. Resolves the
+    pending entry in the session's AskUserQuestionInbox so the can_use_tool
+    callback can format the response and return.
+
+    `answers[i]` corresponds to `questions[i]` and carries:
+      - `selected`: tuple of option labels the user picked (length 0 or 1
+        for single-select; 0..N for multi-select).
+      - `custom_text`: the free-form string the user typed into the "Other"
+        field, or None if not used.
+    """
+    agent_id: str
+    request_id: str
+    answers: tuple[dict, ...]
+
+
+@dataclass(frozen=True)
 class AgentArchiveChanged:
     """An agent's `archived` flag was toggled. Carries a frozen snapshot of
     the AgentInfo so subscribers (AgentTable, persistence) can refresh."""

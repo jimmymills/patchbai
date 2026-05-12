@@ -18,6 +18,7 @@ from claude_agent_sdk import (
 )
 from claude_agent_sdk.types import SystemPromptPreset
 
+from patchfeld.agents.ask_inbox import AskUserQuestionInbox
 from patchfeld.agents.manager import AgentManager
 from patchfeld.agents.permission_grants import PermissionGrants
 from patchfeld.agents.permission_inbox import PermissionInbox
@@ -29,6 +30,8 @@ from patchfeld.events import (
     AgentNotifiedOrchestrator,
     AgentRequestedUserInput,
     AgentTokensTouched,
+    AskUserQuestionAnswered,
+    AskUserQuestionRequested,
     EventBus,
     OpenResumePicker,
     OrchestratorReply,
@@ -85,6 +88,50 @@ _HELP_TEXT_BASE = (
     "  /require-permissions       Re-enable the permission modal (default)\n"
     "  /help                      Show this list"
 )
+
+
+def _format_ask_user_answer(
+    questions: tuple[dict, ...],
+    answers: tuple[dict, ...],
+) -> str:
+    """Render the user's `AskUserQuestion` answers into a single string the
+    model will see as the tool_result.
+
+    Pairs each answer with its question for readability, then lists picked
+    options + any free-form Other text. Matches the kind of compact human
+    summary the model would have produced for itself if it had a TUI — no
+    JSON, no schema noise, just the picks.
+    """
+    lines: list[str] = []
+    for idx, q in enumerate(questions):
+        question_text = (
+            q.get("question") if isinstance(q, dict) else None
+        ) or "(question)"
+        ans = answers[idx] if idx < len(answers) else {}
+        if not isinstance(ans, dict):
+            ans = {}
+        selected = ans.get("selected") or ()
+        if isinstance(selected, str):
+            selected = (selected,)
+        custom = ans.get("custom_text")
+        if isinstance(custom, str):
+            custom = custom.strip() or None
+        else:
+            custom = None
+        lines.append(f"Q{idx + 1}: {question_text}")
+        picks: list[str] = []
+        for label in selected:
+            if isinstance(label, str):
+                picks.append(label)
+        if custom:
+            picks.append(f"Other: {custom}")
+        if not picks:
+            lines.append("A: (no selection)")
+        elif len(picks) == 1:
+            lines.append(f"A: {picks[0]}")
+        else:
+            lines.append("A: " + " | ".join(picks))
+    return "\n".join(lines)
 
 
 def _format_skill_invocation(name: str, args: str) -> str:
@@ -236,6 +283,15 @@ class OrchestratorSession:
         # default keeps tests and headless callers from having to pass one.
         self._skills: SkillsIndex = skills if skills is not None else SkillsIndex()
         self._can_use_tool_callback: CanUseTool | None = None
+        # Inbox for the built-in `AskUserQuestion` tool. Lives alongside
+        # `_perm_inbox` because the can_use_tool callback owns both — but
+        # they resolve to different payloads (answers vs PermissionResult).
+        # Bypass-permissions mode does NOT route through can_use_tool, so
+        # AskUserQuestion is currently only handled in permission-required
+        # mode. Bypass support is a follow-up (would require either an SDK
+        # hook or a custom permission_prompt_tool_name).
+        self._ask_inbox: AskUserQuestionInbox = AskUserQuestionInbox()
+        self._unsub_ask_answered: callable = lambda: None
         if permission_grants is not None:
             self._perm_inbox: PermissionInbox | None = PermissionInbox(
                 on_pending_changed=self._on_perm_changed,
@@ -286,6 +342,15 @@ class OrchestratorSession:
             ctx: ToolPermissionContext,
         ):
             assert grants is not None
+            # Intercept the built-in `AskUserQuestion` BEFORE consulting
+            # the permission grants or modal: this tool is meant to
+            # interact with the user, but the CLI binary running as an
+            # SDK subprocess has no TUI of its own. We render the
+            # question inline in the chat instead and return the user's
+            # answer back as the tool's deny-message (which the SDK
+            # forwards to the model as the tool_result content).
+            if tool_name == "AskUserQuestion":
+                return await self._handle_ask_user_question(tool_input, ctx)
             decision = grants.lookup(agent_name=agent_name, tool_name=tool_name)
             if decision == "allow":
                 return PermissionResultAllow()
@@ -331,6 +396,64 @@ class OrchestratorSession:
 
         return callback
 
+    async def _handle_ask_user_question(
+        self,
+        tool_input: dict,
+        ctx: ToolPermissionContext,
+    ):
+        """Render an inline AskUserQuestion block in the orchestrator chat
+        and wait for the user's answer. Returns a `PermissionResultDeny`
+        whose `message` carries the formatted answer text — the SDK
+        forwards `message` to the model as the tool's tool_result content,
+        so the model sees the user's choice exactly as if the CLI had
+        executed the tool itself."""
+        # Defensive guards on the tool input shape. The model is supposed
+        # to provide `questions: [...]` but we don't want to crash if it
+        # sends something malformed.
+        raw_questions = tool_input.get("questions")
+        if not isinstance(raw_questions, list) or not raw_questions:
+            return PermissionResultDeny(
+                message=(
+                    "AskUserQuestion received no questions; nothing to ask. "
+                    "Please rephrase as a regular text turn."
+                ),
+            )
+        questions: tuple[dict, ...] = tuple(raw_questions)
+        tool_id = getattr(ctx, "tool_use_id", None)
+        request_id = self._ask_inbox.register(
+            tool_id=tool_id, questions=questions,
+        )
+        self._bus.publish(AskUserQuestionRequested(
+            agent_id=self.AGENT_ID,
+            request_id=request_id,
+            tool_id=tool_id,
+            questions=questions,
+        ))
+        TIMEOUT_S = 30 * 60
+        try:
+            answers = await self._ask_inbox.wait(
+                request_id, timeout_s=TIMEOUT_S,
+            )
+        except asyncio.CancelledError:
+            task = asyncio.current_task()
+            if task is not None and task.cancelling() > 0:
+                raise
+            return PermissionResultDeny(
+                message="user dismissed AskUserQuestion", interrupt=True,
+            )
+        except asyncio.TimeoutError:
+            return PermissionResultDeny(
+                message="AskUserQuestion timed out waiting for user",
+            )
+        return PermissionResultDeny(
+            message=_format_ask_user_answer(questions, answers),
+        )
+
+    def _on_ask_answered(self, event: AskUserQuestionAnswered) -> None:
+        if event.agent_id != self.AGENT_ID:
+            return
+        self._ask_inbox.resolve(event.request_id, event.answers)
+
     async def start(self) -> None:
         # One-time migration of any pre-existing orchestrator.jsonl.
         self._index.migrate_legacy_if_needed()
@@ -374,6 +497,9 @@ class OrchestratorSession:
         )
         self._unsub_ask = self._bus.subscribe(
             AgentRequestedUserInput, self._on_child_asked
+        )
+        self._unsub_ask_answered = self._bus.subscribe(
+            AskUserQuestionAnswered, self._on_ask_answered,
         )
 
     async def _build_and_start_inner(
@@ -512,10 +638,12 @@ class OrchestratorSession:
     async def stop(self) -> None:
         if self._perm_inbox is not None:
             self._perm_inbox.cancel_all()
+        self._ask_inbox.cancel_all()
         self._unsub_user()
         self._unsub_msg()
         self._unsub_notify()
         self._unsub_ask()
+        self._unsub_ask_answered()
         if self._inner is not None:
             await self._inner.stop()
 
@@ -779,6 +907,7 @@ class OrchestratorSession:
     async def _swap_inner(self, *, resume: str | None) -> None:
         if self._perm_inbox is not None:
             self._perm_inbox.cancel_all()
+        self._ask_inbox.cancel_all()
         # Stop current, start a new inner with either resume=<id> or a fresh id.
         if self._inner is not None:
             try:

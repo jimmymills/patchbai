@@ -8,7 +8,7 @@ from rich.markdown import Markdown as _RichMarkdown
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Vertical, VerticalScroll
-from textual.widgets import Collapsible, Static
+from textual.widgets import Button, Collapsible, Input, Static
 
 
 def _markup_escape(s: str) -> str:
@@ -22,7 +22,13 @@ def _markup_escape(s: str) -> str:
     return s.replace("[", "\\[")
 
 from patchfeld.agents.state import AgentState
-from patchfeld.events import AgentMessageAppended, AgentStateChanged, EventBus
+from patchfeld.events import (
+    AgentMessageAppended,
+    AgentStateChanged,
+    AskUserQuestionAnswered,
+    AskUserQuestionRequested,
+    EventBus,
+)
 from patchfeld.persistence.transcript_store import (
     AgentTranscript as TranscriptStore,
     TranscriptEntry,
@@ -323,6 +329,312 @@ class _AssistantBlock(Static):
         super().__init__(_RichMarkdown(source, code_theme="ansi_dark"))
 
 
+class _AskUserQuestionBlock(Vertical):
+    """Inline UI for a built-in `AskUserQuestion` tool call.
+
+    Renders one card per question with the question text, optional header,
+    a clickable button for each option (description shown dim below the
+    label), and an Input field for free-form "Other" text. A single Submit
+    button at the bottom publishes `AskUserQuestionAnswered` carrying the
+    user's picks. Single-select questions deselect siblings on click;
+    multi-select questions toggle independently.
+
+    Lives inline in the message stream rather than as a modal so the
+    user always sees what's being asked alongside the orchestrator's
+    other output, and can scroll/keyboard-navigate normally.
+    """
+
+    DEFAULT_CSS = """
+    _AskUserQuestionBlock {
+        height: auto;
+        margin: 1 0;
+        padding: 1;
+        border: round $warning;
+        background: $surface;
+    }
+    _AskUserQuestionBlock .ask-question-card {
+        height: auto;
+        margin-bottom: 1;
+    }
+    _AskUserQuestionBlock .ask-question-header {
+        color: $text-muted;
+        text-style: italic;
+    }
+    _AskUserQuestionBlock .ask-question-text {
+        text-style: bold;
+        margin-bottom: 1;
+    }
+    _AskUserQuestionBlock .ask-option-row {
+        height: auto;
+        margin-bottom: 1;
+    }
+    _AskUserQuestionBlock .ask-option-description {
+        color: $text-muted;
+        margin-left: 4;
+        margin-bottom: 0;
+    }
+    _AskUserQuestionBlock Button.ask-option {
+        height: auto;
+        min-height: 1;
+        width: 1fr;
+    }
+    _AskUserQuestionBlock Button.ask-option.-selected {
+        background: $accent;
+    }
+    _AskUserQuestionBlock Input.ask-other {
+        margin-bottom: 1;
+    }
+    _AskUserQuestionBlock #ask-submit {
+        margin-top: 1;
+    }
+    _AskUserQuestionBlock .ask-answered {
+        color: $success;
+        text-style: bold;
+    }
+    """
+
+    def __init__(
+        self,
+        *,
+        agent_id: str,
+        request_id: str,
+        tool_id: str | None,
+        questions: tuple[dict, ...],
+        event_bus: "EventBus | None" = None,
+    ) -> None:
+        super().__init__()
+        self._agent_id = agent_id
+        self._request_id = request_id
+        self._tool_id = tool_id
+        self._questions = questions
+        self._bus = event_bus
+        # selections[i] = set of option labels picked for question i.
+        self._selections: list[set[str]] = [set() for _ in questions]
+        self._custom_texts: list[str] = ["" for _ in questions]
+        self._submitted = False
+
+    @property
+    def request_id(self) -> str:
+        return self._request_id
+
+    @property
+    def tool_id(self) -> str | None:
+        return self._tool_id
+
+    def compose(self) -> ComposeResult:
+        for q_idx, q in enumerate(self._questions):
+            card = Vertical(classes="ask-question-card")
+            with card:
+                header = q.get("header") if isinstance(q, dict) else None
+                if header:
+                    yield Static(
+                        _markup_escape(str(header)),
+                        classes="ask-question-header",
+                    )
+                question_text = (
+                    q.get("question") if isinstance(q, dict) else None
+                ) or "(question)"
+                multi = bool(q.get("multiSelect")) if isinstance(q, dict) else False
+                suffix = " (select all that apply)" if multi else ""
+                yield Static(
+                    _markup_escape(f"{question_text}{suffix}"),
+                    classes="ask-question-text",
+                )
+                opts = q.get("options") if isinstance(q, dict) else None
+                if not isinstance(opts, (list, tuple)):
+                    opts = ()
+                for o_idx, opt in enumerate(opts):
+                    if not isinstance(opt, dict):
+                        continue
+                    label = opt.get("label") or f"option {o_idx + 1}"
+                    desc = opt.get("description") or ""
+                    row = Vertical(classes="ask-option-row")
+                    with row:
+                        yield Button(
+                            f"{o_idx + 1}. {label}",
+                            id=f"ask-opt-q{q_idx}-o{o_idx}",
+                            classes="ask-option",
+                        )
+                        if desc:
+                            yield Static(
+                                _markup_escape(str(desc)),
+                                classes="ask-option-description",
+                            )
+                yield Input(
+                    placeholder="Or type a custom answer (Other)…",
+                    id=f"ask-other-q{q_idx}",
+                    classes="ask-other",
+                )
+        yield Button(
+            "Submit answer", id="ask-submit", variant="primary",
+        )
+
+    def _label_for_button_id(self, button_id: str) -> tuple[int, str] | None:
+        """Decode ``ask-opt-q<i>-o<j>`` → ``(q_idx, option_label)``. Returns
+        None for any other id."""
+        if not button_id or not button_id.startswith("ask-opt-q"):
+            return None
+        try:
+            rest = button_id[len("ask-opt-q"):]
+            q_str, o_str = rest.split("-o", 1)
+            q_idx = int(q_str)
+            o_idx = int(o_str)
+        except ValueError:
+            return None
+        if q_idx >= len(self._questions):
+            return None
+        q = self._questions[q_idx]
+        if not isinstance(q, dict):
+            return None
+        opts = q.get("options")
+        if not isinstance(opts, (list, tuple)) or o_idx >= len(opts):
+            return None
+        opt = opts[o_idx]
+        if not isinstance(opt, dict):
+            return None
+        label = opt.get("label") or f"option {o_idx + 1}"
+        return q_idx, str(label)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if self._submitted:
+            event.stop()
+            return
+        if event.button.id == "ask-submit":
+            self._submit()
+            event.stop()
+            return
+        decoded = self._label_for_button_id(event.button.id or "")
+        if decoded is None:
+            return
+        q_idx, label = decoded
+        q = self._questions[q_idx]
+        multi = bool(q.get("multiSelect")) if isinstance(q, dict) else False
+        if multi:
+            if label in self._selections[q_idx]:
+                self._selections[q_idx].discard(label)
+            else:
+                self._selections[q_idx].add(label)
+        else:
+            self._selections[q_idx] = {label}
+        self._refresh_button_styles(q_idx)
+        event.stop()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Pressing Enter inside an Other field also submits the whole block
+        # for keyboard-only users — but only if at least one selection or
+        # some custom text exists somewhere.
+        if self._submitted:
+            return
+        for q_idx, inp_id in self._other_input_ids():
+            try:
+                inp = self.query_one(f"#{inp_id}", Input)
+            except Exception:
+                continue
+            self._custom_texts[q_idx] = inp.value
+        if self._has_any_answer():
+            self._submit()
+            event.stop()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if not event.input.id or not event.input.id.startswith("ask-other-q"):
+            return
+        try:
+            q_idx = int(event.input.id[len("ask-other-q"):])
+        except ValueError:
+            return
+        if 0 <= q_idx < len(self._custom_texts):
+            self._custom_texts[q_idx] = event.input.value
+
+    def _other_input_ids(self) -> "list[tuple[int, str]]":
+        return [
+            (i, f"ask-other-q{i}") for i in range(len(self._questions))
+        ]
+
+    def _has_any_answer(self) -> bool:
+        for sel, custom in zip(self._selections, self._custom_texts):
+            if sel:
+                return True
+            if custom.strip():
+                return True
+        return False
+
+    def _refresh_button_styles(self, q_idx: int) -> None:
+        q = self._questions[q_idx]
+        opts = q.get("options") if isinstance(q, dict) else None
+        if not isinstance(opts, (list, tuple)):
+            return
+        selected = self._selections[q_idx]
+        for o_idx, opt in enumerate(opts):
+            if not isinstance(opt, dict):
+                continue
+            label = opt.get("label") or f"option {o_idx + 1}"
+            btn_id = f"ask-opt-q{q_idx}-o{o_idx}"
+            try:
+                btn = self.query_one(f"#{btn_id}", Button)
+            except Exception:
+                continue
+            if str(label) in selected:
+                btn.add_class("-selected")
+            else:
+                btn.remove_class("-selected")
+
+    def _submit(self) -> None:
+        if self._submitted:
+            return
+        self._submitted = True
+        # Snapshot custom text from the live inputs in case on_input_changed
+        # missed any updates (e.g. submit fired before the change event).
+        for q_idx, inp_id in self._other_input_ids():
+            try:
+                inp = self.query_one(f"#{inp_id}", Input)
+            except Exception:
+                continue
+            self._custom_texts[q_idx] = inp.value
+        answers: list[dict] = []
+        for q_idx in range(len(self._questions)):
+            answers.append({
+                "selected": tuple(sorted(self._selections[q_idx])),
+                "custom_text": (
+                    self._custom_texts[q_idx].strip() or None
+                ),
+            })
+        # Lock the UI by removing buttons/inputs and replacing with a
+        # confirmation line so the user can see their answer in the
+        # transcript but can't double-submit. We keep the block mounted
+        # (don't remove) so the answered state is part of the message
+        # stream history.
+        self._render_answered_summary(answers)
+        bus = self._bus or getattr(self.app, "event_bus", None)
+        if bus is not None:
+            bus.publish(AskUserQuestionAnswered(
+                agent_id=self._agent_id,
+                request_id=self._request_id,
+                answers=tuple(answers),
+            ))
+
+    def _render_answered_summary(self, answers: list[dict]) -> None:
+        # Remove all interactive children, then mount a single summary line.
+        for child in list(self.children):
+            try:
+                child.remove()
+            except Exception:
+                pass
+        for idx, ans in enumerate(answers):
+            picks: list[str] = list(ans.get("selected") or ())
+            custom = ans.get("custom_text")
+            if custom:
+                picks.append(f"Other: {custom}")
+            q = self._questions[idx]
+            qt = (
+                q.get("question") if isinstance(q, dict) else None
+            ) or "(question)"
+            joined = ", ".join(picks) if picks else "(no selection)"
+            self.mount(Static(
+                _markup_escape(f"✓ {qt} — {joined}"),
+                classes="ask-answered",
+            ))
+
+
 class _TurnContainer(Vertical):
     """One conversation turn: user prompt + steps + final response."""
 
@@ -504,8 +816,16 @@ class RichTranscript(Vertical):
         self._unsub_msg = lambda: None
         self._unsub_state = lambda: None
         self._unsub_switched = lambda: None
+        self._unsub_ask = lambda: None
         self._current_turn: _TurnContainer | None = None
         self._replay_worker: object | None = None
+        # tool_use_ids we suppress as ordinary _ToolCall renders because
+        # they're being handled by a dedicated _AskUserQuestionBlock. Set
+        # entries are added when an AskUserQuestionRequested event arrives
+        # *and* when a tool_use entry with name=="AskUserQuestion" arrives —
+        # whichever order. The matching tool_result is also suppressed so we
+        # don't get a duplicate orphan line under the answered block.
+        self._ask_user_tool_ids: set[str] = set()
 
     @property
     def agent_id(self) -> str:
@@ -544,11 +864,16 @@ class RichTranscript(Vertical):
             self._unsub_switched = bus.subscribe(
                 OrchestratorSessionSwitched, self._on_session_switched,
             )
+            self._unsub_ask = bus.subscribe(
+                AskUserQuestionRequested, self._on_ask_user_question,
+                agent_id=self._agent_id,
+            )
 
     def on_unmount(self) -> None:
         self._unsub_msg()
         self._unsub_state()
         self._unsub_switched()
+        self._unsub_ask()
 
     def replace_source(self, transcript_path: Path) -> None:
         """Clear the scroll and replay from a new transcript path.
@@ -561,6 +886,7 @@ class RichTranscript(Vertical):
         for child in list(scroll.children):
             child.remove()
         self._current_turn = None
+        self._ask_user_tool_ids.clear()
         cwd = getattr(self.app, "cwd", None) or Path(".")
         store = TranscriptStore(
             cwd=cwd, agent_id=self._agent_id, path=transcript_path,
@@ -601,6 +927,28 @@ class RichTranscript(Vertical):
         if self._current_turn is not None:
             self._current_turn.mark_done()
             self._current_turn = None
+
+    def _on_ask_user_question(self, event: AskUserQuestionRequested) -> None:
+        # Mark this tool_id as suppressed *before* mounting so a tool_use
+        # entry that arrives later still doesn't double-render.
+        if event.tool_id:
+            self._ask_user_tool_ids.add(event.tool_id)
+        if self._current_turn is None:
+            # A question can arrive before any user message in pathological
+            # cases (e.g. a brand-new session whose first action is to ask).
+            # Open a synthetic turn so the block has somewhere to live.
+            self._open_turn("")
+        turn = self._current_turn
+        assert turn is not None
+        bus = self._bus or getattr(self.app, "event_bus", None)
+        block = _AskUserQuestionBlock(
+            agent_id=event.agent_id,
+            request_id=event.request_id,
+            tool_id=event.tool_id,
+            questions=event.questions,
+            event_bus=bus,
+        )
+        turn.mount(block)
 
     def _on_session_switched(self, event) -> None:
         # Filter by agent_id semantics: only the orchestrator transcript reacts.
@@ -645,11 +993,21 @@ class RichTranscript(Vertical):
         elif entry.role == "thinking":
             turn.add_thinking(entry.text)
         elif entry.role == "tool_use":
+            # `AskUserQuestion` is rendered as a dedicated inline block via
+            # the AskUserQuestionRequested event — suppress the duplicate
+            # _ToolCall render. Track the tool_id so the matching
+            # tool_result is suppressed too.
+            if entry.tool_name == "AskUserQuestion":
+                if entry.tool_id:
+                    self._ask_user_tool_ids.add(entry.tool_id)
+                return
             turn.add_tool_call(
                 tool_id=entry.tool_id, tool_name=entry.tool_name,
                 args_text=entry.text,
             )
         elif entry.role == "tool_result":
+            if entry.tool_id and entry.tool_id in self._ask_user_tool_ids:
+                return
             turn.attach_tool_result(
                 tool_id=entry.tool_id, content_text=entry.text,
             )
