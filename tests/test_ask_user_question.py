@@ -15,7 +15,6 @@ import asyncio
 from pathlib import Path
 
 import pytest
-from claude_agent_sdk import PermissionResultDeny, ToolPermissionContext
 from textual.app import App
 from textual.widgets import Button, Input
 
@@ -264,8 +263,24 @@ def _ok():
     ]
 
 
+def _run_hook(orch: OrchestratorSession, *, tool_use_id: str,
+              tool_input: dict):
+    """Invoke the orchestrator's PreToolUse hook for AskUserQuestion the
+    way the SDK would. Returns the coroutine."""
+    hook_input = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "AskUserQuestion",
+        "tool_input": tool_input,
+        "tool_use_id": tool_use_id,
+        "session_id": "test",
+        "transcript_path": "",
+        "cwd": "",
+    }
+    return orch._ask_user_question_hook(hook_input, tool_use_id, {"signal": None})
+
+
 @pytest.mark.asyncio
-async def test_orchestrator_can_use_tool_intercepts_ask_user_question(
+async def test_orchestrator_hook_intercepts_ask_user_question(
     tmp_path: Path,
 ):
     bus = EventBus()
@@ -283,9 +298,6 @@ async def test_orchestrator_can_use_tool_intercepts_ask_user_question(
         permission_grants=grants,
     )
     await orch.start()
-    callback = orch._can_use_tool_callback
-    assert callable(callback)
-    ctx = ToolPermissionContext(tool_use_id="tu-1")
 
     questions = [
         {
@@ -299,7 +311,6 @@ async def test_orchestrator_can_use_tool_intercepts_ask_user_question(
     ]
 
     async def answer_after_request():
-        # Spin until the event has been published.
         for _ in range(100):
             await asyncio.sleep(0)
             if requested:
@@ -315,18 +326,74 @@ async def test_orchestrator_can_use_tool_intercepts_ask_user_question(
         ))
 
     asyncio.create_task(answer_after_request())
-    result = await callback(
-        "AskUserQuestion", {"questions": questions}, ctx,
+    result = await _run_hook(
+        orch, tool_use_id="tu-1", tool_input={"questions": questions},
     )
-    assert isinstance(result, PermissionResultDeny)
-    assert "Which approach?" in result.message
-    assert "Approach B" in result.message
-    assert "Approach A" not in result.message
+    spec = result["hookSpecificOutput"]
+    assert spec["hookEventName"] == "PreToolUse"
+    assert spec["permissionDecision"] == "deny"
+    reason = spec["permissionDecisionReason"]
+    assert "Which approach?" in reason
+    assert "Approach B" in reason
+    assert "Approach A" not in reason
 
     assert len(requested) == 1
     assert requested[0].agent_id == "orchestrator"
     assert requested[0].tool_id == "tu-1"
     assert requested[0].questions == tuple(questions)
+    await orch.stop()
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_hook_works_in_bypass_mode(tmp_path: Path):
+    """In bypass-permissions mode, the SDK skips `can_use_tool` entirely
+    so the AskUserQuestion intercept lives in a PreToolUse hook. This
+    test was the regression that prompted the hook design: previously
+    the question auto-dismissed because `can_use_tool` never fired."""
+    bus = EventBus()
+    requested: list[AskUserQuestionRequested] = []
+    bus.subscribe(AskUserQuestionRequested, requested.append)
+    manager = AgentManager(
+        cwd=tmp_path, bus=bus,
+        adapter_factory=lambda: FakeSDKAdapter(scripts=[_ok()]),
+    )
+    # No permission_grants → bypass mode. The hook must still fire.
+    orch = OrchestratorSession(
+        cwd=tmp_path, bus=bus, manager=manager,
+        adapter=FakeSDKAdapter(scripts=[_ok()]),
+    )
+    await orch.start()
+    assert orch.permission_grants is None  # confirms bypass mode
+
+    questions = [
+        {
+            "question": "Bypass-mode question?",
+            "multiSelect": False,
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        },
+    ]
+
+    async def answer_after_request():
+        for _ in range(100):
+            await asyncio.sleep(0)
+            if requested:
+                break
+        assert requested
+        req = requested[0]
+        bus.publish(AskUserQuestionAnswered(
+            agent_id="orchestrator",
+            request_id=req.request_id,
+            answers=({"selected": ("Yes",), "custom_text": None},),
+        ))
+
+    asyncio.create_task(answer_after_request())
+    result = await _run_hook(
+        orch, tool_use_id="tu-b", tool_input={"questions": questions},
+    )
+    spec = result["hookSpecificOutput"]
+    assert spec["permissionDecision"] == "deny"
+    assert "Bypass-mode question?" in spec["permissionDecisionReason"]
+    assert "Yes" in spec["permissionDecisionReason"]
     await orch.stop()
 
 
@@ -347,12 +414,11 @@ async def test_orchestrator_ask_user_question_rejects_empty_questions(
         permission_grants=grants,
     )
     await orch.start()
-    callback = orch._can_use_tool_callback
-    ctx = ToolPermissionContext(tool_use_id="tu-2")
 
-    result = await callback("AskUserQuestion", {}, ctx)
-    assert isinstance(result, PermissionResultDeny)
-    assert "no questions" in result.message.lower()
+    result = await _run_hook(orch, tool_use_id="tu-2", tool_input={})
+    spec = result["hookSpecificOutput"]
+    assert spec["permissionDecision"] == "deny"
+    assert "no questions" in spec["permissionDecisionReason"].lower()
     await orch.stop()
 
 

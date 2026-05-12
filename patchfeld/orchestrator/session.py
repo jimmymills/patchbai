@@ -4,12 +4,13 @@ import re
 import time
 import uuid
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from claude_agent_sdk import (
     AssistantMessage,
     CanUseTool,
     ClaudeAgentOptions,
+    HookMatcher,
     PermissionResultAllow,
     PermissionResultDeny,
     TextBlock,
@@ -88,6 +89,20 @@ _HELP_TEXT_BASE = (
     "  /require-permissions       Re-enable the permission modal (default)\n"
     "  /help                      Show this list"
 )
+
+
+def _deny_pretooluse(reason: str) -> dict:
+    """Shape a `PreToolUse` hook return that denies the tool and surfaces
+    `reason` to the model as the tool's tool_result content. Keeps every
+    AskUserQuestion deny path producing the exact same JSON shape so the
+    CLI's deny handling is consistent."""
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": reason,
+        },
+    }
 
 
 def _format_ask_user_answer(
@@ -342,15 +357,6 @@ class OrchestratorSession:
             ctx: ToolPermissionContext,
         ):
             assert grants is not None
-            # Intercept the built-in `AskUserQuestion` BEFORE consulting
-            # the permission grants or modal: this tool is meant to
-            # interact with the user, but the CLI binary running as an
-            # SDK subprocess has no TUI of its own. We render the
-            # question inline in the chat instead and return the user's
-            # answer back as the tool's deny-message (which the SDK
-            # forwards to the model as the tool_result content).
-            if tool_name == "AskUserQuestion":
-                return await self._handle_ask_user_question(tool_input, ctx)
             decision = grants.lookup(agent_name=agent_name, tool_name=tool_name)
             if decision == "allow":
                 return PermissionResultAllow()
@@ -396,30 +402,37 @@ class OrchestratorSession:
 
         return callback
 
-    async def _handle_ask_user_question(
+    async def _ask_user_question_hook(
         self,
-        tool_input: dict,
-        ctx: ToolPermissionContext,
-    ):
-        """Render an inline AskUserQuestion block in the orchestrator chat
-        and wait for the user's answer. Returns a `PermissionResultDeny`
-        whose `message` carries the formatted answer text — the SDK
-        forwards `message` to the model as the tool's tool_result content,
-        so the model sees the user's choice exactly as if the CLI had
-        executed the tool itself."""
-        # Defensive guards on the tool input shape. The model is supposed
-        # to provide `questions: [...]` but we don't want to crash if it
-        # sends something malformed.
+        hook_input: "Any",
+        tool_use_id: str | None,
+        context: "Any",
+    ) -> "Any":
+        """`PreToolUse` hook fired for the built-in `AskUserQuestion` tool.
+
+        This runs regardless of `permission_mode` (`bypassPermissions`
+        skips `can_use_tool` but still fires hooks), so it's the only
+        intercept point that works in both bypass and require-permissions
+        mode. Renders an inline answer block in the orchestrator chat,
+        awaits the user's choice, and returns a `permissionDecision:
+        "deny"` whose `permissionDecisionReason` is the formatted answer
+        text — the CLI forwards that reason to the model as the tool's
+        tool_result, so the model sees the user's pick exactly as if it
+        had run the built-in itself.
+        """
+        tool_input = hook_input.get("tool_input") or {}
+        if not isinstance(tool_input, dict):
+            tool_input = {}
         raw_questions = tool_input.get("questions")
+        deny_reason: str
         if not isinstance(raw_questions, list) or not raw_questions:
-            return PermissionResultDeny(
-                message=(
-                    "AskUserQuestion received no questions; nothing to ask. "
-                    "Please rephrase as a regular text turn."
-                ),
+            deny_reason = (
+                "AskUserQuestion received no questions; nothing to ask. "
+                "Please rephrase as a regular text turn."
             )
+            return _deny_pretooluse(deny_reason)
         questions: tuple[dict, ...] = tuple(raw_questions)
-        tool_id = getattr(ctx, "tool_use_id", None)
+        tool_id = tool_use_id or hook_input.get("tool_use_id")
         request_id = self._ask_inbox.register(
             tool_id=tool_id, questions=questions,
         )
@@ -438,15 +451,13 @@ class OrchestratorSession:
             task = asyncio.current_task()
             if task is not None and task.cancelling() > 0:
                 raise
-            return PermissionResultDeny(
-                message="user dismissed AskUserQuestion", interrupt=True,
-            )
+            return _deny_pretooluse("user dismissed AskUserQuestion")
         except asyncio.TimeoutError:
-            return PermissionResultDeny(
-                message="AskUserQuestion timed out waiting for user",
+            return _deny_pretooluse(
+                "AskUserQuestion timed out waiting for user"
             )
-        return PermissionResultDeny(
-            message=_format_ask_user_answer(questions, answers),
+        return _deny_pretooluse(
+            _format_ask_user_answer(questions, answers)
         )
 
     def _on_ask_answered(self, event: AskUserQuestionAnswered) -> None:
@@ -533,6 +544,21 @@ class OrchestratorSession:
                 preset="claude_code",
                 append=_ORCHESTRATOR_SYSTEM_APPEND,
             ),
+            # `AskUserQuestion` is a CLI built-in with no UI when the CLI
+            # runs as an SDK subprocess. Intercept it as a PreToolUse
+            # hook (fires in both bypass and require-permissions modes,
+            # unlike can_use_tool which bypassPermissions skips) and
+            # render an inline answer block in the chat instead. The
+            # default per-matcher timeout is 60s which is too short for
+            # interactive questions; bump it to 30 minutes so the user
+            # has real time to think.
+            "hooks": {
+                "PreToolUse": [HookMatcher(
+                    matcher="AskUserQuestion",
+                    hooks=[self._ask_user_question_hook],
+                    timeout=30 * 60,
+                )],
+            },
         }
         # Permission posture mirrors AgentManager (see manager.py): when
         # the user launches without --bypass-permissions, self._grants is
